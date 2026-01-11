@@ -170,7 +170,7 @@ async def logged_out():
     <!DOCTYPE html>
     <html>
     <head>
-        <title>AI Rabbi - Login</title>
+        <title>rebbe.dev - Login</title>
         <link rel="preconnect" href="https://fonts.googleapis.com">
         <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
         <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
@@ -209,7 +209,7 @@ async def logged_out():
     <body>
         <div class="container">
             <div class="icon">&#x2721;</div>
-            <h1>AI Rabbi</h1>
+            <h1>rebbe.dev</h1>
             <p>Sign in to continue</p>
             <a href="/auth/login">Sign In</a>
         </div>

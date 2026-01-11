@@ -1,4 +1,4 @@
-"""FastAPI application for AI Rabbi."""
+"""FastAPI application for rebbe.dev."""
 
 import uuid
 import json
@@ -24,7 +24,7 @@ settings = get_settings()
 app = FastAPI(
     title=settings.app_name,
     version=settings.app_version,
-    description="A progressive Modern Orthodox AI Rabbi - guidance, not psak",
+    description="A progressive Modern Orthodox AI rebbe - guidance, not psak",
 )
 
 app.add_middleware(
@@ -113,7 +113,7 @@ async def get_greeting():
 @app.post("/api/chat", response_model=ChatResponse)
 async def chat(request: ChatRequest):
     """
-    Process a chat message through the AI Rabbi pipeline.
+    Process a chat message through the rebbe.dev pipeline.
 
     The message flows through four specialized agents:
     1. Pastoral Context Agent - Determines HOW to respond

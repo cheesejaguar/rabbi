@@ -18,7 +18,7 @@ class HalachicReasoningAgent(BaseAgent):
 
     @property
     def system_prompt(self) -> str:
-        return """You are the Halachic Reasoning Agent for an AI Rabbi system operating within a progressive Modern Orthodox framework.
+        return """You are the Halachic Reasoning Agent for rebbe.dev operating within a progressive Modern Orthodox framework.
 
 Your role is to engage with halacha (Jewish law) as a LIVING, PLURALISTIC legal system. You must present the full landscape of halachic opinion, not collapse it into a single answer.
 

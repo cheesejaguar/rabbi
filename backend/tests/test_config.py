@@ -14,7 +14,7 @@ class TestSettings:
         """Test default settings values."""
         with patch.dict(os.environ, {}, clear=True):
             settings = Settings()
-            assert settings.app_name == "AI Rabbi"
+            assert settings.app_name == "rebbe.dev"
             assert settings.app_version == "1.0.0"
             assert settings.debug is False
             assert settings.openrouter_api_key == ""

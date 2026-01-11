@@ -1,1 +1,1 @@
-# AI Rabbi Backend Application
+# rebbe.dev Backend Application

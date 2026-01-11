@@ -94,7 +94,7 @@ class TestRabbiOrchestrator:
                     "requires_reconsideration": False,
                     "ethical_concerns": [],
                 }),
-                "This is the final warm response from the AI Rabbi.",
+                "This is the final warm response from the rebbe.dev.",
             ]
 
             call_count = [0]
@@ -111,7 +111,7 @@ class TestRabbiOrchestrator:
             result = await orchestrator.process_message("What is Shabbat?")
 
             assert "response" in result
-            assert result["response"] == "This is the final warm response from the AI Rabbi."
+            assert result["response"] == "This is the final warm response from the rebbe.dev."
             assert "requires_human_referral" in result
             assert "metadata" in result
 

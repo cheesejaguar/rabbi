@@ -24,7 +24,7 @@ class PastoralContextAgent(BaseAgent):
 
     @property
     def system_prompt(self) -> str:
-        return """You are the Pastoral Context Agent for an AI Rabbi system operating within a progressive Modern Orthodox framework.
+        return """You are the Pastoral Context Agent for rebbe.dev operating within a progressive Modern Orthodox framework.
 
 Your role is to analyze the user's message and determine HOW to respond before determining WHAT to answer. You have the highest priority in the system.
 

@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-AI Rabbi is a multi-agent chatbot providing Torah wisdom and guidance from a progressive Modern Orthodox perspective. It uses Claude as the underlying LLM and implements a four-stage agent pipeline to process user messages.
+rebbe.dev is a multi-agent chatbot providing Torah wisdom and guidance from a progressive Modern Orthodox perspective. It uses Claude as the underlying LLM and implements a four-stage agent pipeline to process user messages.
 
 ## Development Commands
 

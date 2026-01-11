@@ -1,5 +1,5 @@
 /**
- * AI Rabbi - Modern Frontend Application
+ * rebbe.dev - Modern Frontend Application
  */
 
 // Configuration
@@ -133,7 +133,7 @@ function showLoginPrompt() {
         prompt.className = 'login-prompt';
         prompt.innerHTML = `
             <div class="login-prompt-content">
-                <p>Please sign in to chat with AI Rabbi</p>
+                <p>Please sign in to chat with rebbe.dev</p>
                 <a href="/auth/login" class="login-prompt-btn">Sign In</a>
                 <button class="login-prompt-close" onclick="hideLoginPrompt()">&times;</button>
             </div>

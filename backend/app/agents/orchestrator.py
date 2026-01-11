@@ -11,7 +11,7 @@ from .voice import MetaRabbinicVoiceAgent
 
 class RabbiOrchestrator:
     """
-    Orchestrates the multi-agent AI Rabbi pipeline.
+    Orchestrates the multi-agent rebbe.dev pipeline.
 
     Flow:
     User Input → Pastoral Context → Halachic Reasoning → Moral-Ethical → Meta-Rabbinic Voice → Final Response

@@ -1,6 +1,6 @@
-# Contributing to AI Rabbi
+# Contributing to rebbe.dev
 
-Thank you for your interest in contributing to AI Rabbi! This project benefits from contributions by engineers, rabbis, Jewish educators, ethicists, and anyone passionate about the intersection of technology and Jewish wisdom.
+Thank you for your interest in contributing to rebbe.dev! This project benefits from contributions by engineers, rabbis, Jewish educators, ethicists, and anyone passionate about the intersection of technology and Jewish wisdom.
 
 ## Table of Contents
 
@@ -237,7 +237,7 @@ open htmlcov/index.html
 
 ## Project Values
 
-When contributing to AI Rabbi, please keep these values in mind:
+When contributing to rebbe.dev, please keep these values in mind:
 
 ### Respect Halachic Pluralism
 
@@ -276,4 +276,4 @@ If you have questions about contributing, feel free to:
 - Open an issue for discussion
 - Ask in the pull request comments
 
-Thank you for helping make AI Rabbi better!
+Thank you for helping make rebbe.dev better!

@@ -1,7 +1,7 @@
 #!/bin/bash
 
-# AI Rabbi - Run Script
-# This script starts the AI Rabbi application
+# rebbe.dev - Run Script
+# This script starts the rebbe.dev application
 
 set -e
 
@@ -12,7 +12,7 @@ YELLOW='\033[1;33m'
 RED='\033[0;31m'
 NC='\033[0m' # No Color
 
-echo -e "${BLUE}✡️  AI Rabbi - Torah Wisdom & Guidance${NC}"
+echo -e "${BLUE}✡️  rebbe.dev - Torah Wisdom & Guidance${NC}"
 echo ""
 
 # Check if uv is installed
@@ -37,7 +37,7 @@ fi
 
 # Start the server
 echo ""
-echo -e "${GREEN}Starting AI Rabbi server...${NC}"
+echo -e "${GREEN}Starting rebbe.dev server...${NC}"
 echo -e "${BLUE}Open http://localhost:8000 in your browser${NC}"
 echo ""
 

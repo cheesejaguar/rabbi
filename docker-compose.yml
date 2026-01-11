@@ -1,5 +1,5 @@
 services:
-  ai-rabbi:
+  rebbe:
     build: .
     ports:
       - "8613:8000"

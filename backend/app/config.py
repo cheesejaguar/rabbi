@@ -7,7 +7,7 @@ from pydantic_settings import BaseSettings
 class Settings(BaseSettings):
     """Application settings loaded from environment variables."""
 
-    app_name: str = "AI Rabbi"
+    app_name: str = "rebbe.dev"
     app_version: str = "1.0.0"
     debug: bool = False
 

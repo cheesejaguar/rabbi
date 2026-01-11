@@ -1,1 +1,1 @@
-# AI Rabbi Tests
+# rebbe.dev Tests

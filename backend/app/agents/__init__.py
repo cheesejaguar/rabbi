@@ -1,4 +1,4 @@
-# AI Rabbi Agents
+# rebbe.dev Agents
 from .base import BaseAgent
 from .pastoral import PastoralContextAgent
 from .halachic import HalachicReasoningAgent

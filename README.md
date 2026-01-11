@@ -1,4 +1,4 @@
-# AI Rabbi
+# rebbe.dev
 
 A multi-agent AI system for exploring Jewish thought, practice, and meaning from a progressive Modern Orthodox perspective.
 
@@ -8,7 +8,7 @@ A multi-agent AI system for exploring Jewish thought, practice, and meaning from
 
 ## Overview
 
-AI Rabbi is a chatbot that provides guidance on questions of Jewish law, ethics, and spirituality. It uses a multi-agent architecture where specialized agents handle different aspects of rabbinic reasoning:
+rebbe.dev is a chatbot that provides guidance on questions of Jewish law, ethics, and spirituality. It uses a multi-agent architecture where specialized agents handle different aspects of rabbinic reasoning:
 
 - **Pastoral Context Agent** - Determines *how* to respond based on emotional context
 - **Halachic Reasoning Agent** - Provides the landscape of Jewish legal opinions
@@ -105,10 +105,10 @@ docker compose down
 
 ```bash
 # Build
-docker build -t ai-rabbi .
+docker build -t rebbe .
 
 # Run
-docker run -p 8000:8000 --env-file .env ai-rabbi
+docker run -p 8000:8000 --env-file .env rebbe
 ```
 
 ## Development

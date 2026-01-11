@@ -1,4 +1,4 @@
-"""Base Agent class for the AI Rabbi multi-agent system."""
+"""Base Agent class for the rebbe.dev multi-agent system."""
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
@@ -74,7 +74,7 @@ class AgentContext:
 
 
 class BaseAgent(ABC):
-    """Abstract base class for all AI Rabbi agents."""
+    """Abstract base class for all rebbe.dev agents."""
 
     def __init__(self, client: OpenAI, model: str = "anthropic/claude-sonnet-4-20250514"):
         self.client = client
