@@ -7,7 +7,7 @@ from unittest.mock import patch, Mock, AsyncMock, MagicMock
 
 @pytest.fixture(scope="module")
 def test_app():
-    """Create the app with mocked orchestrator."""
+    """Create the app with mocked orchestrator and authentication."""
     # Create mock orchestrator before importing app.main
     mock_orchestrator_instance = Mock()
     mock_orchestrator_instance.get_greeting = AsyncMock(
@@ -19,6 +19,14 @@ def test_app():
         "metadata": {"pastoral_mode": "teaching"},
     })
 
+    # Mock user for authentication
+    mock_user = {
+        "id": "test-user-id",
+        "email": "test@example.com",
+        "first_name": "Test",
+        "last_name": "User",
+    }
+
     # Patch the RabbiOrchestrator class before importing main
     with patch.dict(sys.modules, {}):
         # Clear cached modules
@@ -28,10 +36,13 @@ def test_app():
 
         with patch('app.agents.orchestrator.OpenAI'):
             with patch('app.agents.RabbiOrchestrator', return_value=mock_orchestrator_instance):
-                from app.main import app
-                from fastapi.testclient import TestClient
-                client = TestClient(app)
-                yield client, mock_orchestrator_instance, app
+                # Mock authentication to always return a user
+                with patch('app.auth.get_current_user', return_value=mock_user):
+                    with patch('app.main.get_current_user', return_value=mock_user):
+                        from app.main import app
+                        from fastapi.testclient import TestClient
+                        client = TestClient(app)
+                        yield client, mock_orchestrator_instance, app
 
 
 @pytest.fixture
