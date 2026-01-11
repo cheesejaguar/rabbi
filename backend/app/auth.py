@@ -12,11 +12,20 @@ from .config import get_settings
 router = APIRouter(prefix="/auth", tags=["authentication"])
 settings = get_settings()
 
-# Initialize WorkOS client
-workos_client = WorkOSClient(
-    api_key=settings.workos_api_key,
-    client_id=settings.workos_client_id,
-)
+# Lazy-initialized WorkOS client
+_workos_client: Optional[WorkOSClient] = None
+
+
+def get_workos_client() -> WorkOSClient:
+    """Get or create the WorkOS client (lazy initialization for testing)."""
+    global _workos_client
+    if _workos_client is None:
+        _workos_client = WorkOSClient(
+            api_key=settings.workos_api_key,
+            client_id=settings.workos_client_id,
+        )
+    return _workos_client
+
 
 # Session serializer
 _serializer: Optional[URLSafeTimedSerializer] = None
@@ -74,7 +83,7 @@ async def login(request: Request):
     state = secrets.token_urlsafe(32)
 
     # Get authorization URL from WorkOS User Management (AuthKit)
-    authorization_url = workos_client.user_management.get_authorization_url(
+    authorization_url = get_workos_client().user_management.get_authorization_url(
         redirect_uri=settings.workos_redirect_uri,
         state=state,
         provider="authkit",  # Use AuthKit for universal login
@@ -109,7 +118,7 @@ async def callback(request: Request, code: str = None, state: str = None, error:
 
     try:
         # Exchange code for user info using User Management API
-        auth_response = workos_client.user_management.authenticate_with_code(
+        auth_response = get_workos_client().user_management.authenticate_with_code(
             code=code,
         )
         user = auth_response.user
