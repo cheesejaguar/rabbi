@@ -1,6 +1,7 @@
 """Application configuration."""
 
 from functools import lru_cache
+from urllib.parse import quote_plus
 from pydantic_settings import BaseSettings
 
 
@@ -71,7 +72,10 @@ class Settings(BaseSettings):
         database = self.pgdatabase or self.postgres_database
 
         if host and user and password and database:
-            return f"postgresql://{user}:{password}@{host}/{database}?sslmode=require"
+            # URL-encode user and password to handle special characters
+            encoded_user = quote_plus(user)
+            encoded_password = quote_plus(password)
+            return f"postgresql://{encoded_user}:{encoded_password}@{host}/{database}?sslmode=require"
 
         return ""
 

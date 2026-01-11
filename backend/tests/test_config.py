@@ -124,6 +124,23 @@ class TestSettings:
             settings = Settings(_env_file=None)
             assert settings.db_url == ""
 
+    def test_db_url_encodes_special_characters(self):
+        """Test that special characters in password are URL-encoded."""
+        env_vars = {
+            "PGHOST": "db.example.com",
+            "PGUSER": "user@domain",
+            "PGPASSWORD": "p@ss:word/with?special=chars",
+            "PGDATABASE": "mydb",
+        }
+        with patch.dict(os.environ, env_vars, clear=True):
+            settings = Settings(_env_file=None)
+            # Special chars should be URL-encoded
+            assert "p%40ss%3Aword%2Fwith%3Fspecial%3Dchars" in settings.db_url
+            assert "user%40domain" in settings.db_url
+            # The URL should still be valid PostgreSQL format
+            assert settings.db_url.startswith("postgresql://")
+            assert "@db.example.com/mydb?sslmode=require" in settings.db_url
+
 
 class TestGetSettings:
     """Test get_settings function."""

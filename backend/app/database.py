@@ -273,9 +273,11 @@ async def generate_conversation_title(conversation_id: str) -> Optional[str]:
         )
         if row:
             content = row['content']
-            # Truncate to first 50 chars or first line
-            title = content.split('\n')[0][:50]
-            if len(content) > 50:
+            # Use the first line, truncated to 50 characters
+            first_line = content.split('\n', 1)[0]
+            title = first_line[:50]
+            # Append ellipsis only if the title omits some of the message
+            if len(title) < len(first_line) or '\n' in content:
                 title += "..."
             return title
         return None

@@ -408,7 +408,7 @@ class TestMessageOperations:
 
     @pytest.mark.asyncio
     async def test_generate_conversation_title(self, mock_connection):
-        """Test generating a title from first user message."""
+        """Test generating a title from first user message (short, single line)."""
         mock_row = {"content": "What is the meaning of Shabbat?"}
         mock_connection.fetchrow = AsyncMock(return_value=mock_row)
 
@@ -419,12 +419,14 @@ class TestMessageOperations:
             from app.database import generate_conversation_title
             result = await generate_conversation_title("conv-123")
 
+            # Short single-line content should not have ellipsis
             assert result == "What is the meaning of Shabbat?"
+            assert not result.endswith("...")
 
     @pytest.mark.asyncio
     async def test_generate_conversation_title_truncates_long_content(self, mock_connection):
         """Test that long messages are truncated for titles."""
-        long_content = "A" * 100  # 100 characters
+        long_content = "A" * 100  # 100 characters on single line
         mock_row = {"content": long_content}
         mock_connection.fetchrow = AsyncMock(return_value=mock_row)
 
@@ -437,6 +439,39 @@ class TestMessageOperations:
 
             assert len(result) == 53  # 50 chars + "..."
             assert result.endswith("...")
+
+    @pytest.mark.asyncio
+    async def test_generate_conversation_title_multiline_adds_ellipsis(self, mock_connection):
+        """Test that multiline content adds ellipsis even if first line is short."""
+        multiline_content = "Short first line\nSecond line with more content"
+        mock_row = {"content": multiline_content}
+        mock_connection.fetchrow = AsyncMock(return_value=mock_row)
+
+        with patch('app.database.get_connection') as mock_ctx:
+            mock_ctx.return_value.__aenter__ = AsyncMock(return_value=mock_connection)
+            mock_ctx.return_value.__aexit__ = AsyncMock()
+
+            from app.database import generate_conversation_title
+            result = await generate_conversation_title("conv-123")
+
+            assert result == "Short first line..."
+
+    @pytest.mark.asyncio
+    async def test_generate_conversation_title_short_single_line_no_ellipsis(self, mock_connection):
+        """Test that short single-line content has no ellipsis."""
+        short_content = "Short question"
+        mock_row = {"content": short_content}
+        mock_connection.fetchrow = AsyncMock(return_value=mock_row)
+
+        with patch('app.database.get_connection') as mock_ctx:
+            mock_ctx.return_value.__aenter__ = AsyncMock(return_value=mock_connection)
+            mock_ctx.return_value.__aexit__ = AsyncMock()
+
+            from app.database import generate_conversation_title
+            result = await generate_conversation_title("conv-123")
+
+            assert result == "Short question"
+            assert not result.endswith("...")
 
     @pytest.mark.asyncio
     async def test_generate_conversation_title_no_messages(self, mock_connection):
