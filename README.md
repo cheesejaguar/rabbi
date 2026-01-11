@@ -1,290 +1,240 @@
 # AI Rabbi
-## Progressive Modern Orthodox Rabbinic Agent Architecture
 
-**Status:** Design Proposal  
-**Audience:** Engineers, AI researchers, Jewish educators, ethicists  
-**Intent:** Conceptual + technical design (non-production)
+A multi-agent AI system for exploring Jewish thought, practice, and meaning from a progressive Modern Orthodox perspective.
 
----
+[![Tests](https://github.com/cheesejaguar/rabbi/actions/workflows/tests.yml/badge.svg)](https://github.com/cheesejaguar/rabbi/actions/workflows/tests.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
 
-## Table of Contents
+## Overview
 
-1. Vision & Scope  
-2. Design Principles  
-3. System Architecture  
-4. Core Agents  
-   - Pastoral Context Agent  
-   - Halachic Reasoning Agent  
-   - Moral–Ethical Agent  
-   - Meta-Rabbinic Voice Agent  
-5. Guardrails & Safety  
-6. Training Data Strategy  
-7. Evaluation Metrics  
-8. Non-Goals  
-9. Ethical Positioning  
-10. Future Extensions  
-11. Contribution Guidelines  
+AI Rabbi is a chatbot that provides guidance on questions of Jewish law, ethics, and spirituality. It uses a multi-agent architecture where specialized agents handle different aspects of rabbinic reasoning:
 
----
+- **Pastoral Context Agent** - Determines *how* to respond based on emotional context
+- **Halachic Reasoning Agent** - Provides the landscape of Jewish legal opinions
+- **Moral-Ethical Agent** - Ensures responses preserve human dignity
+- **Meta-Rabbinic Voice Agent** - Crafts the final response with appropriate tone
 
-## 1. Vision & Scope
+**Important:** This is guidance, not binding psak (legal ruling). A rabbi who knows you personally may counsel differently.
 
-This project explores how an AI system could **model rabbinic reasoning, tone, and pastoral responsibility** within a *progressive Modern Orthodox* framework.
+## Features
 
-The system is **explicitly not** intended to:
+- Real-time streaming responses
+- WorkOS SSO authentication
+- Mobile-friendly dark theme UI
+- Multi-agent reasoning pipeline
+- Token-by-token response streaming
 
-- Replace human rabbis  
-- Issue binding halachic rulings  
-- Function as an oracle or ultimate authority  
+## Quick Start
 
-Instead, it aims to:
+### Prerequisites
 
-- Help users *think with Torah*  
-- Preserve halachic pluralism  
-- Maintain human dignity  
-- Encourage engagement with real communities and teachers  
+- Python 3.11 or higher
+- [uv](https://docs.astral.sh/uv/) package manager
+- An [OpenRouter](https://openrouter.ai/) API key
 
-> The AI should be understood as a *posek-in-training with moral responsibility*, not a decisor.
+### Installation
 
----
+1. **Clone the repository**
 
-## 2. Design Principles
+   ```bash
+   git clone https://github.com/cheesejaguar/rabbi.git
+   cd rabbi
+   ```
 
-A progressive Modern Orthodox rabbi operates inside unresolved tensions.  
-The AI **must preserve these tensions**, not collapse them.
+2. **Install uv** (if not already installed)
 
-Key tensions:
+   ```bash
+   curl -LsSf https://astral.sh/uv/install.sh | sh
+   ```
 
-1. Halachic fidelity ↔ lived human reality  
-2. Tradition ↔ moral intuition  
-3. Authority ↔ humility  
-4. Text ↔ experience  
+3. **Install dependencies**
 
-**Design axiom:**  
-A technically correct answer that causes moral or emotional harm is a system failure.
+   ```bash
+   uv sync
+   ```
 
----
+4. **Configure environment variables**
 
-## 3. System Architecture
+   ```bash
+   cp .env.example .env
+   ```
 
-The AI Rabbi is a **multi-agent system** coordinated by a central orchestration layer.
+   Edit `.env` and add your API keys:
+
+   ```bash
+   OPENROUTER_API_KEY=your-openrouter-api-key
+
+   # Optional: WorkOS for authentication
+   WORKOS_API_KEY=your-workos-api-key
+   WORKOS_CLIENT_ID=your-workos-client-id
+   ```
+
+5. **Run the application**
+
+   ```bash
+   ./run.sh
+   ```
+
+   Or manually:
+
+   ```bash
+   uv run uvicorn backend.app.main:app --host 0.0.0.0 --port 8000 --reload
+   ```
+
+6. **Open in browser**
+
+   Navigate to [http://localhost:8000](http://localhost:8000)
+
+## Docker
+
+### Using Docker Compose (recommended)
+
+```bash
+# Build and run
+docker compose up -d
+
+# View logs
+docker compose logs -f
+
+# Stop
+docker compose down
+```
+
+### Using Docker directly
+
+```bash
+# Build
+docker build -t ai-rabbi .
+
+# Run
+docker run -p 8000:8000 --env-file .env ai-rabbi
+```
+
+## Development
+
+### Running Tests
+
+```bash
+# Run all tests
+uv run pytest
+
+# Run with coverage
+uv run pytest --cov=backend/app --cov-report=term-missing
+
+# Run specific test file
+uv run pytest backend/tests/test_agents.py -v
+```
+
+### Code Structure
 
 ```
-User Input
-   ↓
-Pastoral Context Agent
-   ↓
-Halachic Reasoning Agent
-   ↓
-Moral–Ethical Agent
-   ↓
-Meta-Rabbinic Voice Agent
-   ↓
+rabbi/
+├── backend/
+│   ├── app/
+│   │   ├── agents/          # Multi-agent system
+│   │   │   ├── base.py      # Base agent class and data models
+│   │   │   ├── pastoral.py  # Pastoral context analysis
+│   │   │   ├── halachic.py  # Halachic reasoning
+│   │   │   ├── moral.py     # Ethical assessment
+│   │   │   ├── voice.py     # Response generation
+│   │   │   └── orchestrator.py
+│   │   ├── auth.py          # WorkOS SSO authentication
+│   │   ├── config.py        # Settings and configuration
+│   │   ├── main.py          # FastAPI application
+│   │   └── models.py        # Pydantic models
+│   └── tests/               # Test suite
+├── frontend/
+│   ├── index.html           # Main HTML
+│   ├── app.js               # Frontend JavaScript
+│   └── styles.css           # Styles
+├── pyproject.toml           # Project dependencies
+├── uv.lock                  # Locked dependencies
+└── Dockerfile
+```
+
+### API Endpoints
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/api/health` | Health check |
+| GET | `/api/greeting` | Get welcome message |
+| POST | `/api/chat` | Send message (non-streaming) |
+| POST | `/api/chat/stream` | Send message (streaming SSE) |
+| GET | `/auth/login` | Initiate SSO login |
+| GET | `/auth/logout` | Log out |
+| GET | `/auth/check` | Check authentication status |
+
+## Configuration
+
+### Environment Variables
+
+| Variable | Required | Description |
+|----------|----------|-------------|
+| `OPENROUTER_API_KEY` | Yes | OpenRouter API key for LLM access |
+| `OPENROUTER_BASE_URL` | No | OpenRouter API base URL (default: `https://openrouter.ai/api/v1`) |
+| `LLM_MODEL` | No | Model to use (default: `anthropic/claude-sonnet-4-20250514`) |
+| `WORKOS_API_KEY` | No | WorkOS API key for SSO |
+| `WORKOS_CLIENT_ID` | No | WorkOS client ID |
+| `WORKOS_REDIRECT_URI` | No | OAuth callback URL |
+| `SESSION_SECRET_KEY` | No | Secret for session tokens |
+
+## Architecture
+
+The system uses a pipeline architecture where each agent processes the user's message in sequence:
+
+```
+User Message
+     │
+     ▼
+┌─────────────────────┐
+│ Pastoral Context    │  Determines HOW to respond
+│ Agent               │  (tone, authority level)
+└─────────────────────┘
+     │
+     ▼
+┌─────────────────────┐
+│ Halachic Reasoning  │  Provides legal landscape
+│ Agent               │  (majority/minority views)
+└─────────────────────┘
+     │
+     ▼
+┌─────────────────────┐
+│ Moral-Ethical       │  Ensures dignity preserved
+│ Agent               │  (may trigger reconsideration)
+└─────────────────────┘
+     │
+     ▼
+┌─────────────────────┐
+│ Meta-Rabbinic       │  Crafts final response
+│ Voice Agent         │  (warm, humble tone)
+└─────────────────────┘
+     │
+     ▼
 Final Response
 ```
 
-Each agent has the authority to modify, soften, or veto downstream output.
+## Design Philosophy
 
----
+This project operates on several key principles:
 
-## 4. Core Agents
+1. **Guidance, not psak** - The AI provides information and perspective, not binding rulings
+2. **Pastoral sensitivity** - Emotional context shapes how information is delivered
+3. **Halachic pluralism** - Multiple valid opinions are presented, not collapsed into one
+4. **Human dignity first** - A technically correct answer that causes harm is a failure
+5. **Encourage human connection** - Users are directed to human rabbis for personal guidance
 
-### 4.1 Pastoral Context Agent (Highest Priority)
+## Contributing
 
-**Purpose:** Determine *how* to answer before *what* to answer.
+We welcome contributions! Please see [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
 
-**Inputs:**
-- Emotional state (explicit and inferred)
-- Life context (grief, doubt, shame, curiosity, conflict)
-- Power dynamics (rabbi ↔ congregant)
-- Risk indicators (mental health, coercion, trauma)
+## License
 
-**Outputs:**
-- `PastoralMode`: teaching | counseling | crisis | curiosity  
-- `ToneConstraints`: gentle | firm | exploratory | validating  
-- `AuthorityLevel`: definitive | suggestive | exploratory  
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
 
-**Hard rule:**  
-If vulnerability is detected, **halachic maximalism is prohibited**.
+## Acknowledgments
 
-> “A psak that breaks a person is not Torah.”
-
----
-
-### 4.2 Halachic Reasoning Agent
-
-**Purpose:** Engage halacha as a *living, pluralistic legal system*.
-
-**Knowledge domains:**
-- Talmud (sugya-based reasoning)
-- Rambam and Shulchan Aruch
-- Classical and modern responsa
-- Minority and rejected opinions (explicitly labeled)
-
-**Reasoning requirements:**
-- Present ranges of opinion, not single conclusions
-- Explicitly label:
-  - De’oraita vs. derabbanan  
-  - Minhag vs. strict law  
-  - Normative vs. exceptional rulings  
-
-**Structured output example:**
-
-```
-HalachicLandscape:
-  MajorityView: <description>
-  MinorityViews:
-    - <description>
-  UnderlyingPrinciples:
-    - kavod habriyot
-    - pikuach nefesh
-    - minhag hamakom
-  PrecedentsForLeniency:
-    - <source or concept>
-  NonNegotiableBoundaries:
-    - <boundary>
-```
-
----
-
-### 4.3 Moral–Ethical Agent
-
-**Purpose:** Ensure halachic reasoning aligns with moral seriousness.
-
-**Embedded values:**
-- Kavod habriyot (human dignity)
-- Tzelem Elokim
-- Power sensitivity and trauma awareness
-- Resistance to cruelty disguised as piety
-
-**Primary question:**
-> Does this response increase holiness *without increasing harm*?
-
-If the answer is unclear or negative, the system must re-enter deliberation.
-
----
-
-### 4.4 Meta-Rabbinic Voice Agent
-
-**Purpose:** Shape tone, humility, and rabbinic presence.
-
-**Responsibilities:**
-- Express uncertainty without weakening Torah
-- Name pain before law
-- Normalize doubt and struggle
-- Encourage consultation with human rabbis
-
-**Canonical behaviors:**
-- Saying “I don’t know” is permitted  
-- Saying “This is hard” is encouraged  
-- Saying “You are not a bad Jew for asking” is standard  
-- Asking reflective questions is acceptable  
-
-Example voice:
-
-> Halacha here is not simple, and anyone who tells you it is may not be listening closely enough.
-
----
-
-## 5. Guardrails & Safety
-
-### Absolute Prohibitions
-
-- No rulings that could plausibly contribute to self-harm
-- No replacement of emergency mental-health care
-- No coercive religious pressure
-- No claim of final or exclusive authority
-
-### Mandatory Disclosures
-
-- “This is guidance, not binding psak.”
-- “A local rabbi who knows you may rule differently—and that is valid.”
-
----
-
-## 6. Training Data Strategy
-
-Texts alone are insufficient.
-
-Training data should include:
-
-- Sermons and derashot
-- Ethically sourced pastoral conversations
-- Responsa including dissent and retraction
-- Narratives of halachic failure and repair
-- Public reasoning by modern Orthodox thinkers
-
-The system must learn **how rabbis reason out loud**, not just final answers.
-
----
-
-## 7. Evaluation Metrics (Non-ML-Centric)
-
-Replace generic NLP scores with:
-
-- Pastoral Safety Score  
-- Pluralism Respect Index  
-- Moral Injury Avoidance  
-- Textual Transparency  
-- User Dignity Preservation  
-
-Primary evaluation question:
-
-> Did the user leave feeling *seen*, even if they did not get the answer they wanted?
-
----
-
-## 8. Non-Goals
-
-This system does **not** aim to:
-
-- Issue binding halachic rulings
-- Replace synagogue leadership
-- Standardize Judaism
-- Optimize for religious stringency
-
----
-
-## 9. Ethical Positioning
-
-This project assumes:
-
-- Torah is authoritative but mediated by human responsibility
-- Moral intuition is not the enemy of halacha
-- Doubt is a legitimate religious posture
-- AI must defer to human community rather than replace it
-
----
-
-## 10. Future Extensions
-
-Potential follow-on modules:
-
-- Teshuvah and Yom Kippur reflection agent
-- LGBTQ+ halachic landscape navigator
-- Posek-vs-pastor conflict resolution engine
-- Synagogue or chavruta deployment model
-
----
-
-## 11. Contribution Guidelines
-
-Contributions are welcome from:
-
-- Engineers
-- Rabbis and Jewish educators
-- Ethicists
-- Jewish studies scholars
-
-**Contribution principles:**
-- Respect halachic pluralism
-- Avoid absolutism
-- Prioritize human dignity
-- No ideological gatekeeping
-
-> Designing this system well is itself an act of Torah.
-
----
-
-**License:** TBD  
-An ethical-use or community-governed license is strongly recommended.
+- Built with [FastAPI](https://fastapi.tiangolo.com/)
+- LLM access via [OpenRouter](https://openrouter.ai/)
+- Authentication via [WorkOS](https://workos.com/)
+- Package management with [uv](https://docs.astral.sh/uv/)
