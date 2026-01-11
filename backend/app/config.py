@@ -1,6 +1,5 @@
 """Application configuration."""
 
-import os
 from functools import lru_cache
 from pydantic_settings import BaseSettings
 
@@ -12,8 +11,10 @@ class Settings(BaseSettings):
     app_version: str = "1.0.0"
     debug: bool = False
 
-    anthropic_api_key: str = ""
-    claude_model: str = "claude-sonnet-4-20250514"
+    # OpenRouter configuration
+    openrouter_api_key: str = ""
+    openrouter_base_url: str = "https://openrouter.ai/api/v1"
+    llm_model: str = "anthropic/claude-sonnet-4-20250514"
 
     cors_origins: list[str] = ["*"]
 

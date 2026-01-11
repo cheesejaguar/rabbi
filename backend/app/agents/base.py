@@ -4,7 +4,7 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any, Optional
-import anthropic
+from openai import OpenAI
 
 
 class PastoralMode(str, Enum):
@@ -76,7 +76,7 @@ class AgentContext:
 class BaseAgent(ABC):
     """Abstract base class for all AI Rabbi agents."""
 
-    def __init__(self, client: anthropic.Anthropic, model: str = "claude-sonnet-4-20250514"):
+    def __init__(self, client: OpenAI, model: str = "anthropic/claude-sonnet-4-20250514"):
         self.client = client
         self.model = model
         self.name = self.__class__.__name__
@@ -93,17 +93,19 @@ class BaseAgent(ABC):
         pass
 
     def _call_claude(self, messages: list[dict], system: str) -> str:
-        """Make a call to Claude API."""
-        response = self.client.messages.create(
+        """Make a call to the LLM via OpenRouter."""
+        # Prepend system message for OpenAI-compatible API
+        full_messages = [{"role": "system", "content": system}] + messages
+
+        response = self.client.chat.completions.create(
             model=self.model,
             max_tokens=2048,
-            system=system,
-            messages=messages,
+            messages=full_messages,
         )
-        return response.content[0].text
+        return response.choices[0].message.content
 
     def _build_messages(self, context: AgentContext, additional_context: str = "") -> list[dict]:
-        """Build message list for Claude API call."""
+        """Build message list for API call."""
         messages = []
 
         for msg in context.conversation_history:

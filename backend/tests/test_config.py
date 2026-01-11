@@ -17,8 +17,9 @@ class TestSettings:
             assert settings.app_name == "AI Rabbi"
             assert settings.app_version == "1.0.0"
             assert settings.debug is False
-            assert settings.anthropic_api_key == ""
-            assert settings.claude_model == "claude-sonnet-4-20250514"
+            assert settings.openrouter_api_key == ""
+            assert settings.openrouter_base_url == "https://openrouter.ai/api/v1"
+            assert settings.llm_model == "anthropic/claude-sonnet-4-20250514"
             assert settings.cors_origins == ["*"]
 
     def test_env_override(self):
@@ -27,16 +28,18 @@ class TestSettings:
             "APP_NAME": "Test Rabbi",
             "APP_VERSION": "2.0.0",
             "DEBUG": "true",
-            "ANTHROPIC_API_KEY": "test-key-123",
-            "CLAUDE_MODEL": "claude-opus-4-20250514",
+            "OPENROUTER_API_KEY": "test-key-123",
+            "OPENROUTER_BASE_URL": "https://custom.openrouter.ai/api/v1",
+            "LLM_MODEL": "anthropic/claude-opus-4-20250514",
         }
         with patch.dict(os.environ, env_vars, clear=True):
             settings = Settings()
             assert settings.app_name == "Test Rabbi"
             assert settings.app_version == "2.0.0"
             assert settings.debug is True
-            assert settings.anthropic_api_key == "test-key-123"
-            assert settings.claude_model == "claude-opus-4-20250514"
+            assert settings.openrouter_api_key == "test-key-123"
+            assert settings.openrouter_base_url == "https://custom.openrouter.ai/api/v1"
+            assert settings.llm_model == "anthropic/claude-opus-4-20250514"
 
     def test_cors_origins_default(self):
         """Test default CORS origins."""

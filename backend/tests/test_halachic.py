@@ -86,7 +86,7 @@ class TestHalachicReasoningAgent:
 
     @pytest.mark.asyncio
     async def test_process_without_pastoral_context(self, agent, mock_claude_response):
-        agent.client.messages.create.return_value = mock_claude_response(
+        agent.client.chat.completions.create.return_value = mock_claude_response(
             json.dumps({
                 "majority_view": "The answer is...",
                 "minority_views": [],
@@ -106,7 +106,7 @@ class TestHalachicReasoningAgent:
 
     @pytest.mark.asyncio
     async def test_process_with_pastoral_context(self, agent, mock_claude_response):
-        agent.client.messages.create.return_value = mock_claude_response(
+        agent.client.chat.completions.create.return_value = mock_claude_response(
             json.dumps({
                 "majority_view": "With compassion, the view is...",
                 "minority_views": ["Lenient view"],
@@ -133,7 +133,7 @@ class TestHalachicReasoningAgent:
 
     @pytest.mark.asyncio
     async def test_process_sets_intermediate_response(self, agent, mock_claude_response):
-        agent.client.messages.create.return_value = mock_claude_response(
+        agent.client.chat.completions.create.return_value = mock_claude_response(
             json.dumps({
                 "majority_view": "Main view here",
                 "minority_views": [],
@@ -151,7 +151,7 @@ class TestHalachicReasoningAgent:
 
     @pytest.mark.asyncio
     async def test_process_empty_majority_view_no_intermediate(self, agent, mock_claude_response):
-        agent.client.messages.create.return_value = mock_claude_response(
+        agent.client.chat.completions.create.return_value = mock_claude_response(
             json.dumps({
                 "majority_view": "",
                 "minority_views": [],

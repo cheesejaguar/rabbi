@@ -16,47 +16,50 @@ from app.agents.base import (
 )
 
 
+def create_openai_response(text: str):
+    """Helper to create OpenAI-compatible mock response."""
+    response = Mock()
+    choice = Mock()
+    message = Mock()
+    message.content = text
+    choice.message = message
+    response.choices = [choice]
+    return response
+
+
 class TestRabbiOrchestrator:
     """Test RabbiOrchestrator class."""
 
-    @pytest.fixture
-    def mock_client(self, mock_anthropic_client, mock_claude_response):
-        # Set up default responses for the mock client
-        mock_anthropic_client.messages.create.return_value = mock_claude_response(
-            json.dumps({
-                "mode": "curiosity",
-                "tone": "exploratory",
-                "authority_level": "suggestive",
-                "vulnerability_detected": False,
-                "crisis_indicators": [],
-                "emotional_state": "neutral",
-                "requires_human_referral": False,
-            })
-        )
-        return mock_anthropic_client
-
-    @pytest.fixture
-    def orchestrator(self, mock_client):
-        return RabbiOrchestrator(api_key="test-key", model="claude-sonnet-4-20250514")
-
     def test_initialization_with_api_key(self):
-        with patch('app.agents.orchestrator.anthropic.Anthropic') as mock_anthropic:
+        with patch('app.agents.orchestrator.OpenAI') as mock_openai:
             orchestrator = RabbiOrchestrator(api_key="test-key")
-            mock_anthropic.assert_called_once_with(api_key="test-key")
-            assert orchestrator.model == "claude-sonnet-4-20250514"
+            mock_openai.assert_called_once_with(
+                api_key="test-key",
+                base_url="https://openrouter.ai/api/v1",
+            )
+            assert orchestrator.model == "anthropic/claude-sonnet-4-20250514"
 
-    def test_initialization_without_api_key(self):
-        with patch('app.agents.orchestrator.anthropic.Anthropic') as mock_anthropic:
-            orchestrator = RabbiOrchestrator()
-            mock_anthropic.assert_called_once_with()
+    def test_initialization_with_custom_base_url(self):
+        with patch('app.agents.orchestrator.OpenAI') as mock_openai:
+            orchestrator = RabbiOrchestrator(
+                api_key="test-key",
+                base_url="https://custom.api/v1",
+            )
+            mock_openai.assert_called_once_with(
+                api_key="test-key",
+                base_url="https://custom.api/v1",
+            )
 
     def test_initialization_custom_model(self):
-        with patch('app.agents.orchestrator.anthropic.Anthropic'):
-            orchestrator = RabbiOrchestrator(api_key="key", model="claude-opus-4-20250514")
-            assert orchestrator.model == "claude-opus-4-20250514"
+        with patch('app.agents.orchestrator.OpenAI'):
+            orchestrator = RabbiOrchestrator(
+                api_key="key",
+                model="anthropic/claude-opus-4-20250514",
+            )
+            assert orchestrator.model == "anthropic/claude-opus-4-20250514"
 
     def test_agents_initialized(self):
-        with patch('app.agents.orchestrator.anthropic.Anthropic'):
+        with patch('app.agents.orchestrator.OpenAI'):
             orchestrator = RabbiOrchestrator(api_key="test-key")
             assert orchestrator.pastoral_agent is not None
             assert orchestrator.halachic_agent is not None
@@ -65,15 +68,8 @@ class TestRabbiOrchestrator:
 
     @pytest.mark.asyncio
     async def test_process_message_full_pipeline(self):
-        with patch('app.agents.orchestrator.anthropic.Anthropic') as mock_anthropic:
-            # Create mock responses
-            mock_response = Mock()
-            content_block = Mock()
-            mock_response.content = [content_block]
-
-            # Different responses for different agents
+        with patch('app.agents.orchestrator.OpenAI') as mock_openai:
             responses = [
-                # Pastoral response
                 json.dumps({
                     "mode": "curiosity",
                     "tone": "exploratory",
@@ -83,7 +79,6 @@ class TestRabbiOrchestrator:
                     "emotional_state": "curious",
                     "requires_human_referral": False,
                 }),
-                # Halachic response
                 json.dumps({
                     "majority_view": "The mainstream view",
                     "minority_views": [],
@@ -92,7 +87,6 @@ class TestRabbiOrchestrator:
                     "non_negotiable_boundaries": [],
                     "sources_cited": ["Source1"],
                 }),
-                # Moral response
                 json.dumps({
                     "increases_holiness": True,
                     "potential_harm": [],
@@ -100,22 +94,18 @@ class TestRabbiOrchestrator:
                     "requires_reconsideration": False,
                     "ethical_concerns": [],
                 }),
-                # Voice response (plain text)
                 "This is the final warm response from the AI Rabbi.",
             ]
 
             call_count = [0]
             def side_effect(*args, **kwargs):
-                response = Mock()
-                content = Mock()
-                content.text = responses[min(call_count[0], len(responses) - 1)]
-                response.content = [content]
+                resp = create_openai_response(responses[min(call_count[0], len(responses) - 1)])
                 call_count[0] += 1
-                return response
+                return resp
 
             mock_client = Mock()
-            mock_client.messages.create.side_effect = side_effect
-            mock_anthropic.return_value = mock_client
+            mock_client.chat.completions.create.side_effect = side_effect
+            mock_openai.return_value = mock_client
 
             orchestrator = RabbiOrchestrator(api_key="test-key")
             result = await orchestrator.process_message("What is Shabbat?")
@@ -127,7 +117,7 @@ class TestRabbiOrchestrator:
 
     @pytest.mark.asyncio
     async def test_process_message_with_conversation_history(self):
-        with patch('app.agents.orchestrator.anthropic.Anthropic') as mock_anthropic:
+        with patch('app.agents.orchestrator.OpenAI') as mock_openai:
             responses = [
                 json.dumps({"mode": "teaching", "tone": "exploratory", "authority_level": "suggestive", "vulnerability_detected": False, "crisis_indicators": [], "emotional_state": "engaged", "requires_human_referral": False}),
                 json.dumps({"majority_view": "View", "minority_views": [], "underlying_principles": [], "precedents_for_leniency": [], "non_negotiable_boundaries": [], "sources_cited": []}),
@@ -137,16 +127,13 @@ class TestRabbiOrchestrator:
 
             call_count = [0]
             def side_effect(*args, **kwargs):
-                response = Mock()
-                content = Mock()
-                content.text = responses[min(call_count[0], len(responses) - 1)]
-                response.content = [content]
+                resp = create_openai_response(responses[min(call_count[0], len(responses) - 1)])
                 call_count[0] += 1
-                return response
+                return resp
 
             mock_client = Mock()
-            mock_client.messages.create.side_effect = side_effect
-            mock_anthropic.return_value = mock_client
+            mock_client.chat.completions.create.side_effect = side_effect
+            mock_openai.return_value = mock_client
 
             orchestrator = RabbiOrchestrator(api_key="test-key")
             history = [
@@ -162,32 +149,24 @@ class TestRabbiOrchestrator:
 
     @pytest.mark.asyncio
     async def test_process_message_with_reconsideration(self):
-        with patch('app.agents.orchestrator.anthropic.Anthropic') as mock_anthropic:
+        with patch('app.agents.orchestrator.OpenAI') as mock_openai:
             responses = [
-                # Pastoral
                 json.dumps({"mode": "counseling", "tone": "gentle", "authority_level": "suggestive", "vulnerability_detected": True, "crisis_indicators": [], "emotional_state": "vulnerable", "requires_human_referral": False}),
-                # Halachic (first pass)
                 json.dumps({"majority_view": "Strict view", "minority_views": [], "underlying_principles": [], "precedents_for_leniency": [], "non_negotiable_boundaries": [], "sources_cited": []}),
-                # Moral (flags reconsideration)
                 json.dumps({"increases_holiness": False, "potential_harm": ["Too harsh"], "dignity_preserved": False, "requires_reconsideration": True, "ethical_concerns": ["Needs compassion"]}),
-                # Halachic (second pass after reconsideration)
                 json.dumps({"majority_view": "Compassionate view", "minority_views": [], "underlying_principles": ["kavod habriyot"], "precedents_for_leniency": ["Lenient option"], "non_negotiable_boundaries": [], "sources_cited": []}),
-                # Voice
                 "A gentle, reconsidered response",
             ]
 
             call_count = [0]
             def side_effect(*args, **kwargs):
-                response = Mock()
-                content = Mock()
-                content.text = responses[min(call_count[0], len(responses) - 1)]
-                response.content = [content]
+                resp = create_openai_response(responses[min(call_count[0], len(responses) - 1)])
                 call_count[0] += 1
-                return response
+                return resp
 
             mock_client = Mock()
-            mock_client.messages.create.side_effect = side_effect
-            mock_anthropic.return_value = mock_client
+            mock_client.chat.completions.create.side_effect = side_effect
+            mock_openai.return_value = mock_client
 
             orchestrator = RabbiOrchestrator(api_key="test-key")
             result = await orchestrator.process_message("Sensitive question")
@@ -197,7 +176,7 @@ class TestRabbiOrchestrator:
 
     @pytest.mark.asyncio
     async def test_process_message_crisis_detection(self):
-        with patch('app.agents.orchestrator.anthropic.Anthropic') as mock_anthropic:
+        with patch('app.agents.orchestrator.OpenAI') as mock_openai:
             responses = [
                 json.dumps({"mode": "crisis", "tone": "gentle", "authority_level": "exploratory", "vulnerability_detected": True, "crisis_indicators": ["self-harm"], "emotional_state": "distressed", "requires_human_referral": True}),
                 json.dumps({"majority_view": "Supportive view", "minority_views": [], "underlying_principles": ["pikuach nefesh"], "precedents_for_leniency": [], "non_negotiable_boundaries": [], "sources_cited": []}),
@@ -207,16 +186,13 @@ class TestRabbiOrchestrator:
 
             call_count = [0]
             def side_effect(*args, **kwargs):
-                response = Mock()
-                content = Mock()
-                content.text = responses[min(call_count[0], len(responses) - 1)]
-                response.content = [content]
+                resp = create_openai_response(responses[min(call_count[0], len(responses) - 1)])
                 call_count[0] += 1
-                return response
+                return resp
 
             mock_client = Mock()
-            mock_client.messages.create.side_effect = side_effect
-            mock_anthropic.return_value = mock_client
+            mock_client.chat.completions.create.side_effect = side_effect
+            mock_openai.return_value = mock_client
 
             orchestrator = RabbiOrchestrator(api_key="test-key")
             result = await orchestrator.process_message("I'm in crisis")
@@ -227,7 +203,7 @@ class TestRabbiOrchestrator:
             assert "crisis_indicators" in result["metadata"]
 
     def test_build_response_minimal_context(self):
-        with patch('app.agents.orchestrator.anthropic.Anthropic'):
+        with patch('app.agents.orchestrator.OpenAI'):
             orchestrator = RabbiOrchestrator(api_key="test-key")
 
             context = AgentContext(
@@ -243,7 +219,7 @@ class TestRabbiOrchestrator:
             assert result["metadata"]["moral_reconsideration"] is False
 
     def test_build_response_with_pastoral_context(self):
-        with patch('app.agents.orchestrator.anthropic.Anthropic'):
+        with patch('app.agents.orchestrator.OpenAI'):
             orchestrator = RabbiOrchestrator(api_key="test-key")
 
             pastoral = PastoralContext(
@@ -268,7 +244,7 @@ class TestRabbiOrchestrator:
             assert result["metadata"]["crisis_indicators"] == ["stress"]
 
     def test_build_response_with_halachic_landscape(self):
-        with patch('app.agents.orchestrator.anthropic.Anthropic'):
+        with patch('app.agents.orchestrator.OpenAI'):
             orchestrator = RabbiOrchestrator(api_key="test-key")
 
             halachic = HalachicLandscape(
@@ -287,7 +263,7 @@ class TestRabbiOrchestrator:
             assert result["metadata"]["principles"] == ["kavod habriyot"]
 
     def test_build_response_with_reconsideration_metadata(self):
-        with patch('app.agents.orchestrator.anthropic.Anthropic'):
+        with patch('app.agents.orchestrator.OpenAI'):
             orchestrator = RabbiOrchestrator(api_key="test-key")
 
             context = AgentContext(
@@ -302,7 +278,7 @@ class TestRabbiOrchestrator:
 
     @pytest.mark.asyncio
     async def test_get_greeting(self):
-        with patch('app.agents.orchestrator.anthropic.Anthropic'):
+        with patch('app.agents.orchestrator.OpenAI'):
             orchestrator = RabbiOrchestrator(api_key="test-key")
             greeting = await orchestrator.get_greeting()
 

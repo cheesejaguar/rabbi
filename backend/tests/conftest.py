@@ -5,23 +5,33 @@ from unittest.mock import Mock, MagicMock
 
 
 @pytest.fixture
-def mock_anthropic_client():
-    """Create a mock Anthropic client."""
+def mock_openai_client():
+    """Create a mock OpenAI client for OpenRouter."""
     client = MagicMock()
-    # Set up the messages.create method
-    client.messages = MagicMock()
-    client.messages.create = MagicMock()
+    # Set up the chat.completions.create method
+    client.chat = MagicMock()
+    client.chat.completions = MagicMock()
+    client.chat.completions.create = MagicMock()
     return client
+
+
+# Alias for backward compatibility with existing tests
+@pytest.fixture
+def mock_anthropic_client(mock_openai_client):
+    """Alias for mock_openai_client for backward compatibility."""
+    return mock_openai_client
 
 
 @pytest.fixture
 def mock_claude_response():
-    """Create a mock Claude API response."""
+    """Create a mock OpenAI-compatible API response."""
     def _create_response(text: str):
         response = MagicMock()
-        content_block = MagicMock()
-        content_block.text = text
-        response.content = [content_block]
+        choice = MagicMock()
+        message = MagicMock()
+        message.content = text
+        choice.message = message
+        response.choices = [choice]
         return response
     return _create_response
 

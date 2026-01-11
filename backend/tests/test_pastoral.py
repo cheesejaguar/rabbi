@@ -84,7 +84,7 @@ class TestPastoralContextAgent:
 
     @pytest.mark.asyncio
     async def test_process_simple_message(self, agent, mock_claude_response):
-        agent.client.messages.create.return_value = mock_claude_response(
+        agent.client.chat.completions.create.return_value = mock_claude_response(
             json.dumps({
                 "mode": "curiosity",
                 "tone": "exploratory",
@@ -105,7 +105,7 @@ class TestPastoralContextAgent:
 
     @pytest.mark.asyncio
     async def test_process_with_conversation_history(self, agent, mock_claude_response):
-        agent.client.messages.create.return_value = mock_claude_response(
+        agent.client.chat.completions.create.return_value = mock_claude_response(
             json.dumps({
                 "mode": "counseling",
                 "tone": "gentle",
@@ -131,7 +131,7 @@ class TestPastoralContextAgent:
 
     @pytest.mark.asyncio
     async def test_process_crisis_detection(self, agent, mock_claude_response):
-        agent.client.messages.create.return_value = mock_claude_response(
+        agent.client.chat.completions.create.return_value = mock_claude_response(
             json.dumps({
                 "mode": "crisis",
                 "tone": "gentle",

@@ -33,8 +33,9 @@ app.add_middleware(
 )
 
 orchestrator = RabbiOrchestrator(
-    api_key=settings.anthropic_api_key or None,
-    model=settings.claude_model,
+    api_key=settings.openrouter_api_key or None,
+    base_url=settings.openrouter_base_url,
+    model=settings.llm_model,
 )
 
 

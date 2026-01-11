@@ -36,7 +36,7 @@ class TestMetaRabbinicVoiceAgent:
 
     @pytest.mark.asyncio
     async def test_process_simple_message(self, agent, mock_claude_response):
-        agent.client.messages.create.return_value = mock_claude_response(
+        agent.client.chat.completions.create.return_value = mock_claude_response(
             "Shalom! This is a warm, pastoral response about your question."
         )
 
@@ -48,7 +48,7 @@ class TestMetaRabbinicVoiceAgent:
 
     @pytest.mark.asyncio
     async def test_process_with_pastoral_context(self, agent, mock_claude_response):
-        agent.client.messages.create.return_value = mock_claude_response(
+        agent.client.chat.completions.create.return_value = mock_claude_response(
             "I hear the difficulty in your question. Let me share some thoughts..."
         )
 
@@ -71,7 +71,7 @@ class TestMetaRabbinicVoiceAgent:
 
     @pytest.mark.asyncio
     async def test_process_with_halachic_landscape(self, agent, mock_claude_response):
-        agent.client.messages.create.return_value = mock_claude_response(
+        agent.client.chat.completions.create.return_value = mock_claude_response(
             "The tradition offers various perspectives on this..."
         )
 
@@ -93,7 +93,7 @@ class TestMetaRabbinicVoiceAgent:
 
     @pytest.mark.asyncio
     async def test_process_with_moral_assessment(self, agent, mock_claude_response):
-        agent.client.messages.create.return_value = mock_claude_response(
+        agent.client.chat.completions.create.return_value = mock_claude_response(
             "This is a sensitive topic, and I want to approach it with care..."
         )
 
@@ -114,7 +114,7 @@ class TestMetaRabbinicVoiceAgent:
 
     @pytest.mark.asyncio
     async def test_process_with_crisis_referral(self, agent, mock_claude_response):
-        agent.client.messages.create.return_value = mock_claude_response(
+        agent.client.chat.completions.create.return_value = mock_claude_response(
             "I'm concerned about what you've shared. Please reach out to a counselor..."
         )
 
@@ -135,7 +135,7 @@ class TestMetaRabbinicVoiceAgent:
 
     @pytest.mark.asyncio
     async def test_process_full_pipeline_context(self, agent, mock_claude_response):
-        agent.client.messages.create.return_value = mock_claude_response(
+        agent.client.chat.completions.create.return_value = mock_claude_response(
             "A comprehensive, warm response synthesizing all the context..."
         )
 
@@ -167,7 +167,7 @@ class TestMetaRabbinicVoiceAgent:
     @pytest.mark.asyncio
     async def test_final_response_is_set(self, agent, mock_claude_response):
         expected_response = "This is the final rabbinic response."
-        agent.client.messages.create.return_value = mock_claude_response(expected_response)
+        agent.client.chat.completions.create.return_value = mock_claude_response(expected_response)
 
         context = AgentContext(user_message="Question")
         result = await agent.process(context)

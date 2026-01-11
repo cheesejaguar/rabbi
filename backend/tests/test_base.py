@@ -175,7 +175,7 @@ class TestBaseAgent:
 
     def test_default_model(self, mock_anthropic_client):
         agent = ConcreteAgent(mock_anthropic_client)
-        assert agent.model == "claude-sonnet-4-20250514"
+        assert agent.model == "anthropic/claude-sonnet-4-20250514"
 
     def test_system_prompt_property(self, mock_anthropic_client):
         agent = ConcreteAgent(mock_anthropic_client)
@@ -183,7 +183,7 @@ class TestBaseAgent:
 
     def test_call_claude(self, mock_anthropic_client, mock_claude_response):
         agent = ConcreteAgent(mock_anthropic_client)
-        mock_anthropic_client.messages.create.return_value = mock_claude_response("Test response")
+        mock_anthropic_client.chat.completions.create.return_value = mock_claude_response("Test response")
 
         result = agent._call_claude(
             [{"role": "user", "content": "Hello"}],
@@ -191,11 +191,13 @@ class TestBaseAgent:
         )
 
         assert result == "Test response"
-        mock_anthropic_client.messages.create.assert_called_once_with(
-            model="claude-sonnet-4-20250514",
+        mock_anthropic_client.chat.completions.create.assert_called_once_with(
+            model="anthropic/claude-sonnet-4-20250514",
             max_tokens=2048,
-            system="System prompt",
-            messages=[{"role": "user", "content": "Hello"}],
+            messages=[
+                {"role": "system", "content": "System prompt"},
+                {"role": "user", "content": "Hello"},
+            ],
         )
 
     def test_build_messages_simple(self, mock_anthropic_client):

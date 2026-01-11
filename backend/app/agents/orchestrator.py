@@ -1,6 +1,6 @@
 """Rabbi Orchestrator - Coordinates the multi-agent pipeline."""
 
-import anthropic
+from openai import OpenAI
 from typing import Optional
 from .base import AgentContext
 from .pastoral import PastoralContextAgent
@@ -19,9 +19,17 @@ class RabbiOrchestrator:
     Each agent has the authority to modify, soften, or influence downstream output.
     """
 
-    def __init__(self, api_key: Optional[str] = None, model: str = "claude-sonnet-4-20250514"):
+    def __init__(
+        self,
+        api_key: Optional[str] = None,
+        base_url: str = "https://openrouter.ai/api/v1",
+        model: str = "anthropic/claude-sonnet-4-20250514",
+    ):
         """Initialize the orchestrator with all agents."""
-        self.client = anthropic.Anthropic(api_key=api_key) if api_key else anthropic.Anthropic()
+        self.client = OpenAI(
+            api_key=api_key,
+            base_url=base_url,
+        )
         self.model = model
 
         self.pastoral_agent = PastoralContextAgent(self.client, model)

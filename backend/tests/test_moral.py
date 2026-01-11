@@ -87,7 +87,7 @@ class TestMoralEthicalAgent:
 
     @pytest.mark.asyncio
     async def test_process_without_contexts(self, agent, mock_claude_response):
-        agent.client.messages.create.return_value = mock_claude_response(
+        agent.client.chat.completions.create.return_value = mock_claude_response(
             json.dumps({
                 "increases_holiness": True,
                 "potential_harm": [],
@@ -105,7 +105,7 @@ class TestMoralEthicalAgent:
 
     @pytest.mark.asyncio
     async def test_process_with_pastoral_context(self, agent, mock_claude_response):
-        agent.client.messages.create.return_value = mock_claude_response(
+        agent.client.chat.completions.create.return_value = mock_claude_response(
             json.dumps({
                 "increases_holiness": True,
                 "potential_harm": [],
@@ -131,7 +131,7 @@ class TestMoralEthicalAgent:
 
     @pytest.mark.asyncio
     async def test_process_with_halachic_landscape(self, agent, mock_claude_response):
-        agent.client.messages.create.return_value = mock_claude_response(
+        agent.client.chat.completions.create.return_value = mock_claude_response(
             json.dumps({
                 "increases_holiness": True,
                 "potential_harm": [],
@@ -157,7 +157,7 @@ class TestMoralEthicalAgent:
 
     @pytest.mark.asyncio
     async def test_process_with_intermediate_response(self, agent, mock_claude_response):
-        agent.client.messages.create.return_value = mock_claude_response(
+        agent.client.chat.completions.create.return_value = mock_claude_response(
             json.dumps({
                 "increases_holiness": False,
                 "potential_harm": ["Too strict"],
@@ -178,7 +178,7 @@ class TestMoralEthicalAgent:
 
     @pytest.mark.asyncio
     async def test_process_full_context(self, agent, mock_claude_response):
-        agent.client.messages.create.return_value = mock_claude_response(
+        agent.client.chat.completions.create.return_value = mock_claude_response(
             json.dumps({
                 "increases_holiness": True,
                 "potential_harm": [],

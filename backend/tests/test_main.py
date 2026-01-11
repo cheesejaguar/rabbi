@@ -26,7 +26,7 @@ def test_app():
         for mod in mods_to_remove:
             del sys.modules[mod]
 
-        with patch('app.agents.orchestrator.anthropic.Anthropic'):
+        with patch('app.agents.orchestrator.OpenAI'):
             with patch('app.agents.RabbiOrchestrator', return_value=mock_orchestrator_instance):
                 from app.main import app
                 from fastapi.testclient import TestClient
