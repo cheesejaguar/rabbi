@@ -22,7 +22,16 @@ class Settings(BaseSettings):
     session_secret_key: str = "change-me-in-production"
     workos_redirect_uri: str = "http://localhost:8613/auth/callback"
 
+    # Database configuration (Vercel Postgres / Neon)
+    database_url: str = ""
+    postgres_url: str = ""  # Vercel uses this env var name
+
     cors_origins: list[str] = ["*"]
+
+    @property
+    def db_url(self) -> str:
+        """Get database URL, preferring POSTGRES_URL (Vercel) over DATABASE_URL."""
+        return self.postgres_url or self.database_url
 
     class Config:
         env_file = ".env"

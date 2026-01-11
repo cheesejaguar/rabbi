@@ -16,6 +16,7 @@ dependencies = [
     "workos>=5.0.0",
     "itsdangerous>=2.1.0",
     "mangum>=0.17.0",
+    "asyncpg>=0.29.0",
 ]
 
 [project.optional-dependencies]

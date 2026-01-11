@@ -21,6 +21,10 @@ class ChatRequest(BaseModel):
         None,
         description="Optional session ID for tracking conversations"
     )
+    conversation_id: Optional[str] = Field(
+        None,
+        description="Optional conversation ID for persisting to database"
+    )
 
 
 class ChatResponse(BaseModel):
@@ -31,6 +35,7 @@ class ChatResponse(BaseModel):
         description="Whether the user should be referred to a human rabbi"
     )
     session_id: Optional[str] = Field(None, description="Session ID")
+    conversation_id: Optional[str] = Field(None, description="Conversation ID")
     metadata: dict = Field(
         default_factory=dict,
         description="Additional metadata about the response"
