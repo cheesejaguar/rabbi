@@ -3,7 +3,7 @@
 import pytest
 import sys
 import os
-from unittest.mock import patch, AsyncMock, MagicMock
+from unittest.mock import patch, AsyncMock, MagicMock, Mock
 
 
 @pytest.fixture
@@ -17,19 +17,42 @@ def mock_user():
     }
 
 
+@pytest.fixture(scope="module")
+def app_with_mocks():
+    """Create the app with mocked orchestrator."""
+    # Create mock orchestrator before importing app.main
+    mock_orchestrator_instance = Mock()
+    mock_orchestrator_instance.get_greeting = AsyncMock(return_value="Shalom!")
+    mock_orchestrator_instance.process_message = AsyncMock(return_value={
+        "response": "Test response",
+        "requires_human_referral": False,
+        "metadata": {},
+    })
+
+    # Set a dummy API key to prevent OpenAI client initialization errors
+    # and patch the orchestrator class
+    with patch.dict(os.environ, {"OPENROUTER_API_KEY": "test-key-for-testing"}):
+        with patch('app.agents.orchestrator.OpenAI'):
+            with patch('app.agents.RabbiOrchestrator', return_value=mock_orchestrator_instance):
+                # Clear settings cache to pick up the test API key
+                from app.config import get_settings
+                get_settings.cache_clear()
+
+                from app.main import app
+                yield app
+
+                # Clear settings cache again after tests
+                get_settings.cache_clear()
+
+
 @pytest.fixture
-def test_client(mock_user):
+def test_client(app_with_mocks, mock_user):
     """Create test client with mocked auth and database."""
-    # Ensure we don't load .env by patching env vars
-    with patch.dict(os.environ, {"DATABASE_URL": "", "POSTGRES_URL": ""}, clear=False):
-        with patch('app.auth.get_current_user', return_value=mock_user):
-            with patch('app.main.get_current_user', return_value=mock_user):
-                with patch('app.conversations.get_current_user', return_value=mock_user):
-                    with patch('app.agents.orchestrator.OpenAI'):
-                        with patch('app.main.db.init_schema', new_callable=AsyncMock):
-                            from app.main import app
-                            from fastapi.testclient import TestClient
-                            yield TestClient(app)
+    from fastapi.testclient import TestClient
+    with patch('app.auth.get_current_user', return_value=mock_user):
+        with patch('app.main.get_current_user', return_value=mock_user):
+            with patch('app.conversations.get_current_user', return_value=mock_user):
+                yield TestClient(app_with_mocks)
 
 
 class TestListConversations:
@@ -85,19 +108,16 @@ class TestListConversations:
             assert data["conversations"] == []
             assert "warning" in data
 
-    def test_list_conversations_unauthenticated(self):
+    def test_list_conversations_unauthenticated(self, app_with_mocks):
         """Test that unauthenticated requests are rejected."""
         from fastapi.testclient import TestClient
         with patch('app.auth.get_current_user', return_value=None):
             with patch('app.main.get_current_user', return_value=None):
                 with patch('app.conversations.get_current_user', return_value=None):
-                    with patch('app.agents.orchestrator.OpenAI'):
-                        with patch('app.main.db.init_schema', new_callable=AsyncMock):
-                            from app.main import app
-                            client = TestClient(app)
-                            response = client.get("/api/conversations")
-                            # Should redirect or return 401
-                            assert response.status_code in [401, 302]
+                    client = TestClient(app_with_mocks)
+                    response = client.get("/api/conversations")
+                    # Should redirect or return 401
+                    assert response.status_code in [401, 302]
 
 
 class TestCreateConversation:
