@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="theme-color" content="#1a365d">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <title>AI Rabbi - Torah Wisdom & Guidance</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Frank+Ruhl+Libre:wght@400;500;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div class="app-container">
+        <!-- Header -->
+        <header class="header">
+            <div class="header-decoration">
+                <svg class="star-of-david" viewBox="0 0 100 100" width="32" height="32">
+                    <polygon points="50,5 61,35 95,35 68,55 79,90 50,70 21,90 32,55 5,35 39,35" fill="currentColor"/>
+                </svg>
+            </div>
+            <div class="header-content">
+                <h1 class="header-title">AI Rabbi</h1>
+                <p class="header-subtitle">Torah Wisdom & Pastoral Guidance</p>
+            </div>
+            <div class="header-decoration">
+                <svg class="star-of-david" viewBox="0 0 100 100" width="32" height="32">
+                    <polygon points="50,5 61,35 95,35 68,55 79,90 50,70 21,90 32,55 5,35 39,35" fill="currentColor"/>
+                </svg>
+            </div>
+        </header>
+
+        <!-- Disclaimer Banner -->
+        <div class="disclaimer-banner" id="disclaimerBanner">
+            <p>This is guidance, not binding psak. A rabbi who knows you personally may counsel differently.</p>
+            <button class="dismiss-btn" onclick="dismissDisclaimer()">×</button>
+        </div>
+
+        <!-- Chat Container -->
+        <main class="chat-container" id="chatContainer">
+            <div class="chat-messages" id="chatMessages">
+                <!-- Messages will be inserted here -->
+            </div>
+        </main>
+
+        <!-- Human Referral Notice -->
+        <div class="referral-notice hidden" id="referralNotice">
+            <div class="referral-content">
+                <span class="referral-icon">🕯️</span>
+                <p>This seems like something where speaking with a human rabbi or counselor could be really valuable. You deserve personal support.</p>
+            </div>
+        </div>
+
+        <!-- Input Area -->
+        <footer class="input-area">
+            <div class="input-container">
+                <textarea
+                    id="messageInput"
+                    placeholder="Share what's on your mind..."
+                    rows="1"
+                    maxlength="2000"
+                ></textarea>
+                <button class="send-button" id="sendButton" onclick="sendMessage()">
+                    <svg viewBox="0 0 24 24" width="24" height="24" fill="currentColor">
+                        <path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/>
+                    </svg>
+                </button>
+            </div>
+            <p class="input-hint">Press Enter to send, Shift+Enter for new line</p>
+        </footer>
+    </div>
+
+    <!-- Loading Overlay -->
+    <div class="loading-overlay hidden" id="loadingOverlay">
+        <div class="loading-content">
+            <div class="loading-spinner"></div>
+            <p class="loading-text">Reflecting on your question...</p>
+        </div>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>
