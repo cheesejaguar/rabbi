@@ -3,7 +3,7 @@
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Any, Optional
+from typing import Any, Optional, AsyncGenerator
 from openai import OpenAI
 
 
@@ -103,6 +103,21 @@ class BaseAgent(ABC):
             messages=full_messages,
         )
         return response.choices[0].message.content
+
+    def _call_claude_stream(self, messages: list[dict], system: str):
+        """Make a streaming call to the LLM via OpenRouter. Yields content chunks."""
+        # Prepend system message for OpenAI-compatible API
+        full_messages = [{"role": "system", "content": system}] + messages
+
+        stream = self.client.chat.completions.create(
+            model=self.model,
+            max_tokens=2048,
+            messages=full_messages,
+            stream=True,
+        )
+        for chunk in stream:
+            if chunk.choices and chunk.choices[0].delta.content:
+                yield chunk.choices[0].delta.content
 
     def _build_messages(self, context: AgentContext, additional_context: str = "") -> list[dict]:
         """Build message list for API call."""

@@ -134,3 +134,75 @@ Do not use headers, bullet points, or formatting. Write as if speaking directly 
         context.final_response = response
 
         return context
+
+    def process_stream(self, context: AgentContext):
+        """Craft the final response with streaming. Yields content chunks."""
+
+        pastoral_info = ""
+        if context.pastoral_context:
+            pc = context.pastoral_context
+            pastoral_info = f"""
+PASTORAL CONTEXT (shapes how you speak):
+- Mode: {pc.mode.value}
+- Required tone: {pc.tone.value}
+- Authority level: {pc.authority_level.value}
+- Vulnerability detected: {pc.vulnerability_detected}
+- Emotional state: {pc.emotional_state}
+- Crisis indicators: {pc.crisis_indicators}
+- Requires human referral: {pc.requires_human_referral}
+"""
+
+        halachic_info = ""
+        if context.halachic_landscape:
+            hl = context.halachic_landscape
+            halachic_info = f"""
+HALACHIC LANDSCAPE (the content to convey):
+- Main perspective: {hl.majority_view}
+- Other valid views: {hl.minority_views}
+- Key principles: {hl.underlying_principles}
+- Paths to leniency: {hl.precedents_for_leniency}
+- Clear boundaries: {hl.non_negotiable_boundaries}
+- Sources: {hl.sources_cited}
+"""
+
+        moral_info = ""
+        if context.moral_assessment:
+            ma = context.moral_assessment
+            moral_info = f"""
+MORAL ASSESSMENT (guides your framing):
+- Increases holiness: {ma.increases_holiness}
+- Potential concerns: {ma.potential_harm}
+- Dignity preserved: {ma.dignity_preserved}
+- Needs reconsideration: {ma.requires_reconsideration}
+- Ethical points: {ma.ethical_concerns}
+"""
+
+        crisis_guidance = ""
+        if context.pastoral_context and context.pastoral_context.requires_human_referral:
+            crisis_guidance = """
+CRITICAL: This person may need human support. Ensure your response:
+- Validates their experience
+- Provides crisis resources if appropriate
+- Strongly encourages speaking with a human rabbi, counselor, or mental health professional
+- Does not leave them feeling alone
+"""
+
+        messages = [
+            {
+                "role": "user",
+                "content": f"""ORIGINAL USER MESSAGE:
+{context.user_message}
+
+{pastoral_info}
+{halachic_info}
+{moral_info}
+{crisis_guidance}
+
+Craft a warm, authentic response in the voice of a progressive Modern Orthodox rabbi. Remember: the goal is for this person to feel SEEN, even if the answer is complex or not what they hoped for.
+
+Do not use headers, bullet points, or formatting. Write as if speaking directly to the person."""
+            }
+        ]
+
+        for chunk in self._call_claude_stream(messages, self.system_prompt):
+            yield chunk

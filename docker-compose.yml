@@ -2,7 +2,7 @@ services:
   ai-rabbi:
     build: .
     ports:
-      - "8000:8000"
+      - "8613:8000"
     env_file:
       - .env
     environment:

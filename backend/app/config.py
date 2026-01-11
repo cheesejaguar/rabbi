@@ -16,6 +16,12 @@ class Settings(BaseSettings):
     openrouter_base_url: str = "https://openrouter.ai/api/v1"
     llm_model: str = "anthropic/claude-sonnet-4-20250514"
 
+    # WorkOS SSO configuration
+    workos_api_key: str = ""
+    workos_client_id: str = ""
+    session_secret_key: str = "change-me-in-production"
+    workos_redirect_uri: str = "http://localhost:8613/auth/callback"
+
     cors_origins: list[str] = ["*"]
 
     class Config:

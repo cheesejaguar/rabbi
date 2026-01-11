@@ -1,10 +1,12 @@
 """FastAPI application for AI Rabbi."""
 
 import uuid
-from fastapi import FastAPI, HTTPException
+import json
+from fastapi import FastAPI, HTTPException, Request, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, RedirectResponse, StreamingResponse
+from starlette.middleware.base import BaseHTTPMiddleware
 import os
 
 from .config import get_settings
@@ -15,6 +17,7 @@ from .models import (
     HealthResponse,
 )
 from .agents import RabbiOrchestrator
+from .auth import router as auth_router, get_current_user, require_auth
 
 settings = get_settings()
 
@@ -31,6 +34,58 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+class AuthMiddleware(BaseHTTPMiddleware):
+    """Middleware to require authentication for protected routes."""
+
+    # Paths that don't require authentication
+    PUBLIC_PATHS = {
+        "/auth/login",
+        "/auth/callback",
+        "/auth/check",
+        "/api/health",
+        "/docs",
+        "/openapi.json",
+        "/redoc",
+    }
+
+    # Path prefixes that don't require authentication
+    PUBLIC_PREFIXES = ("/static/", "/auth/")
+
+    async def dispatch(self, request: Request, call_next):
+        path = request.url.path
+
+        # Allow public paths
+        if path in self.PUBLIC_PATHS:
+            return await call_next(request)
+
+        # Allow public prefixes
+        for prefix in self.PUBLIC_PREFIXES:
+            if path.startswith(prefix):
+                return await call_next(request)
+
+        # Check authentication for all other paths
+        user = get_current_user(request)
+        if not user:
+            # For API requests, return 401
+            if path.startswith("/api/"):
+                from fastapi.responses import JSONResponse
+                return JSONResponse(
+                    status_code=401,
+                    content={"detail": "Not authenticated"}
+                )
+            # For page requests, redirect to logged-out page (not auto-login)
+            return RedirectResponse(url="/auth/logged-out", status_code=302)
+
+        return await call_next(request)
+
+
+# Add auth middleware
+app.add_middleware(AuthMiddleware)
+
+# Include auth router
+app.include_router(auth_router)
 
 orchestrator = RabbiOrchestrator(
     api_key=settings.openrouter_api_key or None,
@@ -91,6 +146,51 @@ async def chat(request: ChatRequest):
             status_code=500,
             detail=f"An error occurred processing your message. Please try again. Error: {str(e)}"
         )
+
+
+@app.post("/api/chat/stream")
+async def chat_stream(request: ChatRequest):
+    """
+    Process a chat message with streaming response using Server-Sent Events.
+
+    The message flows through four specialized agents:
+    1. Pastoral Context Agent - Determines HOW to respond
+    2. Halachic Reasoning Agent - Provides halachic landscape
+    3. Moral-Ethical Agent - Ensures dignity and prevents harm
+    4. Meta-Rabbinic Voice Agent - Streams the final response
+    """
+    conversation_history = [
+        {"role": msg.role, "content": msg.content}
+        for msg in request.conversation_history
+    ]
+
+    session_id = request.session_id or str(uuid.uuid4())
+
+    async def event_generator():
+        try:
+            # Send session_id first
+            yield f"data: {json.dumps({'type': 'session', 'session_id': session_id})}\n\n"
+
+            async for event in orchestrator.process_message_stream(
+                user_message=request.message,
+                conversation_history=conversation_history,
+            ):
+                yield f"data: {json.dumps(event)}\n\n"
+
+            # Send done event
+            yield f"data: {json.dumps({'type': 'done'})}\n\n"
+
+        except Exception as e:
+            yield f"data: {json.dumps({'type': 'error', 'message': str(e)})}\n\n"
+
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+        }
+    )
 
 
 frontend_path = os.path.join(os.path.dirname(__file__), "..", "..", "frontend")
