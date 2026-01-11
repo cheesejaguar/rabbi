@@ -1,0 +1,13 @@
+version: '3.8'
+
+services:
+  ai-rabbi:
+    build: .
+    ports:
+      - "8000:8000"
+    environment:
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+      - CLAUDE_MODEL=${CLAUDE_MODEL:-claude-sonnet-4-20250514}
+    volumes:
+      - ./frontend:/app/frontend:ro
+    restart: unless-stopped
