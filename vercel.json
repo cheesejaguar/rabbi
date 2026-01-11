@@ -1,13 +1,13 @@
 {
-  "builds": [
-    {
-      "src": "api/index.py",
-      "use": "@vercel/python"
-    },
-    {
-      "src": "frontend/**",
-      "use": "@vercel/static"
+  "functions": {
+    "api/index.py": {
+      "runtime": "python3.11",
+      "maxDuration": 30
     }
+  },
+  "rewrites": [
+    { "source": "/api/(.*)", "destination": "/api/index.py" },
+    { "source": "/auth/(.*)", "destination": "/api/index.py" }
   ],
   "routes": [
     {
@@ -15,15 +15,7 @@
       "dest": "/frontend/$1"
     },
     {
-      "src": "/api/(.*)",
-      "dest": "/api/index.py"
-    },
-    {
-      "src": "/auth/(.*)",
-      "dest": "/api/index.py"
-    },
-    {
-      "src": "/(.*)",
+      "src": "/((?!api|auth).*)",
       "dest": "/frontend/index.html"
     }
   ]

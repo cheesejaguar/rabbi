@@ -7,7 +7,11 @@ import os
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from mangum import Mangum
-from backend.app.main import app
+from backend.app.main import app as fastapi_app
 
 # Wrap FastAPI app with Mangum for Lambda/Vercel compatibility
-handler = Mangum(app, lifespan="off")
+# The handler must be named 'handler' for Vercel
+handler = Mangum(fastapi_app, lifespan="off")
+
+# Also expose as 'app' for compatibility
+app = handler
