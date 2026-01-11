@@ -11,10 +11,14 @@ class TestDatabasePool:
     @pytest.fixture(autouse=True)
     def reset_pool(self):
         """Reset the global pool before each test."""
+        import asyncio
         import app.database as db
         db._pool = None
+        # Reset the lock to avoid issues between tests
+        db._pool_lock = asyncio.Lock()
         yield
         db._pool = None
+        db._pool_lock = asyncio.Lock()
 
     @pytest.mark.asyncio
     async def test_get_pool_creates_pool(self):

@@ -1,43 +1,53 @@
 """Database connection and schema management for Vercel Postgres (Neon)."""
 
+import asyncio
 import asyncpg
 from typing import Optional
 from contextlib import asynccontextmanager
 
 from .config import get_settings
 
-# Global connection pool
+# Global connection pool with lock to prevent race conditions
 _pool: Optional[asyncpg.Pool] = None
+_pool_lock = asyncio.Lock()
 
 
 async def get_pool() -> asyncpg.Pool:
     """Get or create the database connection pool."""
     global _pool
-    if _pool is None:
-        settings = get_settings()
-        if not settings.db_url:
-            raise RuntimeError("Database URL not configured. Set POSTGRES_URL or DATABASE_URL.")
 
-        # Parse the URL and add SSL requirement for Neon
-        db_url = settings.db_url
-        if "sslmode" not in db_url:
-            db_url = f"{db_url}?sslmode=require" if "?" not in db_url else f"{db_url}&sslmode=require"
+    # Fast path: pool already initialized
+    if _pool is not None:
+        return _pool
 
-        _pool = await asyncpg.create_pool(
-            db_url,
-            min_size=1,
-            max_size=10,
-            command_timeout=60,
-        )
-    return _pool
+    # Slow path: initialize pool with async lock to prevent races
+    async with _pool_lock:
+        if _pool is None:
+            settings = get_settings()
+            if not settings.db_url:
+                raise RuntimeError("Database URL not configured. Set POSTGRES_URL or DATABASE_URL.")
+
+            # Parse the URL and add SSL requirement for Neon
+            db_url = settings.db_url
+            if "sslmode" not in db_url:
+                db_url = f"{db_url}?sslmode=require" if "?" not in db_url else f"{db_url}&sslmode=require"
+
+            _pool = await asyncpg.create_pool(
+                db_url,
+                min_size=1,
+                max_size=10,
+                command_timeout=60,
+            )
+        return _pool
 
 
 async def close_pool():
     """Close the database connection pool."""
     global _pool
-    if _pool is not None:
-        await _pool.close()
-        _pool = None
+    async with _pool_lock:
+        if _pool is not None:
+            await _pool.close()
+            _pool = None
 
 
 @asynccontextmanager
@@ -106,6 +116,24 @@ CREATE TRIGGER update_conversations_updated_at
     BEFORE UPDATE ON conversations
     FOR EACH ROW
     EXECUTE FUNCTION update_updated_at_column();
+
+-- Function to update conversation updated_at when a message is added
+CREATE OR REPLACE FUNCTION touch_conversation_on_message()
+RETURNS TRIGGER AS $$
+BEGIN
+    UPDATE conversations
+    SET updated_at = NOW()
+    WHERE id = NEW.conversation_id;
+    RETURN NEW;
+END;
+$$ LANGUAGE 'plpgsql';
+
+-- Trigger to update conversation updated_at on new messages
+DROP TRIGGER IF EXISTS touch_conversation_on_message_insert ON messages;
+CREATE TRIGGER touch_conversation_on_message_insert
+    AFTER INSERT ON messages
+    FOR EACH ROW
+    EXECUTE FUNCTION touch_conversation_on_message();
 """
 
 
