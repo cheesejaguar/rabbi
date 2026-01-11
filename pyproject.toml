@@ -15,6 +15,7 @@ dependencies = [
     "httpx>=0.28.0",
     "workos>=5.0.0",
     "itsdangerous>=2.1.0",
+    "mangum>=0.17.0",
 ]
 
 [project.optional-dependencies]

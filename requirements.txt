@@ -51,6 +51,8 @@ itsdangerous==2.2.0
     # via rebbe
 jiter==0.12.0
     # via openai
+mangum==0.20.0
+    # via rebbe
 openai==2.15.0
     # via rebbe
 pycparser==2.23 ; implementation_name != 'PyPy' and platform_python_implementation != 'PyPy'
@@ -85,6 +87,7 @@ typing-extensions==4.15.0
     # via
     #   anyio
     #   fastapi
+    #   mangum
     #   openai
     #   pydantic
     #   pydantic-core
