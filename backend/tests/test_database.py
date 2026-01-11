@@ -1,0 +1,471 @@
+"""Tests for database.py - Database operations."""
+
+import pytest
+from unittest.mock import patch, AsyncMock, MagicMock
+import json
+
+
+class TestDatabasePool:
+    """Test database connection pool management."""
+
+    @pytest.fixture(autouse=True)
+    def reset_pool(self):
+        """Reset the global pool before each test."""
+        import app.database as db
+        db._pool = None
+        yield
+        db._pool = None
+
+    @pytest.mark.asyncio
+    async def test_get_pool_creates_pool(self):
+        """Test that get_pool creates a connection pool."""
+        mock_pool = AsyncMock()
+
+        with patch('app.database.get_settings') as mock_settings:
+            mock_settings.return_value.db_url = "postgresql://user:pass@host/db"
+
+            with patch('app.database.asyncpg.create_pool', new_callable=AsyncMock) as mock_create:
+                mock_create.return_value = mock_pool
+
+                from app.database import get_pool
+                pool = await get_pool()
+
+                assert pool == mock_pool
+                mock_create.assert_called_once()
+                # Verify SSL mode is added
+                call_args = mock_create.call_args
+                assert "sslmode=require" in call_args[0][0]
+
+    @pytest.mark.asyncio
+    async def test_get_pool_reuses_existing_pool(self):
+        """Test that get_pool reuses existing pool."""
+        mock_pool = AsyncMock()
+
+        with patch('app.database.get_settings') as mock_settings:
+            mock_settings.return_value.db_url = "postgresql://user:pass@host/db"
+
+            with patch('app.database.asyncpg.create_pool', new_callable=AsyncMock) as mock_create:
+                mock_create.return_value = mock_pool
+
+                from app.database import get_pool
+                pool1 = await get_pool()
+                pool2 = await get_pool()
+
+                assert pool1 is pool2
+                # Should only be called once
+                assert mock_create.call_count == 1
+
+    @pytest.mark.asyncio
+    async def test_get_pool_raises_without_db_url(self):
+        """Test that get_pool raises error when DB URL not configured."""
+        with patch('app.database.get_settings') as mock_settings:
+            mock_settings.return_value.db_url = ""
+
+            from app.database import get_pool
+            with pytest.raises(RuntimeError, match="Database URL not configured"):
+                await get_pool()
+
+    @pytest.mark.asyncio
+    async def test_close_pool(self):
+        """Test that close_pool closes the pool."""
+        import app.database as db
+        mock_pool = AsyncMock()
+        db._pool = mock_pool
+
+        await db.close_pool()
+
+        mock_pool.close.assert_called_once()
+        assert db._pool is None
+
+    @pytest.mark.asyncio
+    async def test_close_pool_when_none(self):
+        """Test that close_pool handles None pool gracefully."""
+        import app.database as db
+        db._pool = None
+
+        # Should not raise
+        await db.close_pool()
+        assert db._pool is None
+
+
+class TestGetConnection:
+    """Test get_connection context manager."""
+
+    @pytest.mark.asyncio
+    async def test_get_connection_yields_connection(self):
+        """Test that get_connection yields a connection from pool."""
+        mock_conn = AsyncMock()
+        mock_pool = MagicMock()
+        mock_pool.acquire = MagicMock(return_value=AsyncMock(__aenter__=AsyncMock(return_value=mock_conn), __aexit__=AsyncMock()))
+
+        with patch('app.database.get_pool', new_callable=AsyncMock) as mock_get_pool:
+            mock_get_pool.return_value = mock_pool
+
+            from app.database import get_connection
+            async with get_connection() as conn:
+                assert conn == mock_conn
+
+
+class TestUserOperations:
+    """Test user database operations."""
+
+    @pytest.fixture
+    def mock_connection(self):
+        """Create a mock database connection."""
+        conn = AsyncMock()
+        return conn
+
+    @pytest.mark.asyncio
+    async def test_upsert_user_creates_new_user(self, mock_connection):
+        """Test upserting a new user."""
+        mock_row = {
+            "id": "user-123",
+            "email": "test@example.com",
+            "first_name": "Test",
+            "last_name": "User",
+            "created_at": "2024-01-01T00:00:00Z",
+            "updated_at": "2024-01-01T00:00:00Z",
+        }
+        mock_connection.fetchrow = AsyncMock(return_value=mock_row)
+
+        with patch('app.database.get_connection') as mock_ctx:
+            mock_ctx.return_value.__aenter__ = AsyncMock(return_value=mock_connection)
+            mock_ctx.return_value.__aexit__ = AsyncMock()
+
+            from app.database import upsert_user
+            result = await upsert_user("user-123", "test@example.com", "Test", "User")
+
+            assert result["id"] == "user-123"
+            assert result["email"] == "test@example.com"
+            mock_connection.fetchrow.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_get_user_returns_user(self, mock_connection):
+        """Test getting an existing user."""
+        mock_row = {
+            "id": "user-123",
+            "email": "test@example.com",
+            "first_name": "Test",
+            "last_name": "User",
+            "created_at": "2024-01-01T00:00:00Z",
+            "updated_at": "2024-01-01T00:00:00Z",
+        }
+        mock_connection.fetchrow = AsyncMock(return_value=mock_row)
+
+        with patch('app.database.get_connection') as mock_ctx:
+            mock_ctx.return_value.__aenter__ = AsyncMock(return_value=mock_connection)
+            mock_ctx.return_value.__aexit__ = AsyncMock()
+
+            from app.database import get_user
+            result = await get_user("user-123")
+
+            assert result["id"] == "user-123"
+
+    @pytest.mark.asyncio
+    async def test_get_user_returns_none_for_missing(self, mock_connection):
+        """Test getting a non-existent user."""
+        mock_connection.fetchrow = AsyncMock(return_value=None)
+
+        with patch('app.database.get_connection') as mock_ctx:
+            mock_ctx.return_value.__aenter__ = AsyncMock(return_value=mock_connection)
+            mock_ctx.return_value.__aexit__ = AsyncMock()
+
+            from app.database import get_user
+            result = await get_user("nonexistent")
+
+            assert result is None
+
+
+class TestConversationOperations:
+    """Test conversation database operations."""
+
+    @pytest.fixture
+    def mock_connection(self):
+        """Create a mock database connection."""
+        return AsyncMock()
+
+    @pytest.mark.asyncio
+    async def test_create_conversation(self, mock_connection):
+        """Test creating a new conversation."""
+        mock_row = {
+            "id": "conv-123",
+            "user_id": "user-123",
+            "title": "Test Conversation",
+            "created_at": "2024-01-01T00:00:00Z",
+            "updated_at": "2024-01-01T00:00:00Z",
+        }
+        mock_connection.fetchrow = AsyncMock(return_value=mock_row)
+
+        with patch('app.database.get_connection') as mock_ctx:
+            mock_ctx.return_value.__aenter__ = AsyncMock(return_value=mock_connection)
+            mock_ctx.return_value.__aexit__ = AsyncMock()
+
+            from app.database import create_conversation
+            result = await create_conversation("user-123", "Test Conversation")
+
+            assert result["id"] == "conv-123"
+            assert result["user_id"] == "user-123"
+            assert result["title"] == "Test Conversation"
+
+    @pytest.mark.asyncio
+    async def test_get_conversation(self, mock_connection):
+        """Test getting a conversation by ID."""
+        mock_row = {
+            "id": "conv-123",
+            "user_id": "user-123",
+            "title": "Test",
+            "created_at": "2024-01-01T00:00:00Z",
+            "updated_at": "2024-01-01T00:00:00Z",
+        }
+        mock_connection.fetchrow = AsyncMock(return_value=mock_row)
+
+        with patch('app.database.get_connection') as mock_ctx:
+            mock_ctx.return_value.__aenter__ = AsyncMock(return_value=mock_connection)
+            mock_ctx.return_value.__aexit__ = AsyncMock()
+
+            from app.database import get_conversation
+            result = await get_conversation("conv-123", "user-123")
+
+            assert result["id"] == "conv-123"
+
+    @pytest.mark.asyncio
+    async def test_get_conversation_returns_none_for_wrong_user(self, mock_connection):
+        """Test that get_conversation returns None for wrong user."""
+        mock_connection.fetchrow = AsyncMock(return_value=None)
+
+        with patch('app.database.get_connection') as mock_ctx:
+            mock_ctx.return_value.__aenter__ = AsyncMock(return_value=mock_connection)
+            mock_ctx.return_value.__aexit__ = AsyncMock()
+
+            from app.database import get_conversation
+            result = await get_conversation("conv-123", "wrong-user")
+
+            assert result is None
+
+    @pytest.mark.asyncio
+    async def test_list_conversations(self, mock_connection):
+        """Test listing conversations for a user."""
+        mock_rows = [
+            {"id": "conv-1", "user_id": "user-123", "title": "First", "created_at": "2024-01-01", "updated_at": "2024-01-01", "first_message": "Hello"},
+            {"id": "conv-2", "user_id": "user-123", "title": "Second", "created_at": "2024-01-02", "updated_at": "2024-01-02", "first_message": "Hi"},
+        ]
+        mock_connection.fetch = AsyncMock(return_value=mock_rows)
+
+        with patch('app.database.get_connection') as mock_ctx:
+            mock_ctx.return_value.__aenter__ = AsyncMock(return_value=mock_connection)
+            mock_ctx.return_value.__aexit__ = AsyncMock()
+
+            from app.database import list_conversations
+            result = await list_conversations("user-123")
+
+            assert len(result) == 2
+            assert result[0]["id"] == "conv-1"
+            assert result[1]["id"] == "conv-2"
+
+    @pytest.mark.asyncio
+    async def test_list_conversations_with_pagination(self, mock_connection):
+        """Test listing conversations with limit and offset."""
+        mock_rows = [{"id": "conv-3", "user_id": "user-123", "title": "Third", "created_at": "2024-01-03", "updated_at": "2024-01-03", "first_message": None}]
+        mock_connection.fetch = AsyncMock(return_value=mock_rows)
+
+        with patch('app.database.get_connection') as mock_ctx:
+            mock_ctx.return_value.__aenter__ = AsyncMock(return_value=mock_connection)
+            mock_ctx.return_value.__aexit__ = AsyncMock()
+
+            from app.database import list_conversations
+            result = await list_conversations("user-123", limit=10, offset=2)
+
+            assert len(result) == 1
+            # Verify pagination parameters were passed
+            call_args = mock_connection.fetch.call_args
+            assert 10 in call_args[0]  # limit
+            assert 2 in call_args[0]   # offset
+
+    @pytest.mark.asyncio
+    async def test_update_conversation(self, mock_connection):
+        """Test updating a conversation title."""
+        mock_row = {
+            "id": "conv-123",
+            "user_id": "user-123",
+            "title": "Updated Title",
+            "created_at": "2024-01-01T00:00:00Z",
+            "updated_at": "2024-01-02T00:00:00Z",
+        }
+        mock_connection.fetchrow = AsyncMock(return_value=mock_row)
+
+        with patch('app.database.get_connection') as mock_ctx:
+            mock_ctx.return_value.__aenter__ = AsyncMock(return_value=mock_connection)
+            mock_ctx.return_value.__aexit__ = AsyncMock()
+
+            from app.database import update_conversation
+            result = await update_conversation("conv-123", "user-123", "Updated Title")
+
+            assert result["title"] == "Updated Title"
+
+    @pytest.mark.asyncio
+    async def test_delete_conversation(self, mock_connection):
+        """Test deleting a conversation."""
+        mock_connection.execute = AsyncMock(return_value="DELETE 1")
+
+        with patch('app.database.get_connection') as mock_ctx:
+            mock_ctx.return_value.__aenter__ = AsyncMock(return_value=mock_connection)
+            mock_ctx.return_value.__aexit__ = AsyncMock()
+
+            from app.database import delete_conversation
+            result = await delete_conversation("conv-123", "user-123")
+
+            assert result is True
+
+    @pytest.mark.asyncio
+    async def test_delete_conversation_not_found(self, mock_connection):
+        """Test deleting a non-existent conversation."""
+        mock_connection.execute = AsyncMock(return_value="DELETE 0")
+
+        with patch('app.database.get_connection') as mock_ctx:
+            mock_ctx.return_value.__aenter__ = AsyncMock(return_value=mock_connection)
+            mock_ctx.return_value.__aexit__ = AsyncMock()
+
+            from app.database import delete_conversation
+            result = await delete_conversation("nonexistent", "user-123")
+
+            assert result is False
+
+
+class TestMessageOperations:
+    """Test message database operations."""
+
+    @pytest.fixture
+    def mock_connection(self):
+        """Create a mock database connection."""
+        return AsyncMock()
+
+    @pytest.mark.asyncio
+    async def test_add_message(self, mock_connection):
+        """Test adding a message to a conversation."""
+        mock_row = {
+            "id": "msg-123",
+            "conversation_id": "conv-123",
+            "role": "user",
+            "content": "Hello!",
+            "metadata": "{}",
+            "created_at": "2024-01-01T00:00:00Z",
+        }
+        mock_connection.fetchrow = AsyncMock(return_value=mock_row)
+
+        with patch('app.database.get_connection') as mock_ctx:
+            mock_ctx.return_value.__aenter__ = AsyncMock(return_value=mock_connection)
+            mock_ctx.return_value.__aexit__ = AsyncMock()
+
+            from app.database import add_message
+            result = await add_message("conv-123", "user", "Hello!")
+
+            assert result["id"] == "msg-123"
+            assert result["role"] == "user"
+            assert result["content"] == "Hello!"
+
+    @pytest.mark.asyncio
+    async def test_add_message_with_metadata(self, mock_connection):
+        """Test adding a message with metadata."""
+        metadata = {"key": "value"}
+        mock_row = {
+            "id": "msg-123",
+            "conversation_id": "conv-123",
+            "role": "assistant",
+            "content": "Response",
+            "metadata": json.dumps(metadata),
+            "created_at": "2024-01-01T00:00:00Z",
+        }
+        mock_connection.fetchrow = AsyncMock(return_value=mock_row)
+
+        with patch('app.database.get_connection') as mock_ctx:
+            mock_ctx.return_value.__aenter__ = AsyncMock(return_value=mock_connection)
+            mock_ctx.return_value.__aexit__ = AsyncMock()
+
+            from app.database import add_message
+            result = await add_message("conv-123", "assistant", "Response", metadata)
+
+            assert result["metadata"] == metadata
+
+    @pytest.mark.asyncio
+    async def test_get_messages(self, mock_connection):
+        """Test getting messages for a conversation."""
+        mock_rows = [
+            {"id": "msg-1", "conversation_id": "conv-123", "role": "user", "content": "Hello", "metadata": "{}", "created_at": "2024-01-01T00:00:00Z"},
+            {"id": "msg-2", "conversation_id": "conv-123", "role": "assistant", "content": "Hi there!", "metadata": "{}", "created_at": "2024-01-01T00:00:01Z"},
+        ]
+        mock_connection.fetch = AsyncMock(return_value=mock_rows)
+
+        with patch('app.database.get_connection') as mock_ctx:
+            mock_ctx.return_value.__aenter__ = AsyncMock(return_value=mock_connection)
+            mock_ctx.return_value.__aexit__ = AsyncMock()
+
+            from app.database import get_messages
+            result = await get_messages("conv-123")
+
+            assert len(result) == 2
+            assert result[0]["role"] == "user"
+            assert result[1]["role"] == "assistant"
+
+    @pytest.mark.asyncio
+    async def test_generate_conversation_title(self, mock_connection):
+        """Test generating a title from first user message."""
+        mock_row = {"content": "What is the meaning of Shabbat?"}
+        mock_connection.fetchrow = AsyncMock(return_value=mock_row)
+
+        with patch('app.database.get_connection') as mock_ctx:
+            mock_ctx.return_value.__aenter__ = AsyncMock(return_value=mock_connection)
+            mock_ctx.return_value.__aexit__ = AsyncMock()
+
+            from app.database import generate_conversation_title
+            result = await generate_conversation_title("conv-123")
+
+            assert result == "What is the meaning of Shabbat?"
+
+    @pytest.mark.asyncio
+    async def test_generate_conversation_title_truncates_long_content(self, mock_connection):
+        """Test that long messages are truncated for titles."""
+        long_content = "A" * 100  # 100 characters
+        mock_row = {"content": long_content}
+        mock_connection.fetchrow = AsyncMock(return_value=mock_row)
+
+        with patch('app.database.get_connection') as mock_ctx:
+            mock_ctx.return_value.__aenter__ = AsyncMock(return_value=mock_connection)
+            mock_ctx.return_value.__aexit__ = AsyncMock()
+
+            from app.database import generate_conversation_title
+            result = await generate_conversation_title("conv-123")
+
+            assert len(result) == 53  # 50 chars + "..."
+            assert result.endswith("...")
+
+    @pytest.mark.asyncio
+    async def test_generate_conversation_title_no_messages(self, mock_connection):
+        """Test title generation when no messages exist."""
+        mock_connection.fetchrow = AsyncMock(return_value=None)
+
+        with patch('app.database.get_connection') as mock_ctx:
+            mock_ctx.return_value.__aenter__ = AsyncMock(return_value=mock_connection)
+            mock_ctx.return_value.__aexit__ = AsyncMock()
+
+            from app.database import generate_conversation_title
+            result = await generate_conversation_title("conv-123")
+
+            assert result is None
+
+
+class TestInitSchema:
+    """Test schema initialization."""
+
+    @pytest.mark.asyncio
+    async def test_init_schema_executes_sql(self):
+        """Test that init_schema executes the schema SQL."""
+        mock_connection = AsyncMock()
+
+        with patch('app.database.get_connection') as mock_ctx:
+            mock_ctx.return_value.__aenter__ = AsyncMock(return_value=mock_connection)
+            mock_ctx.return_value.__aexit__ = AsyncMock()
+
+            from app.database import init_schema, SCHEMA_SQL
+            await init_schema()
+
+            mock_connection.execute.assert_called_once_with(SCHEMA_SQL)

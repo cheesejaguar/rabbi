@@ -25,10 +25,15 @@ class Settings(BaseSettings):
     # Database configuration (Vercel Postgres / Neon)
     # Full connection URLs
     database_url: str = ""
+    database_url_unpooled: str = ""
     postgres_url: str = ""  # Vercel uses this env var name
+    postgres_url_non_pooling: str = ""
+    postgres_url_no_ssl: str = ""
+    postgres_prisma_url: str = ""
 
     # Individual connection parameters (Vercel Postgres provides these)
     pghost: str = ""
+    pghost_unpooled: str = ""
     pguser: str = ""
     pgdatabase: str = ""
     pgpassword: str = ""
@@ -36,6 +41,11 @@ class Settings(BaseSettings):
     postgres_user: str = ""
     postgres_password: str = ""
     postgres_database: str = ""
+
+    # Neon Auth environment variables (not used but must be accepted)
+    next_public_stack_project_id: str = ""
+    next_public_stack_publishable_client_key: str = ""
+    stack_secret_server_key: str = ""
 
     cors_origins: list[str] = ["*"]
 
