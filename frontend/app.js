@@ -8,6 +8,8 @@ const API_BASE = '/api';
 // State
 let conversationHistory = [];
 let sessionId = null;
+let currentConversationId = null;
+let conversations = [];
 let isLoading = false;
 let currentUser = null;
 
@@ -20,25 +22,22 @@ const sendBtn = document.getElementById('sendBtn');
 const chatInput = document.getElementById('chatInput');
 const chatSendBtn = document.getElementById('chatSendBtn');
 const chatMessages = document.getElementById('chatMessages');
-const backBtn = document.getElementById('backBtn');
+const chatTitle = document.getElementById('chatTitle');
 const referralNotice = document.getElementById('referralNotice');
 const loadingIndicator = document.getElementById('loadingIndicator');
 const suggestionChips = document.querySelectorAll('.suggestion-chip');
 
-// User menu elements
-const welcomeUserBtn = document.getElementById('welcomeUserBtn');
-const welcomeDropdown = document.getElementById('welcomeDropdown');
-const welcomeUserAvatar = document.getElementById('welcomeUserAvatar');
-const welcomeUserName = document.getElementById('welcomeUserName');
-const welcomeUserEmail = document.getElementById('welcomeUserEmail');
-const welcomeEditAccount = document.getElementById('welcomeEditAccount');
-
-const chatUserBtn = document.getElementById('chatUserBtn');
-const chatDropdown = document.getElementById('chatDropdown');
-const chatUserAvatar = document.getElementById('chatUserAvatar');
-const chatUserName = document.getElementById('chatUserName');
-const chatUserEmail = document.getElementById('chatUserEmail');
-const chatEditAccount = document.getElementById('chatEditAccount');
+// Sidebar elements
+const sidebar = document.getElementById('sidebar');
+const sidebarToggle = document.getElementById('sidebarToggle');
+const sidebarOverlay = document.getElementById('sidebarOverlay');
+const menuBtn = document.getElementById('menuBtn');
+const newChatBtn = document.getElementById('newChatBtn');
+const conversationsList = document.getElementById('conversationsList');
+const sidebarUserAvatar = document.getElementById('sidebarUserAvatar');
+const sidebarUserName = document.getElementById('sidebarUserName');
+const sidebarUserMenuToggle = document.getElementById('sidebarUserMenuToggle');
+const sidebarDropdown = document.getElementById('sidebarDropdown');
 
 // Initialize
 document.addEventListener('DOMContentLoaded', init);
@@ -56,7 +55,10 @@ async function init() {
         return;
     }
 
-    await loadGreeting();
+    await Promise.all([
+        loadGreeting(),
+        loadConversations()
+    ]);
 }
 
 async function checkAuth() {
@@ -84,34 +86,22 @@ function updateUserUI() {
     const fullName = [firstName, lastName].filter(Boolean).join(' ') || 'User';
     const initials = getInitials(firstName, lastName, email);
 
-    // Update welcome screen
-    welcomeUserAvatar.textContent = initials;
-    welcomeUserName.textContent = fullName;
-    welcomeUserEmail.textContent = email;
-
-    // Update chat screen
-    chatUserAvatar.textContent = initials;
-    chatUserName.textContent = fullName;
-    chatUserEmail.textContent = email;
+    // Update sidebar user info
+    sidebarUserAvatar.textContent = initials;
+    sidebarUserName.textContent = fullName;
 
     // Hide login prompt if shown
     hideLoginPrompt();
 }
 
 function showLoggedOutState() {
-    // Update avatars to show login icon
-    welcomeUserAvatar.innerHTML = '&#x2192;'; // Arrow icon
-    welcomeUserAvatar.style.fontSize = '1.2rem';
-    chatUserAvatar.innerHTML = '&#x2192;';
-    chatUserAvatar.style.fontSize = '1.2rem';
+    // Update avatar to show login icon
+    sidebarUserAvatar.innerHTML = '&#x2192;';
+    sidebarUserAvatar.style.fontSize = '1rem';
+    sidebarUserName.textContent = 'Sign in';
 
-    // Update dropdowns to show login option
-    const loginDropdownContent = `
-        <div class="user-info">
-            <span class="user-name">Not signed in</span>
-            <span class="user-email">Sign in to chat</span>
-        </div>
-        <div class="dropdown-divider"></div>
+    // Update dropdown to show login option
+    sidebarDropdown.innerHTML = `
         <a href="/auth/login" class="dropdown-item">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                 <path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/>
@@ -121,8 +111,6 @@ function showLoggedOutState() {
             Sign In
         </a>
     `;
-    welcomeDropdown.innerHTML = loginDropdownContent;
-    chatDropdown.innerHTML = loginDropdownContent;
 }
 
 function showLoginPrompt() {
@@ -161,26 +149,6 @@ function getInitials(firstName, lastName, email) {
     return '?';
 }
 
-function toggleDropdown(dropdown) {
-    const isHidden = dropdown.classList.contains('hidden');
-    // Close all dropdowns first
-    welcomeDropdown.classList.add('hidden');
-    chatDropdown.classList.add('hidden');
-    // Toggle the clicked one
-    if (isHidden) {
-        dropdown.classList.remove('hidden');
-    }
-}
-
-function closeAllDropdowns() {
-    welcomeDropdown.classList.add('hidden');
-    chatDropdown.classList.add('hidden');
-}
-
-function logout() {
-    window.location.href = '/auth/logout';
-}
-
 function setupEventListeners() {
     // Welcome screen input
     messageInput.addEventListener('keydown', handleWelcomeKeydown);
@@ -192,35 +160,27 @@ function setupEventListeners() {
     chatInput.addEventListener('input', () => handleTextareaInput(chatInput, chatSendBtn));
     chatSendBtn.addEventListener('click', () => sendFromChat());
 
-    // Back button
-    backBtn.addEventListener('click', startNewConversation);
+    // Sidebar toggle
+    sidebarToggle.addEventListener('click', toggleSidebar);
+    menuBtn.addEventListener('click', toggleSidebarMobile);
+    sidebarOverlay.addEventListener('click', closeSidebarMobile);
 
-    // User menu dropdowns
-    welcomeUserBtn.addEventListener('click', (e) => {
+    // New chat button
+    newChatBtn.addEventListener('click', startNewConversation);
+
+    // User menu in sidebar
+    sidebarUserMenuToggle.addEventListener('click', (e) => {
         e.stopPropagation();
-        toggleDropdown(welcomeDropdown);
-    });
-    chatUserBtn.addEventListener('click', (e) => {
-        e.stopPropagation();
-        toggleDropdown(chatDropdown);
+        sidebarDropdown.classList.toggle('hidden');
     });
 
-    // Close dropdowns when clicking outside
-    document.addEventListener('click', closeAllDropdowns);
+    // Close dropdown when clicking outside
+    document.addEventListener('click', () => {
+        sidebarDropdown.classList.add('hidden');
+    });
 
     // Prevent dropdown from closing when clicking inside
-    welcomeDropdown.addEventListener('click', (e) => e.stopPropagation());
-    chatDropdown.addEventListener('click', (e) => e.stopPropagation());
-
-    // Edit account (placeholder - opens WorkOS account portal if available)
-    welcomeEditAccount.addEventListener('click', (e) => {
-        e.preventDefault();
-        alert('Account settings coming soon. Contact your administrator for account changes.');
-    });
-    chatEditAccount.addEventListener('click', (e) => {
-        e.preventDefault();
-        alert('Account settings coming soon. Contact your administrator for account changes.');
-    });
+    sidebarDropdown.addEventListener('click', (e) => e.stopPropagation());
 
     // Suggestion chips
     suggestionChips.forEach(chip => {
@@ -236,6 +196,20 @@ function setupEventListeners() {
     [messageInput, chatInput].forEach(textarea => {
         textarea.addEventListener('input', () => autoResize(textarea));
     });
+}
+
+function toggleSidebar() {
+    sidebar.classList.toggle('collapsed');
+}
+
+function toggleSidebarMobile() {
+    sidebar.classList.toggle('open');
+    sidebarOverlay.classList.toggle('visible');
+}
+
+function closeSidebarMobile() {
+    sidebar.classList.remove('open');
+    sidebarOverlay.classList.remove('visible');
 }
 
 function handleWelcomeKeydown(e) {
@@ -269,9 +243,6 @@ async function loadGreeting() {
         const response = await fetch(`${API_BASE}/greeting`);
         if (response.ok) {
             const data = await response.json();
-            // Extract a shorter greeting for the welcome screen
-            const greeting = data.greeting || 'Shalom';
-            // Just use "Shalom" for the welcome screen title
             greetingText.textContent = 'Shalom, how can I help?';
         }
     } catch (error) {
@@ -280,13 +251,150 @@ async function loadGreeting() {
     }
 }
 
-function sendFromWelcome() {
+// Conversation management
+async function loadConversations() {
+    try {
+        const response = await fetch(`${API_BASE}/conversations`);
+        if (response.ok) {
+            const data = await response.json();
+            conversations = data.conversations || [];
+            renderConversationsList();
+        }
+    } catch (error) {
+        console.error('Failed to load conversations:', error);
+        conversations = [];
+        renderConversationsList();
+    }
+}
+
+function renderConversationsList() {
+    if (conversations.length === 0) {
+        conversationsList.innerHTML = '<div class="conversations-empty">No conversations yet</div>';
+        return;
+    }
+
+    conversationsList.innerHTML = conversations.map(conv => `
+        <button class="conversation-item ${conv.id === currentConversationId ? 'active' : ''}"
+                data-id="${conv.id}">
+            <span class="conversation-title">${escapeHtml(conv.title || conv.first_message || 'New conversation')}</span>
+            <button class="delete-btn" data-delete-id="${conv.id}" title="Delete conversation">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
+                </svg>
+            </button>
+        </button>
+    `).join('');
+
+    // Add click handlers
+    conversationsList.querySelectorAll('.conversation-item').forEach(item => {
+        item.addEventListener('click', (e) => {
+            // Don't load conversation if clicking delete button
+            if (e.target.closest('.delete-btn')) return;
+            loadConversation(item.dataset.id);
+        });
+    });
+
+    conversationsList.querySelectorAll('.delete-btn').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            deleteConversation(btn.dataset.deleteId);
+        });
+    });
+}
+
+async function createConversation() {
+    try {
+        const response = await fetch(`${API_BASE}/conversations`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({})
+        });
+        if (response.ok) {
+            const conversation = await response.json();
+            currentConversationId = conversation.id;
+            conversations.unshift(conversation);
+            renderConversationsList();
+            return conversation.id;
+        }
+    } catch (error) {
+        console.error('Failed to create conversation:', error);
+    }
+    return null;
+}
+
+async function loadConversation(conversationId) {
+    try {
+        const response = await fetch(`${API_BASE}/conversations/${conversationId}`);
+        if (response.ok) {
+            const data = await response.json();
+            currentConversationId = conversationId;
+            conversationHistory = (data.messages || []).map(m => ({
+                role: m.role,
+                content: m.content
+            }));
+
+            // Update UI
+            chatMessages.innerHTML = '';
+            data.messages.forEach(msg => {
+                addMessageToUI(msg.role, msg.content, new Date(msg.created_at));
+            });
+
+            // Update title
+            chatTitle.textContent = data.title || 'New conversation';
+
+            // Switch to chat screen
+            welcomeScreen.classList.add('hidden');
+            chatScreen.classList.remove('hidden');
+
+            // Update active state in sidebar
+            renderConversationsList();
+
+            // Close mobile sidebar
+            closeSidebarMobile();
+
+            scrollToBottom();
+        }
+    } catch (error) {
+        console.error('Failed to load conversation:', error);
+    }
+}
+
+async function deleteConversation(conversationId) {
+    if (!confirm('Delete this conversation?')) return;
+
+    try {
+        const response = await fetch(`${API_BASE}/conversations/${conversationId}`, {
+            method: 'DELETE'
+        });
+        if (response.ok) {
+            conversations = conversations.filter(c => c.id !== conversationId);
+            renderConversationsList();
+
+            // If we deleted the current conversation, go back to welcome
+            if (conversationId === currentConversationId) {
+                startNewConversation();
+            }
+        }
+    } catch (error) {
+        console.error('Failed to delete conversation:', error);
+    }
+}
+
+async function sendFromWelcome() {
     const message = messageInput.value.trim();
     if (!message || isLoading) return;
+
+    // Create a new conversation first
+    const convId = await createConversation();
+    if (!convId && currentUser) {
+        // Database might not be configured, continue without persistence
+        console.warn('Could not create conversation, continuing without persistence');
+    }
 
     // Switch to chat screen
     welcomeScreen.classList.add('hidden');
     chatScreen.classList.remove('hidden');
+    chatTitle.textContent = 'New conversation';
 
     // Clear welcome input
     messageInput.value = '';
@@ -335,6 +443,7 @@ async function sendMessage(message) {
                 message: message,
                 conversation_history: conversationHistory,
                 session_id: sessionId,
+                conversation_id: currentConversationId,
             }),
         });
 
@@ -355,7 +464,6 @@ async function sendMessage(message) {
 
             buffer += decoder.decode(value, { stream: true });
             const lines = buffer.split('\n');
-            // Keep the last incomplete line in buffer
             buffer = lines.pop() || '';
 
             for (const line of lines) {
@@ -365,10 +473,13 @@ async function sendMessage(message) {
 
                         if (data.type === 'session') {
                             sessionId = data.session_id;
+                            // Update conversation ID if provided
+                            if (data.conversation_id) {
+                                currentConversationId = data.conversation_id;
+                            }
                         } else if (data.type === 'metadata') {
                             requiresHumanReferral = data.data.requires_human_referral;
                         } else if (data.type === 'token') {
-                            // Create streaming message on first token
                             if (!messageElement) {
                                 removeTypingIndicator();
                                 messageElement = createStreamingMessage();
@@ -385,26 +496,25 @@ async function sendMessage(message) {
             }
         }
 
-        // Finalize the message (only if we received tokens)
         if (messageElement) {
             finalizeStreamingMessage(messageElement, fullResponse);
         } else {
-            // No tokens received - show error
             removeTypingIndicator();
             throw new Error('No response received');
         }
 
-        // Show referral notice if needed
         if (requiresHumanReferral) {
             showReferralNotice();
         } else {
             hideReferralNotice();
         }
 
+        // Refresh conversations list to get updated title
+        await loadConversations();
+
     } catch (error) {
         console.error('Error sending message:', error);
         removeTypingIndicator();
-        // Remove any partially created streaming message
         const streamingMsg = document.getElementById('streamingMessage');
         if (streamingMsg) streamingMsg.remove();
         addMessage('assistant',
@@ -416,12 +526,25 @@ async function sendMessage(message) {
 }
 
 function addMessage(role, content) {
+    addMessageToUI(role, content, new Date());
+
+    // Update conversation history
+    conversationHistory.push({ role, content });
+
+    // Keep only last 20 messages in history
+    if (conversationHistory.length > 20) {
+        conversationHistory = conversationHistory.slice(-20);
+    }
+
+    scrollToBottom();
+}
+
+function addMessageToUI(role, content, date) {
     const messageDiv = document.createElement('div');
     messageDiv.className = `message ${role}`;
 
     const contentDiv = document.createElement('div');
     contentDiv.className = 'message-content';
-    // Format markdown for assistant messages, plain text for user
     if (role === 'assistant') {
         contentDiv.innerHTML = formatMarkdown(content);
     } else {
@@ -433,25 +556,12 @@ function addMessage(role, content) {
 
     const timeSpan = document.createElement('span');
     timeSpan.className = 'message-time';
-    timeSpan.textContent = formatTime(new Date());
+    timeSpan.textContent = formatTime(date);
 
     metaDiv.appendChild(timeSpan);
-
     messageDiv.appendChild(contentDiv);
     messageDiv.appendChild(metaDiv);
-
     chatMessages.appendChild(messageDiv);
-
-    // Update conversation history
-    conversationHistory.push({ role, content });
-
-    // Keep only last 20 messages in history
-    if (conversationHistory.length > 20) {
-        conversationHistory = conversationHistory.slice(-20);
-    }
-
-    // Scroll to bottom
-    scrollToBottom();
 }
 
 function formatTime(date) {
@@ -465,11 +575,8 @@ function escapeHtml(text) {
 }
 
 function formatMarkdown(text) {
-    // Escape HTML first to prevent XSS
     let html = escapeHtml(text);
-    // Bold: **text**
     html = html.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
-    // Italics: *text*
     html = html.replace(/\*(.+?)\*/g, '<em>$1</em>');
     return html;
 }
@@ -511,16 +618,13 @@ function finalizeStreamingMessage(messageElement, content) {
     contentDiv.classList.remove('streaming');
     messageElement.removeAttribute('id');
 
-    // Update conversation history
     conversationHistory.push({ role: 'assistant', content });
 
-    // Keep only last 20 messages in history
     if (conversationHistory.length > 20) {
         conversationHistory = conversationHistory.slice(-20);
     }
 }
 
-// Agent phases with clever phrases
 const agentPhases = [
     { name: 'Pastoral', phrase: 'Listening with an open heart...' },
     { name: 'Halachic', phrase: 'Searching the sources...' },
@@ -548,7 +652,6 @@ function showTypingIndicator() {
     chatMessages.appendChild(typing);
     scrollToBottom();
 
-    // Start cycling through phases
     currentPhaseIndex = 0;
     phaseInterval = setInterval(() => {
         currentPhaseIndex = (currentPhaseIndex + 1) % agentPhases.length;
@@ -564,7 +667,6 @@ function showTypingIndicator() {
 }
 
 function removeTypingIndicator() {
-    // Clear the phase cycling interval
     if (phaseInterval) {
         clearInterval(phaseInterval);
         phaseInterval = null;
@@ -593,6 +695,7 @@ function startNewConversation() {
     // Reset state
     conversationHistory = [];
     sessionId = null;
+    currentConversationId = null;
 
     // Clear messages
     chatMessages.innerHTML = '';
@@ -604,11 +707,17 @@ function startNewConversation() {
     chatScreen.classList.add('hidden');
     welcomeScreen.classList.remove('hidden');
 
+    // Update sidebar
+    renderConversationsList();
+
     // Reset inputs
     messageInput.value = '';
     chatInput.value = '';
     sendBtn.disabled = true;
     chatSendBtn.disabled = true;
+
+    // Close mobile sidebar
+    closeSidebarMobile();
 
     // Focus welcome input
     setTimeout(() => messageInput.focus(), 300);

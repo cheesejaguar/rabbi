@@ -13,7 +13,7 @@ class TestSettings:
     def test_default_values(self):
         """Test default settings values."""
         with patch.dict(os.environ, {}, clear=True):
-            settings = Settings()
+            settings = Settings(_env_file=None)
             assert settings.app_name == "rebbe.dev"
             assert settings.app_version == "1.0.0"
             assert settings.debug is False
@@ -33,7 +33,7 @@ class TestSettings:
             "LLM_MODEL": "anthropic/claude-opus-4-20250514",
         }
         with patch.dict(os.environ, env_vars, clear=True):
-            settings = Settings()
+            settings = Settings(_env_file=None)
             assert settings.app_name == "Test Rabbi"
             assert settings.app_version == "2.0.0"
             assert settings.debug is True
@@ -43,8 +43,103 @@ class TestSettings:
 
     def test_cors_origins_default(self):
         """Test default CORS origins."""
-        settings = Settings()
-        assert "*" in settings.cors_origins
+        with patch.dict(os.environ, {}, clear=True):
+            settings = Settings(_env_file=None)
+            assert "*" in settings.cors_origins
+
+    def test_db_url_prefers_database_url(self):
+        """Test that db_url prefers DATABASE_URL (pooled connection)."""
+        env_vars = {
+            "DATABASE_URL": "postgresql://pooled@host/db",
+            "POSTGRES_URL": "postgresql://legacy@host/db",
+        }
+        with patch.dict(os.environ, env_vars, clear=True):
+            settings = Settings(_env_file=None)
+            assert settings.db_url == "postgresql://pooled@host/db"
+
+    def test_db_url_falls_back_to_postgres_url(self):
+        """Test that db_url falls back to POSTGRES_URL."""
+        env_vars = {
+            "POSTGRES_URL": "postgresql://legacy@host/db",
+        }
+        with patch.dict(os.environ, env_vars, clear=True):
+            settings = Settings(_env_file=None)
+            assert settings.db_url == "postgresql://legacy@host/db"
+
+    def test_db_url_constructs_from_pg_params(self):
+        """Test that db_url can be constructed from PG* parameters."""
+        env_vars = {
+            "PGHOST": "db.example.com",
+            "PGUSER": "myuser",
+            "PGPASSWORD": "mypass",
+            "PGDATABASE": "mydb",
+        }
+        with patch.dict(os.environ, env_vars, clear=True):
+            settings = Settings(_env_file=None)
+            assert settings.db_url == "postgresql://myuser:mypass@db.example.com/mydb?sslmode=require"
+
+    def test_db_url_constructs_from_postgres_params(self):
+        """Test that db_url can be constructed from POSTGRES_* parameters."""
+        env_vars = {
+            "POSTGRES_HOST": "db.example.com",
+            "POSTGRES_USER": "myuser",
+            "POSTGRES_PASSWORD": "mypass",
+            "POSTGRES_DATABASE": "mydb",
+        }
+        with patch.dict(os.environ, env_vars, clear=True):
+            settings = Settings(_env_file=None)
+            assert settings.db_url == "postgresql://myuser:mypass@db.example.com/mydb?sslmode=require"
+
+    def test_db_url_pg_params_take_precedence(self):
+        """Test that PG* params take precedence over POSTGRES_* params."""
+        env_vars = {
+            "PGHOST": "pg-host.com",
+            "PGUSER": "pguser",
+            "PGPASSWORD": "pgpass",
+            "PGDATABASE": "pgdb",
+            "POSTGRES_HOST": "postgres-host.com",
+            "POSTGRES_USER": "postgresuser",
+            "POSTGRES_PASSWORD": "postgrespass",
+            "POSTGRES_DATABASE": "postgresdb",
+        }
+        with patch.dict(os.environ, env_vars, clear=True):
+            settings = Settings(_env_file=None)
+            assert "pguser" in settings.db_url
+            assert "pg-host.com" in settings.db_url
+
+    def test_db_url_returns_empty_when_incomplete(self):
+        """Test that db_url returns empty string when params incomplete."""
+        env_vars = {
+            "PGHOST": "db.example.com",
+            "PGUSER": "myuser",
+            # Missing PGPASSWORD and PGDATABASE
+        }
+        with patch.dict(os.environ, env_vars, clear=True):
+            settings = Settings(_env_file=None)
+            assert settings.db_url == ""
+
+    def test_db_url_returns_empty_when_not_configured(self):
+        """Test that db_url returns empty string when nothing configured."""
+        with patch.dict(os.environ, {}, clear=True):
+            settings = Settings(_env_file=None)
+            assert settings.db_url == ""
+
+    def test_db_url_encodes_special_characters(self):
+        """Test that special characters in password are URL-encoded."""
+        env_vars = {
+            "PGHOST": "db.example.com",
+            "PGUSER": "user@domain",
+            "PGPASSWORD": "p@ss:word/with?special=chars",
+            "PGDATABASE": "mydb",
+        }
+        with patch.dict(os.environ, env_vars, clear=True):
+            settings = Settings(_env_file=None)
+            # Special chars should be URL-encoded
+            assert "p%40ss%3Aword%2Fwith%3Fspecial%3Dchars" in settings.db_url
+            assert "user%40domain" in settings.db_url
+            # The URL should still be valid PostgreSQL format
+            assert settings.db_url.startswith("postgresql://")
+            assert "@db.example.com/mydb?sslmode=require" in settings.db_url
 
 
 class TestGetSettings:

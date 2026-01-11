@@ -1,6 +1,7 @@
 """Application configuration."""
 
 from functools import lru_cache
+from urllib.parse import quote_plus
 from pydantic_settings import BaseSettings
 
 
@@ -22,7 +23,61 @@ class Settings(BaseSettings):
     session_secret_key: str = "change-me-in-production"
     workos_redirect_uri: str = "http://localhost:8613/auth/callback"
 
+    # Database configuration (Vercel Postgres / Neon)
+    # Full connection URLs
+    database_url: str = ""
+    database_url_unpooled: str = ""
+    postgres_url: str = ""  # Vercel uses this env var name
+    postgres_url_non_pooling: str = ""
+    postgres_url_no_ssl: str = ""
+    postgres_prisma_url: str = ""
+
+    # Individual connection parameters (Vercel Postgres provides these)
+    pghost: str = ""
+    pghost_unpooled: str = ""
+    pguser: str = ""
+    pgdatabase: str = ""
+    pgpassword: str = ""
+    postgres_host: str = ""
+    postgres_user: str = ""
+    postgres_password: str = ""
+    postgres_database: str = ""
+
+    # Neon Auth environment variables (not used but must be accepted)
+    next_public_stack_project_id: str = ""
+    next_public_stack_publishable_client_key: str = ""
+    stack_secret_server_key: str = ""
+
     cors_origins: list[str] = ["*"]
+
+    @property
+    def db_url(self) -> str:
+        """Get database URL for connection.
+
+        Priority (per Neon/Vercel docs):
+        1. DATABASE_URL - pooled connection, recommended for serverless
+        2. POSTGRES_URL - legacy Vercel Postgres variable
+        3. Constructed from individual PG*/POSTGRES_* parameters
+        """
+        # Prefer DATABASE_URL (pooled connection for serverless)
+        if self.database_url:
+            return self.database_url
+        if self.postgres_url:
+            return self.postgres_url
+
+        # Construct from individual parameters (prefer PG* over POSTGRES_*)
+        host = self.pghost or self.postgres_host
+        user = self.pguser or self.postgres_user
+        password = self.pgpassword or self.postgres_password
+        database = self.pgdatabase or self.postgres_database
+
+        if host and user and password and database:
+            # URL-encode user and password to handle special characters
+            encoded_user = quote_plus(user)
+            encoded_password = quote_plus(password)
+            return f"postgresql://{encoded_user}:{encoded_password}@{host}/{database}?sslmode=require"
+
+        return ""
 
     class Config:
         env_file = ".env"

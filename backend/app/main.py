@@ -2,6 +2,7 @@
 
 import uuid
 import json
+from contextlib import asynccontextmanager
 from fastapi import FastAPI, HTTPException, Request, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
@@ -18,13 +19,32 @@ from .models import (
 )
 from .agents import RabbiOrchestrator
 from .auth import router as auth_router, get_current_user, require_auth
+from .conversations import router as conversations_router
+from . import database as db
 
 settings = get_settings()
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Initialize and cleanup resources."""
+    # Startup: Initialize database schema if configured
+    if settings.db_url:
+        try:
+            await db.init_schema()
+            print("Database schema initialized")
+        except Exception as e:
+            print(f"Warning: Could not initialize database: {e}")
+    yield
+    # Shutdown: Close database pool
+    await db.close_pool()
+
 
 app = FastAPI(
     title=settings.app_name,
     version=settings.app_version,
     description="A progressive Modern Orthodox AI rebbe - guidance, not psak",
+    lifespan=lifespan,
 )
 
 app.add_middleware(
@@ -84,8 +104,9 @@ class AuthMiddleware(BaseHTTPMiddleware):
 # Add auth middleware
 app.add_middleware(AuthMiddleware)
 
-# Include auth router
+# Include routers
 app.include_router(auth_router)
+app.include_router(conversations_router)
 
 orchestrator = RabbiOrchestrator(
     api_key=settings.openrouter_api_key or None,
@@ -149,7 +170,7 @@ async def chat(request: ChatRequest):
 
 
 @app.post("/api/chat/stream")
-async def chat_stream(request: ChatRequest):
+async def chat_stream(chat_request: ChatRequest, request: Request):
     """
     Process a chat message with streaming response using Server-Sent Events.
 
@@ -161,21 +182,50 @@ async def chat_stream(request: ChatRequest):
     """
     conversation_history = [
         {"role": msg.role, "content": msg.content}
-        for msg in request.conversation_history
+        for msg in chat_request.conversation_history
     ]
 
-    session_id = request.session_id or str(uuid.uuid4())
+    session_id = chat_request.session_id or str(uuid.uuid4())
+    conversation_id = chat_request.conversation_id
+
+    # Get current user for database operations
+    user = get_current_user(request)
+
+    # Save user message to database if conversation_id provided
+    if conversation_id and user and settings.db_url:
+        try:
+            await db.add_message(conversation_id, "user", chat_request.message)
+        except Exception as e:
+            print(f"Warning: Could not save user message: {e}")
 
     async def event_generator():
+        full_response = ""
         try:
-            # Send session_id first
-            yield f"data: {json.dumps({'type': 'session', 'session_id': session_id})}\n\n"
+            # Send session_id and conversation_id first
+            yield f"data: {json.dumps({'type': 'session', 'session_id': session_id, 'conversation_id': conversation_id})}\n\n"
 
             async for event in orchestrator.process_message_stream(
-                user_message=request.message,
+                user_message=chat_request.message,
                 conversation_history=conversation_history,
             ):
                 yield f"data: {json.dumps(event)}\n\n"
+
+                # Accumulate response for database
+                if event.get("type") == "token":
+                    full_response += event.get("data", "")
+
+            # Save assistant response to database
+            if conversation_id and user and settings.db_url and full_response:
+                try:
+                    await db.add_message(conversation_id, "assistant", full_response)
+                    # Update conversation title if not set
+                    conv = await db.get_conversation(conversation_id, user["id"])
+                    if conv and not conv.get("title"):
+                        title = await db.generate_conversation_title(conversation_id)
+                        if title:
+                            await db.update_conversation(conversation_id, user["id"], title)
+                except Exception as e:
+                    print(f"Warning: Could not save assistant message: {e}")
 
             # Send done event
             yield f"data: {json.dumps({'type': 'done'})}\n\n"
