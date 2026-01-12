@@ -922,9 +922,10 @@ function createMessageActions(content, messageId) {
 }
 
 // Current audio for speak functionality
-// Web Audio API for better autoplay policy handling
+// Web Audio API for streaming PCM playback
 let audioContext = null;
-let currentAudioSource = null;
+let isPlaying = false;
+let stopRequested = false;
 
 function handleMessageAction(event, actionsDiv) {
     const button = event.currentTarget;
@@ -963,24 +964,22 @@ async function handleSpeak(content, button) {
     }
 
     // Resume AudioContext immediately - this satisfies autoplay policy
-    // because it happens synchronously in the user gesture handler
     if (audioContext.state === 'suspended') {
         await audioContext.resume();
     }
 
     // If already playing, stop
-    if (currentAudioSource) {
-        try {
-            currentAudioSource.stop();
-        } catch (e) {
-            // Ignore - source may have already stopped
-        }
-        currentAudioSource = null;
+    if (isPlaying) {
+        stopRequested = true;
         button.classList.remove('playing');
         return;
     }
 
     button.classList.add('loading');
+    isPlaying = true;
+    stopRequested = false;
+
+    const PCM_SAMPLE_RATE = 24000;
 
     try {
         const response = await fetch(`${API_BASE}/speak`, {
@@ -995,30 +994,78 @@ async function handleSpeak(content, button) {
             throw new Error('Speech generation failed');
         }
 
-        const arrayBuffer = await response.arrayBuffer();
+        const reader = response.body.getReader();
+        let nextStartTime = audioContext.currentTime;
+        let firstChunk = true;
+        let lastSource = null;
+        let leftoverBytes = new Uint8Array(0);
 
-        // Decode audio using Web Audio API
-        const audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
+        while (true) {
+            if (stopRequested) {
+                await reader.cancel();
+                break;
+            }
 
-        // Create buffer source and connect to output
-        const source = audioContext.createBufferSource();
-        source.buffer = audioBuffer;
-        source.connect(audioContext.destination);
+            const { done, value } = await reader.read();
+            if (done) break;
 
-        source.onended = () => {
-            button.classList.remove('playing');
-            currentAudioSource = null;
-        };
+            // Combine with any leftover bytes from previous chunk
+            const combined = new Uint8Array(leftoverBytes.length + value.length);
+            combined.set(leftoverBytes);
+            combined.set(value, leftoverBytes.length);
 
-        button.classList.remove('loading');
-        button.classList.add('playing');
+            // PCM 16-bit needs even number of bytes
+            const usableLength = combined.length - (combined.length % 2);
+            leftoverBytes = combined.slice(usableLength);
+            const pcmData = combined.slice(0, usableLength);
 
-        currentAudioSource = source;
-        source.start(0);
+            if (pcmData.length === 0) continue;
+
+            // Convert Int16 PCM to Float32
+            const int16 = new Int16Array(pcmData.buffer, pcmData.byteOffset, pcmData.length / 2);
+            const float32 = new Float32Array(int16.length);
+            for (let i = 0; i < int16.length; i++) {
+                float32[i] = int16[i] / 32768;
+            }
+
+            // Create AudioBuffer
+            const audioBuffer = audioContext.createBuffer(1, float32.length, PCM_SAMPLE_RATE);
+            audioBuffer.getChannelData(0).set(float32);
+
+            // Create source and schedule playback
+            const source = audioContext.createBufferSource();
+            source.buffer = audioBuffer;
+            source.connect(audioContext.destination);
+
+            // Schedule to play after previous chunk
+            const startTime = Math.max(nextStartTime, audioContext.currentTime);
+            source.start(startTime);
+            nextStartTime = startTime + audioBuffer.duration;
+            lastSource = source;
+
+            // Update UI on first chunk
+            if (firstChunk) {
+                button.classList.remove('loading');
+                button.classList.add('playing');
+                firstChunk = false;
+            }
+        }
+
+        // When last chunk finishes playing
+        if (lastSource && !stopRequested) {
+            lastSource.onended = () => {
+                button.classList.remove('playing');
+                isPlaying = false;
+            };
+        } else {
+            button.classList.remove('playing', 'loading');
+            isPlaying = false;
+        }
 
     } catch (error) {
         console.error('Speech generation failed:', error);
-        button.classList.remove('loading');
+        button.classList.remove('loading', 'playing');
+        isPlaying = false;
         showToast('Could not generate speech');
     }
 }
