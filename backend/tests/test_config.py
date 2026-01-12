@@ -17,6 +17,9 @@ class TestSettings:
             assert settings.app_name == "rebbe.dev"
             assert settings.app_version == "1.0.0"
             assert settings.debug is False
+            assert settings.gateway == "vercel"
+            assert settings.ai_gateway_api_key == ""
+            assert settings.ai_gateway_base_url == "https://ai-gateway.vercel.sh/v1"
             assert settings.openrouter_api_key == ""
             assert settings.openrouter_base_url == "https://openrouter.ai/api/v1"
             assert settings.llm_model == "anthropic/claude-sonnet-4-20250514"
@@ -46,6 +49,41 @@ class TestSettings:
         with patch.dict(os.environ, {}, clear=True):
             settings = Settings(_env_file=None)
             assert "*" in settings.cors_origins
+
+    def test_gateway_vercel_default(self):
+        """Test that Vercel gateway is used by default."""
+        env_vars = {
+            "AI_GATEWAY_API_KEY": "vercel-key",
+            "OPENROUTER_API_KEY": "openrouter-key",
+        }
+        with patch.dict(os.environ, env_vars, clear=True):
+            settings = Settings(_env_file=None)
+            assert settings.gateway == "vercel"
+            assert settings.llm_api_key == "vercel-key"
+            assert settings.llm_base_url == "https://ai-gateway.vercel.sh/v1"
+
+    def test_gateway_openrouter(self):
+        """Test OpenRouter gateway selection."""
+        env_vars = {
+            "GATEWAY": "openrouter",
+            "AI_GATEWAY_API_KEY": "vercel-key",
+            "OPENROUTER_API_KEY": "openrouter-key",
+        }
+        with patch.dict(os.environ, env_vars, clear=True):
+            settings = Settings(_env_file=None)
+            assert settings.gateway == "openrouter"
+            assert settings.llm_api_key == "openrouter-key"
+            assert settings.llm_base_url == "https://openrouter.ai/api/v1"
+
+    def test_gateway_case_insensitive(self):
+        """Test that gateway selection is case insensitive."""
+        env_vars = {
+            "GATEWAY": "VERCEL",
+            "AI_GATEWAY_API_KEY": "vercel-key",
+        }
+        with patch.dict(os.environ, env_vars, clear=True):
+            settings = Settings(_env_file=None)
+            assert settings.llm_api_key == "vercel-key"
 
     def test_db_url_prefers_database_url(self):
         """Test that db_url prefers DATABASE_URL (pooled connection)."""

@@ -12,10 +12,33 @@ class Settings(BaseSettings):
     app_version: str = "1.0.0"
     debug: bool = False
 
-    # OpenRouter configuration
+    # Gateway selection: "vercel" (default) or "openrouter"
+    gateway: str = "vercel"
+
+    # Vercel AI Gateway configuration
+    ai_gateway_api_key: str = ""
+    ai_gateway_base_url: str = "https://ai-gateway.vercel.sh/v1"
+
+    # OpenRouter configuration (alternative gateway)
     openrouter_api_key: str = ""
     openrouter_base_url: str = "https://openrouter.ai/api/v1"
+
+    # LLM Model (works with both gateways)
     llm_model: str = "anthropic/claude-sonnet-4-20250514"
+
+    @property
+    def llm_api_key(self) -> str:
+        """Get the API key for the selected gateway."""
+        if self.gateway.lower() == "vercel":
+            return self.ai_gateway_api_key
+        return self.openrouter_api_key
+
+    @property
+    def llm_base_url(self) -> str:
+        """Get the base URL for the selected gateway."""
+        if self.gateway.lower() == "vercel":
+            return self.ai_gateway_base_url
+        return self.openrouter_base_url
 
     # WorkOS SSO configuration
     workos_api_key: str = ""

@@ -109,8 +109,8 @@ app.include_router(auth_router)
 app.include_router(conversations_router)
 
 orchestrator = RabbiOrchestrator(
-    api_key=settings.openrouter_api_key or None,
-    base_url=settings.openrouter_base_url,
+    api_key=settings.llm_api_key or None,
+    base_url=settings.llm_base_url,
     model=settings.llm_model,
 )
 
