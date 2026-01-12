@@ -37,6 +37,7 @@ const newChatBtn = document.getElementById('newChatBtn');
 const conversationsList = document.getElementById('conversationsList');
 const sidebarUserAvatar = document.getElementById('sidebarUserAvatar');
 const sidebarUserName = document.getElementById('sidebarUserName');
+const userProfile = document.getElementById('userProfile');
 const sidebarUserMenuToggle = document.getElementById('sidebarUserMenuToggle');
 const sidebarDropdown = document.getElementById('sidebarDropdown');
 
@@ -170,8 +171,8 @@ function setupEventListeners() {
     // New chat button
     newChatBtn.addEventListener('click', startNewConversation);
 
-    // User menu in sidebar
-    sidebarUserMenuToggle.addEventListener('click', (e) => {
+    // User menu in sidebar - entire profile area is clickable
+    userProfile.addEventListener('click', (e) => {
         e.stopPropagation();
         sidebarDropdown.classList.toggle('hidden');
     });
