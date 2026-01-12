@@ -144,6 +144,7 @@ body {
 .sidebar-content {
     flex: 1;
     overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
     padding: 12px;
 }
 
@@ -895,6 +896,8 @@ body {
 .chat-messages {
     flex: 1;
     overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior: contain;
     padding: 20px;
     display: flex;
     flex-direction: column;
