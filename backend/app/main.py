@@ -196,7 +196,7 @@ async def remove_feedback(request: Request, message_id: str):
 
 @app.post("/api/speak")
 async def text_to_speech(request: Request):
-    """Convert text to speech using ElevenLabs streaming API."""
+    """Convert text to speech using ElevenLabs API."""
     user = get_current_user(request)
     if not user:
         raise HTTPException(status_code=401, detail="Not authenticated")
@@ -210,32 +210,31 @@ async def text_to_speech(request: Request):
     if not text:
         raise HTTPException(status_code=400, detail="No text provided")
 
-    async def stream_audio():
-        async with httpx.AsyncClient() as client:
-            async with client.stream(
-                "POST",
-                f"https://api.elevenlabs.io/v1/text-to-speech/{settings.elevenlabs_voice_id}/stream",
-                params={"output_format": "mp3_44100_128"},
-                headers={
-                    "xi-api-key": settings.elevenlabs_api_key,
-                    "Content-Type": "application/json"
-                },
-                json={
-                    "text": text,
-                    "model_id": "eleven_multilingual_v2"
-                },
-                timeout=60.0
-            ) as response:
-                if response.status_code != 200:
-                    raise HTTPException(status_code=response.status_code, detail="ElevenLabs API error")
-                async for chunk in response.aiter_bytes():
-                    yield chunk
+    # Make a non-streaming request to ElevenLabs and return the full audio
+    async with httpx.AsyncClient() as client:
+        response = await client.post(
+            f"https://api.elevenlabs.io/v1/text-to-speech/{settings.elevenlabs_voice_id}",
+            params={"output_format": "mp3_44100_128"},
+            headers={
+                "xi-api-key": settings.elevenlabs_api_key,
+                "Content-Type": "application/json"
+            },
+            json={
+                "text": text,
+                "model_id": "eleven_multilingual_v2"
+            },
+            timeout=60.0
+        )
 
-    return StreamingResponse(
-        stream_audio(),
-        media_type="audio/mpeg",
-        headers={"Content-Type": "audio/mpeg"}
-    )
+        if response.status_code != 200:
+            print(f"ElevenLabs API error: {response.status_code} - {response.text}")
+            raise HTTPException(status_code=response.status_code, detail=f"ElevenLabs API error: {response.text}")
+
+        return StreamingResponse(
+            iter([response.content]),
+            media_type="audio/mpeg",
+            headers={"Content-Type": "audio/mpeg"}
+        )
 
 
 @app.post("/api/chat", response_model=ChatResponse)
