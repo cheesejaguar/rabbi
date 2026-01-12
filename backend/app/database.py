@@ -144,6 +144,19 @@ CREATE TRIGGER touch_conversation_on_message_insert
     AFTER INSERT ON messages
     FOR EACH ROW
     EXECUTE FUNCTION touch_conversation_on_message();
+
+-- Feedback table for thumbs up/down
+CREATE TABLE IF NOT EXISTS feedback (
+    id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
+    message_id TEXT NOT NULL REFERENCES messages(id) ON DELETE CASCADE,
+    user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    feedback_type TEXT NOT NULL CHECK (feedback_type IN ('thumbs_up', 'thumbs_down')),
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    UNIQUE(message_id, user_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_feedback_message_id ON feedback(message_id);
+CREATE INDEX IF NOT EXISTS idx_feedback_user_id ON feedback(user_id);
 """
 
 
@@ -359,3 +372,45 @@ async def generate_conversation_title(conversation_id: str) -> Optional[str]:
                 title += "..."
             return title
         return None
+
+
+# Feedback operations
+async def upsert_feedback(message_id: str, user_id: str, feedback_type: str) -> dict:
+    """Create or update feedback for a message."""
+    async with get_connection() as conn:
+        row = await conn.fetchrow(
+            """
+            INSERT INTO feedback (message_id, user_id, feedback_type)
+            VALUES ($1, $2, $3)
+            ON CONFLICT (message_id, user_id) DO UPDATE SET
+                feedback_type = EXCLUDED.feedback_type,
+                created_at = NOW()
+            RETURNING id, message_id, user_id, feedback_type, created_at
+            """,
+            message_id, user_id, feedback_type
+        )
+        return dict(row)
+
+
+async def delete_feedback(message_id: str, user_id: str) -> bool:
+    """Remove feedback for a message."""
+    async with get_connection() as conn:
+        result = await conn.execute(
+            "DELETE FROM feedback WHERE message_id = $1 AND user_id = $2",
+            message_id, user_id
+        )
+        return result == "DELETE 1"
+
+
+async def get_message_feedback(message_id: str, user_id: str) -> Optional[dict]:
+    """Get feedback for a specific message by user."""
+    async with get_connection() as conn:
+        row = await conn.fetchrow(
+            """
+            SELECT id, message_id, user_id, feedback_type, created_at
+            FROM feedback
+            WHERE message_id = $1 AND user_id = $2
+            """,
+            message_id, user_id
+        )
+        return dict(row) if row else None

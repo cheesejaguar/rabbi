@@ -1400,3 +1400,90 @@ body {
         font-size: 0.9rem;
     }
 }
+
+/* Message Action Buttons */
+.message-actions {
+    display: flex;
+    gap: 8px;
+    margin-top: 8px;
+    padding: 4px 0;
+}
+
+.action-btn {
+    width: 32px;
+    height: 32px;
+    border-radius: var(--radius-sm);
+    background: transparent;
+    border: 1px solid var(--border-color);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--text-muted);
+    transition: all var(--transition-fast);
+    padding: 0;
+}
+
+.action-btn:hover {
+    background: var(--bg-tertiary);
+    color: var(--text-primary);
+    border-color: var(--border-light);
+}
+
+.action-btn.active {
+    background: var(--accent);
+    color: white;
+    border-color: var(--accent);
+}
+
+.action-btn svg {
+    width: 16px;
+    height: 16px;
+}
+
+/* Speak button states */
+.speak-btn.loading svg {
+    animation: pulse 1s ease-in-out infinite;
+}
+
+.speak-btn.playing {
+    background: var(--accent);
+    color: white;
+    border-color: var(--accent);
+}
+
+/* Toast notification */
+.toast {
+    position: fixed;
+    bottom: 100px;
+    left: 50%;
+    transform: translateX(-50%) translateY(20px);
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-md);
+    padding: 12px 20px;
+    color: var(--text-primary);
+    font-size: 0.875rem;
+    z-index: 1000;
+    opacity: 0;
+    transition: all var(--transition-normal);
+    box-shadow: var(--shadow-lg);
+}
+
+.toast.visible {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
+}
+
+/* Mobile responsive for action buttons */
+@media (max-width: 640px) {
+    .action-btn {
+        width: 28px;
+        height: 28px;
+    }
+
+    .action-btn svg {
+        width: 14px;
+        height: 14px;
+    }
+}

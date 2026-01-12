@@ -2,6 +2,7 @@
 
 import uuid
 import json
+import httpx
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, HTTPException, Request, Depends
 from fastapi.middleware.cors import CORSMiddleware
@@ -150,6 +151,93 @@ async def get_credits(request: Request):
         return {"credits": 3, "unlimited": False}
 
 
+@app.post("/api/feedback")
+async def submit_feedback(request: Request):
+    """Submit thumbs up/down feedback for a message."""
+    user = get_current_user(request)
+    if not user:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+
+    if not settings.db_url:
+        raise HTTPException(status_code=503, detail="Database not configured")
+
+    body = await request.json()
+    message_id = body.get("message_id")
+    feedback_type = body.get("feedback_type")
+
+    if not message_id or feedback_type not in ("thumbs_up", "thumbs_down"):
+        raise HTTPException(status_code=400, detail="Invalid request")
+
+    try:
+        result = await db.upsert_feedback(message_id, user["id"], feedback_type)
+        return {"success": True, "feedback": result}
+    except Exception as e:
+        print(f"Error saving feedback: {e}")
+        raise HTTPException(status_code=500, detail="Failed to save feedback")
+
+
+@app.delete("/api/feedback/{message_id}")
+async def remove_feedback(request: Request, message_id: str):
+    """Remove feedback for a message."""
+    user = get_current_user(request)
+    if not user:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+
+    if not settings.db_url:
+        raise HTTPException(status_code=503, detail="Database not configured")
+
+    try:
+        deleted = await db.delete_feedback(message_id, user["id"])
+        return {"success": deleted}
+    except Exception as e:
+        print(f"Error deleting feedback: {e}")
+        raise HTTPException(status_code=500, detail="Failed to delete feedback")
+
+
+@app.post("/api/speak")
+async def text_to_speech(request: Request):
+    """Convert text to speech using ElevenLabs streaming API."""
+    user = get_current_user(request)
+    if not user:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+
+    if not settings.elevenlabs_api_key:
+        raise HTTPException(status_code=503, detail="ElevenLabs not configured")
+
+    body = await request.json()
+    text = body.get("text", "")
+
+    if not text:
+        raise HTTPException(status_code=400, detail="No text provided")
+
+    async def stream_audio():
+        async with httpx.AsyncClient() as client:
+            async with client.stream(
+                "POST",
+                f"https://api.elevenlabs.io/v1/text-to-speech/{settings.elevenlabs_voice_id}/stream",
+                params={"output_format": "mp3_44100_128"},
+                headers={
+                    "xi-api-key": settings.elevenlabs_api_key,
+                    "Content-Type": "application/json"
+                },
+                json={
+                    "text": text,
+                    "model_id": "eleven_multilingual_v2"
+                },
+                timeout=60.0
+            ) as response:
+                if response.status_code != 200:
+                    raise HTTPException(status_code=response.status_code, detail="ElevenLabs API error")
+                async for chunk in response.aiter_bytes():
+                    yield chunk
+
+    return StreamingResponse(
+        stream_audio(),
+        media_type="audio/mpeg",
+        headers={"Content-Type": "audio/mpeg"}
+    )
+
+
 @app.post("/api/chat", response_model=ChatResponse)
 async def chat(request: ChatRequest):
     """
@@ -248,7 +336,10 @@ async def chat_stream(chat_request: ChatRequest, request: Request):
             # Save assistant response to database
             if conversation_id and user and settings.db_url and full_response:
                 try:
-                    await db.add_message(conversation_id, "assistant", full_response)
+                    message = await db.add_message(conversation_id, "assistant", full_response)
+                    # Emit message_id so frontend can track feedback
+                    if message and message.get("id"):
+                        yield f"data: {json.dumps({'type': 'message_saved', 'message_id': message['id']})}\n\n"
                     # Update conversation title if not set
                     conv = await db.get_conversation(conversation_id, user["id"])
                     if conv and not conv.get("title"):

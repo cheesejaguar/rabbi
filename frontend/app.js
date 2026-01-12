@@ -404,7 +404,7 @@ async function loadConversation(conversationId) {
             // Update UI
             chatMessages.innerHTML = '';
             data.messages.forEach(msg => {
-                addMessageToUI(msg.role, msg.content, new Date(msg.created_at));
+                addMessageToUI(msg.role, msg.content, new Date(msg.created_at), msg.id);
             });
 
             // Update title
@@ -528,6 +528,7 @@ async function sendMessage(message) {
         let requiresHumanReferral = false;
         let buffer = '';
         let messageElement = null;
+        let savedMessageId = null;
 
         while (true) {
             const { done, value } = await reader.read();
@@ -557,6 +558,8 @@ async function sendMessage(message) {
                             }
                             fullResponse += data.data;
                             updateStreamingMessage(messageElement, fullResponse);
+                        } else if (data.type === 'message_saved') {
+                            savedMessageId = data.message_id;
                         } else if (data.type === 'error') {
                             throw new Error(data.message);
                         }
@@ -568,7 +571,7 @@ async function sendMessage(message) {
         }
 
         if (messageElement) {
-            finalizeStreamingMessage(messageElement, fullResponse);
+            finalizeStreamingMessage(messageElement, fullResponse, savedMessageId);
         } else {
             removeTypingIndicator();
             throw new Error('No response received');
@@ -610,9 +613,12 @@ function addMessage(role, content) {
     scrollToBottom();
 }
 
-function addMessageToUI(role, content, date) {
+function addMessageToUI(role, content, date, messageId = null) {
     const messageDiv = document.createElement('div');
     messageDiv.className = `message ${role}`;
+    if (messageId) {
+        messageDiv.dataset.messageId = messageId;
+    }
 
     const contentDiv = document.createElement('div');
     contentDiv.className = 'message-content';
@@ -632,6 +638,13 @@ function addMessageToUI(role, content, date) {
     metaDiv.appendChild(timeSpan);
     messageDiv.appendChild(contentDiv);
     messageDiv.appendChild(metaDiv);
+
+    // Add action buttons for assistant messages
+    if (role === 'assistant') {
+        const actionsDiv = createMessageActions(content, messageId);
+        messageDiv.appendChild(actionsDiv);
+    }
+
     chatMessages.appendChild(messageDiv);
 }
 
@@ -683,11 +696,21 @@ function updateStreamingMessage(messageElement, content) {
     scrollToBottom();
 }
 
-function finalizeStreamingMessage(messageElement, content) {
+function finalizeStreamingMessage(messageElement, content, messageId = null) {
     const contentDiv = messageElement.querySelector('.message-content');
     contentDiv.innerHTML = formatMarkdown(content);
     contentDiv.classList.remove('streaming');
     messageElement.removeAttribute('id');
+
+    if (messageId) {
+        messageElement.dataset.messageId = messageId;
+    }
+
+    // Add action buttons if not already added
+    if (!messageElement.querySelector('.message-actions')) {
+        const actionsDiv = createMessageActions(content, messageId);
+        messageElement.appendChild(actionsDiv);
+    }
 
     conversationHistory.push({ role: 'assistant', content });
 
@@ -851,4 +874,188 @@ async function loadCredits() {
         console.error('Failed to load credits:', error);
         creditsValue.textContent = 'Error loading';
     }
+}
+
+// Message action buttons
+function createMessageActions(content, messageId) {
+    const actionsDiv = document.createElement('div');
+    actionsDiv.className = 'message-actions';
+
+    actionsDiv.innerHTML = `
+        <button class="action-btn copy-btn" title="Copy response" data-action="copy">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/>
+                <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
+            </svg>
+        </button>
+        <button class="action-btn speak-btn" title="Listen" data-action="speak">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/>
+                <path d="M15.54 8.46a5 5 0 0 1 0 7.07"/>
+                <path d="M19.07 4.93a10 10 0 0 1 0 14.14"/>
+            </svg>
+        </button>
+        <button class="action-btn thumbs-up-btn" title="Good response" data-action="thumbs_up">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M14 9V5a3 3 0 0 0-3-3l-4 9v11h11.28a2 2 0 0 0 2-1.7l1.38-9a2 2 0 0 0-2-2.3zM7 22H4a2 2 0 0 1-2-2v-7a2 2 0 0 1 2-2h3"/>
+            </svg>
+        </button>
+        <button class="action-btn thumbs-down-btn" title="Poor response" data-action="thumbs_down">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M10 15v4a3 3 0 0 0 3 3l4-9V2H5.72a2 2 0 0 0-2 1.7l-1.38 9a2 2 0 0 0 2 2.3zm7-13h2.67A2.31 2.31 0 0 1 22 4v7a2.31 2.31 0 0 1-2.33 2H17"/>
+            </svg>
+        </button>
+    `;
+
+    // Store content for copy/speak
+    actionsDiv.dataset.content = content;
+    if (messageId) {
+        actionsDiv.dataset.messageId = messageId;
+    }
+
+    // Add event listeners
+    actionsDiv.querySelectorAll('.action-btn').forEach(btn => {
+        btn.addEventListener('click', (e) => handleMessageAction(e, actionsDiv));
+    });
+
+    return actionsDiv;
+}
+
+// Current audio for speak functionality
+let currentAudio = null;
+
+function handleMessageAction(event, actionsDiv) {
+    const button = event.currentTarget;
+    const action = button.dataset.action;
+    const content = actionsDiv.dataset.content;
+    const messageId = actionsDiv.dataset.messageId;
+
+    switch (action) {
+        case 'copy':
+            handleCopy(content);
+            break;
+        case 'speak':
+            handleSpeak(content, button);
+            break;
+        case 'thumbs_up':
+        case 'thumbs_down':
+            handleFeedback(messageId, action, button, actionsDiv);
+            break;
+    }
+}
+
+async function handleCopy(content) {
+    try {
+        await navigator.clipboard.writeText(content);
+        showToast('Copied to clipboard');
+    } catch (error) {
+        console.error('Failed to copy:', error);
+        showToast('Failed to copy');
+    }
+}
+
+async function handleSpeak(content, button) {
+    // If already playing, stop
+    if (currentAudio && !currentAudio.paused) {
+        currentAudio.pause();
+        currentAudio = null;
+        button.classList.remove('playing');
+        return;
+    }
+
+    button.classList.add('loading');
+
+    try {
+        const response = await fetch(`${API_BASE}/speak`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ text: content })
+        });
+
+        if (!response.ok) {
+            throw new Error('Speech generation failed');
+        }
+
+        const audioBlob = await response.blob();
+        const audioUrl = URL.createObjectURL(audioBlob);
+        currentAudio = new Audio(audioUrl);
+
+        currentAudio.onended = () => {
+            button.classList.remove('playing');
+            URL.revokeObjectURL(audioUrl);
+            currentAudio = null;
+        };
+
+        currentAudio.onerror = () => {
+            button.classList.remove('playing', 'loading');
+            URL.revokeObjectURL(audioUrl);
+            currentAudio = null;
+            showToast('Audio playback failed');
+        };
+
+        button.classList.remove('loading');
+        button.classList.add('playing');
+        await currentAudio.play();
+
+    } catch (error) {
+        console.error('Speech generation failed:', error);
+        button.classList.remove('loading');
+        showToast('Could not generate speech');
+    }
+}
+
+async function handleFeedback(messageId, feedbackType, button, actionsDiv) {
+    if (!messageId) {
+        showToast('Cannot save feedback');
+        return;
+    }
+
+    const isActive = button.classList.contains('active');
+
+    try {
+        if (isActive) {
+            // Remove feedback
+            await fetch(`${API_BASE}/feedback/${messageId}`, { method: 'DELETE' });
+            button.classList.remove('active');
+        } else {
+            // Clear opposite button if active
+            actionsDiv.querySelectorAll('.action-btn.active').forEach(b => b.classList.remove('active'));
+
+            // Submit feedback
+            await fetch(`${API_BASE}/feedback`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ message_id: messageId, feedback_type: feedbackType })
+            });
+            button.classList.add('active');
+        }
+    } catch (error) {
+        console.error('Failed to save feedback:', error);
+        showToast('Could not save feedback');
+    }
+}
+
+// Toast notification
+function showToast(message) {
+    // Remove existing toast
+    const existingToast = document.querySelector('.toast');
+    if (existingToast) {
+        existingToast.remove();
+    }
+
+    const toast = document.createElement('div');
+    toast.className = 'toast';
+    toast.textContent = message;
+    document.body.appendChild(toast);
+
+    // Trigger animation
+    requestAnimationFrame(() => {
+        toast.classList.add('visible');
+    });
+
+    // Auto-hide
+    setTimeout(() => {
+        toast.classList.remove('visible');
+        setTimeout(() => toast.remove(), 300);
+    }, 2000);
 }

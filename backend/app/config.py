@@ -26,6 +26,10 @@ class Settings(BaseSettings):
     # LLM Model (works with both gateways)
     llm_model: str = "anthropic/claude-sonnet-4-20250514"
 
+    # ElevenLabs TTS configuration
+    elevenlabs_api_key: str = ""
+    elevenlabs_voice_id: str = "hQkoM7ZD59w5rbeIqZY4"
+
     @property
     def llm_api_key(self) -> str:
         """Get the API key for the selected gateway."""
