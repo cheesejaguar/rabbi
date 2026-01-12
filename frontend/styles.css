@@ -221,7 +221,8 @@ body {
     border-radius: var(--radius-sm);
     color: var(--text-muted);
     cursor: pointer;
-    transition: all var(--transition-fast);
+    transition: opacity var(--transition-fast), background var(--transition-fast);
+    z-index: 5;
 }
 
 .conversation-item:hover .conversation-menu-btn {

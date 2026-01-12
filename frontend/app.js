@@ -319,15 +319,17 @@ function renderConversationsList() {
     conversationsList.querySelectorAll('.conversation-menu-btn').forEach(btn => {
         btn.addEventListener('click', (e) => {
             e.stopPropagation();
-            const menuId = btn.dataset.menuId;
-            const dropdown = document.querySelector(`[data-dropdown-id="${menuId}"]`);
+            e.preventDefault();
+            const dropdown = btn.parentElement.querySelector('.conversation-dropdown');
 
             // Close all other dropdowns first
             document.querySelectorAll('.conversation-dropdown').forEach(d => {
                 if (d !== dropdown) d.classList.add('hidden');
             });
 
-            dropdown.classList.toggle('hidden');
+            if (dropdown) {
+                dropdown.classList.toggle('hidden');
+            }
         });
     });
 
