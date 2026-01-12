@@ -1032,11 +1032,13 @@ async function handleSpeak(content, button) {
 
             if (pcmData.length === 0) continue;
 
-            // Convert Int16 PCM to Float32
-            const int16 = new Int16Array(pcmData.buffer, pcmData.byteOffset, pcmData.length / 2);
-            const float32 = new Float32Array(int16.length);
-            for (let i = 0; i < int16.length; i++) {
-                float32[i] = int16[i] / 32768;
+            // Convert Int16 PCM to Float32 using DataView for explicit little-endian handling
+            const numSamples = pcmData.length / 2;
+            const float32 = new Float32Array(numSamples);
+            const dataView = new DataView(pcmData.buffer, pcmData.byteOffset, pcmData.byteLength);
+            for (let i = 0; i < numSamples; i++) {
+                const int16Value = dataView.getInt16(i * 2, true); // true = little-endian
+                float32[i] = int16Value / 32768;
             }
 
             // Create AudioBuffer
