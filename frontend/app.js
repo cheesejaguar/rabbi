@@ -960,8 +960,10 @@ async function handleCopy(content) {
 
 async function handleSpeak(content, button) {
     // Initialize AudioContext on first use - must happen in user gesture
+    // Set sample rate to 24kHz to match ElevenLabs PCM output
     if (!audioContext) {
-        audioContext = new (window.AudioContext || window.webkitAudioContext)();
+        const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+        audioContext = new AudioContextClass({ sampleRate: 24000 });
     }
 
     // Resume AudioContext immediately - this satisfies autoplay policy
