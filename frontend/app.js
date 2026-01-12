@@ -694,12 +694,7 @@ function showTypingIndicator() {
 
     const indicator = document.createElement('div');
     indicator.className = 'message-content typing-indicator';
-    indicator.innerHTML = `
-        <div class="thinking-phase">
-            <span class="phase-text">${agentPhases[0].phrase}</span>
-            <div class="phase-dots"><span></span><span></span><span></span></div>
-        </div>
-    `;
+    indicator.innerHTML = `<div class="thinking-phase"><span class="phase-text">${agentPhases[0].phrase}</span><div class="phase-dots"><span></span><span></span><span></span></div></div>`;
 
     typing.appendChild(indicator);
     chatMessages.appendChild(typing);

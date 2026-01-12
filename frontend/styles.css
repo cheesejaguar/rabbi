@@ -1127,8 +1127,10 @@ body {
 
 /* Typing Indicator in Messages */
 .typing-indicator {
-    padding: 14px 18px;
-    min-height: auto;
+    padding: 14px 18px !important;
+    min-height: auto !important;
+    line-height: 1.4 !important;
+    white-space: normal !important;
 }
 
 .thinking-phase {
