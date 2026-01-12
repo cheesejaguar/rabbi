@@ -328,6 +328,10 @@ function renderConversationsList() {
             });
 
             if (dropdown) {
+                // Position the fixed dropdown relative to button
+                const rect = btn.getBoundingClientRect();
+                dropdown.style.top = `${rect.bottom + 4}px`;
+                dropdown.style.left = `${rect.right - 140}px`; // Align to right edge
                 dropdown.classList.toggle('hidden');
             }
         });
