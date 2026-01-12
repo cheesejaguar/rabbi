@@ -388,6 +388,11 @@ body {
     .sidebar-toggle {
         display: none;
     }
+
+    /* Show close button when sidebar is open on mobile */
+    .sidebar.open .sidebar-toggle {
+        display: flex;
+    }
 }
 
 /* Utility Classes */
