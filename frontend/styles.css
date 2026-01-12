@@ -313,11 +313,9 @@ body {
 }
 
 .sidebar-footer .user-dropdown {
-    position: absolute;
-    bottom: 100%;
-    left: 12px;
-    right: 12px;
-    margin-bottom: 8px;
+    position: fixed;
+    min-width: 200px;
+    z-index: 1000;
 }
 
 /* Main Content */

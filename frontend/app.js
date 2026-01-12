@@ -174,6 +174,10 @@ function setupEventListeners() {
     // User menu in sidebar - entire profile area is clickable
     userProfile.addEventListener('click', (e) => {
         e.stopPropagation();
+        // Position the fixed dropdown above the profile
+        const rect = userProfile.getBoundingClientRect();
+        sidebarDropdown.style.bottom = `${window.innerHeight - rect.top + 8}px`;
+        sidebarDropdown.style.left = `${rect.left}px`;
         sidebarDropdown.classList.toggle('hidden');
     });
 
