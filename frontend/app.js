@@ -983,9 +983,8 @@ async function handleSpeak(content, button) {
         const audioBlob = new Blob([arrayBuffer], { type: 'audio/mpeg' });
         const audioUrl = URL.createObjectURL(audioBlob);
 
-        currentAudio = new Audio();
+        currentAudio = new Audio(audioUrl);
 
-        // Set up event handlers before setting src
         currentAudio.onended = () => {
             button.classList.remove('playing');
             URL.revokeObjectURL(audioUrl);
@@ -1000,17 +999,16 @@ async function handleSpeak(content, button) {
             showToast('Audio playback failed');
         };
 
-        // Wait for audio to be ready before playing
-        await new Promise((resolve, reject) => {
-            currentAudio.oncanplaythrough = resolve;
-            currentAudio.onerror = reject;
-            currentAudio.src = audioUrl;
-            currentAudio.load();
-        });
-
         button.classList.remove('loading');
         button.classList.add('playing');
-        await currentAudio.play();
+
+        // Play immediately - don't wait for canplaythrough
+        // The browser will buffer as needed
+        currentAudio.play().catch(err => {
+            console.error('Play failed:', err);
+            button.classList.remove('playing');
+            showToast('Could not play audio');
+        });
 
     } catch (error) {
         console.error('Speech generation failed:', error);
