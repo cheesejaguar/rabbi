@@ -926,6 +926,8 @@ function createMessageActions(content, messageId) {
 let audioContext = null;
 let isPlaying = false;
 let stopRequested = false;
+let activeSources = []; // Track all scheduled sources for stop functionality
+let gainNode = null; // Master gain node for easy disconnect
 
 function handleMessageAction(event, actionsDiv) {
     const button = event.currentTarget;
@@ -963,15 +965,31 @@ async function handleSpeak(content, button) {
         audioContext = new (window.AudioContext || window.webkitAudioContext)();
     }
 
+    // Create gain node if needed (used as master output for easy disconnect)
+    if (!gainNode) {
+        gainNode = audioContext.createGain();
+        gainNode.connect(audioContext.destination);
+    }
+
     // Resume AudioContext immediately - this satisfies autoplay policy
     if (audioContext.state === 'suspended') {
         await audioContext.resume();
     }
 
-    // If already playing, stop
+    // If already playing, stop all sources
     if (isPlaying) {
         stopRequested = true;
+        // Stop all active sources immediately
+        for (const source of activeSources) {
+            try {
+                source.stop();
+            } catch (e) {
+                // Source may have already stopped
+            }
+        }
+        activeSources = [];
         button.classList.remove('playing');
+        isPlaying = false;
         return;
     }
 
@@ -1035,7 +1053,14 @@ async function handleSpeak(content, button) {
             // Create source and schedule playback
             const source = audioContext.createBufferSource();
             source.buffer = audioBuffer;
-            source.connect(audioContext.destination);
+            source.connect(gainNode);
+
+            // Track source for stop functionality
+            activeSources.push(source);
+            source.onended = () => {
+                const idx = activeSources.indexOf(source);
+                if (idx > -1) activeSources.splice(idx, 1);
+            };
 
             // Schedule to play after previous chunk
             const startTime = Math.max(nextStartTime, audioContext.currentTime);
@@ -1056,16 +1081,19 @@ async function handleSpeak(content, button) {
             lastSource.onended = () => {
                 button.classList.remove('playing');
                 isPlaying = false;
+                activeSources = [];
             };
         } else {
             button.classList.remove('playing', 'loading');
             isPlaying = false;
+            activeSources = [];
         }
 
     } catch (error) {
         console.error('Speech generation failed:', error);
         button.classList.remove('loading', 'playing');
         isPlaying = false;
+        activeSources = [];
         showToast('Could not generate speech');
     }
 }
