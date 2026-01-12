@@ -314,6 +314,8 @@ body {
 
 .sidebar-footer .user-dropdown {
     position: fixed;
+    top: auto;
+    right: auto;
     min-width: 200px;
     z-index: 1000;
 }
