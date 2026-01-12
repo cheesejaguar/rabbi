@@ -833,6 +833,12 @@ body {
     text-decoration: none;
     font-size: 0.875rem;
     transition: all var(--transition-fast);
+    background: transparent;
+    border: none;
+    width: 100%;
+    text-align: left;
+    font-family: inherit;
+    cursor: pointer;
 }
 
 .dropdown-item:hover {
