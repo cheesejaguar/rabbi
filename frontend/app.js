@@ -973,25 +973,40 @@ async function handleSpeak(content, button) {
         });
 
         if (!response.ok) {
+            const errorText = await response.text();
+            console.error('Speak API error:', response.status, errorText);
             throw new Error('Speech generation failed');
         }
 
-        const audioBlob = await response.blob();
+        // Get the raw array buffer and create blob with explicit type
+        const arrayBuffer = await response.arrayBuffer();
+        const audioBlob = new Blob([arrayBuffer], { type: 'audio/mpeg' });
         const audioUrl = URL.createObjectURL(audioBlob);
-        currentAudio = new Audio(audioUrl);
 
+        currentAudio = new Audio();
+
+        // Set up event handlers before setting src
         currentAudio.onended = () => {
             button.classList.remove('playing');
             URL.revokeObjectURL(audioUrl);
             currentAudio = null;
         };
 
-        currentAudio.onerror = () => {
+        currentAudio.onerror = (e) => {
+            console.error('Audio playback error:', e);
             button.classList.remove('playing', 'loading');
             URL.revokeObjectURL(audioUrl);
             currentAudio = null;
             showToast('Audio playback failed');
         };
+
+        // Wait for audio to be ready before playing
+        await new Promise((resolve, reject) => {
+            currentAudio.oncanplaythrough = resolve;
+            currentAudio.onerror = reject;
+            currentAudio.src = audioUrl;
+            currentAudio.load();
+        });
 
         button.classList.remove('loading');
         button.classList.add('playing');
