@@ -927,7 +927,6 @@ let audioContext = null;
 let isPlaying = false;
 let stopRequested = false;
 let activeSources = []; // Track all scheduled sources for stop functionality
-let gainNode = null; // Master gain node for easy disconnect
 
 function handleMessageAction(event, actionsDiv) {
     const button = event.currentTarget;
@@ -963,12 +962,6 @@ async function handleSpeak(content, button) {
     // Initialize AudioContext on first use - must happen in user gesture
     if (!audioContext) {
         audioContext = new (window.AudioContext || window.webkitAudioContext)();
-    }
-
-    // Create gain node if needed (used as master output for easy disconnect)
-    if (!gainNode) {
-        gainNode = audioContext.createGain();
-        gainNode.connect(audioContext.destination);
     }
 
     // Resume AudioContext immediately - this satisfies autoplay policy
@@ -1053,14 +1046,10 @@ async function handleSpeak(content, button) {
             // Create source and schedule playback
             const source = audioContext.createBufferSource();
             source.buffer = audioBuffer;
-            source.connect(gainNode);
+            source.connect(audioContext.destination);
 
             // Track source for stop functionality
             activeSources.push(source);
-            source.onended = () => {
-                const idx = activeSources.indexOf(source);
-                if (idx > -1) activeSources.splice(idx, 1);
-            };
 
             // Schedule to play after previous chunk
             const startTime = Math.max(nextStartTime, audioContext.currentTime);
