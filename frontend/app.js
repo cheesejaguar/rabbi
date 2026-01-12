@@ -32,6 +32,7 @@ const sidebar = document.getElementById('sidebar');
 const sidebarToggle = document.getElementById('sidebarToggle');
 const sidebarOverlay = document.getElementById('sidebarOverlay');
 const menuBtn = document.getElementById('menuBtn');
+const welcomeMenuBtn = document.getElementById('welcomeMenuBtn');
 const newChatBtn = document.getElementById('newChatBtn');
 const conversationsList = document.getElementById('conversationsList');
 const sidebarUserAvatar = document.getElementById('sidebarUserAvatar');
@@ -163,6 +164,7 @@ function setupEventListeners() {
     // Sidebar toggle
     sidebarToggle.addEventListener('click', toggleSidebar);
     menuBtn.addEventListener('click', toggleSidebarMobile);
+    welcomeMenuBtn.addEventListener('click', toggleSidebarMobile);
     sidebarOverlay.addEventListener('click', closeSidebarMobile);
 
     // New chat button
@@ -203,8 +205,17 @@ function toggleSidebar() {
 }
 
 function toggleSidebarMobile() {
-    sidebar.classList.toggle('open');
-    sidebarOverlay.classList.toggle('visible');
+    // On mobile, use open/overlay behavior
+    // On desktop with collapsed sidebar, toggle collapsed state
+    const isMobile = window.innerWidth <= 768;
+
+    if (isMobile) {
+        sidebar.classList.toggle('open');
+        sidebarOverlay.classList.toggle('visible');
+    } else {
+        // Desktop: toggle collapsed state
+        sidebar.classList.toggle('collapsed');
+    }
 }
 
 function closeSidebarMobile() {

@@ -10,7 +10,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="/static/styles.css?v=10">
+    <link rel="stylesheet" href="/static/styles.css?v=11">
 </head>
 <body>
     <div class="app-container">
@@ -72,6 +72,13 @@
         <main class="main-content" id="mainContent">
             <!-- Welcome Screen -->
             <div class="welcome-screen" id="welcomeScreen">
+                <button class="menu-btn welcome-menu-btn" id="welcomeMenuBtn" aria-label="Toggle menu">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <line x1="3" y1="12" x2="21" y2="12"></line>
+                        <line x1="3" y1="6" x2="21" y2="6"></line>
+                        <line x1="3" y1="18" x2="21" y2="18"></line>
+                    </svg>
+                </button>
                 <div class="welcome-content">
                     <h1 class="greeting">
                         <span class="greeting-icon">&#x2721;</span>
@@ -181,6 +188,6 @@
     <!-- Mobile overlay for sidebar -->
     <div class="sidebar-overlay hidden" id="sidebarOverlay"></div>
 
-    <script src="/static/app.js?v=10"></script>
+    <script src="/static/app.js?v=11"></script>
 </body>
 </html>

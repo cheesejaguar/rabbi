@@ -76,14 +76,15 @@ body {
     border-right: 1px solid var(--border-color);
     display: flex;
     flex-direction: column;
-    transition: transform var(--transition-normal), width var(--transition-normal);
+    transition: width var(--transition-normal), min-width var(--transition-normal);
     z-index: 50;
+    overflow: hidden;
 }
 
 .sidebar.collapsed {
     width: 0;
     min-width: 0;
-    transform: translateX(-100%);
+    border-right: none;
 }
 
 .sidebar-header {
@@ -301,7 +302,7 @@ body {
     position: relative;
 }
 
-/* Mobile menu button */
+/* Menu button - shows when sidebar is collapsed or on mobile */
 .menu-btn {
     width: 40px;
     height: 40px;
@@ -319,6 +320,18 @@ body {
 .menu-btn:hover {
     background: var(--bg-secondary);
     color: var(--text-primary);
+}
+
+/* Show menu button when sidebar is collapsed on desktop */
+.sidebar.collapsed ~ .main-content .menu-btn {
+    display: flex;
+}
+
+/* Welcome screen menu button positioning */
+.welcome-menu-btn {
+    position: absolute;
+    top: 16px;
+    left: 16px;
 }
 
 /* Sidebar overlay for mobile */
