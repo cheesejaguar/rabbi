@@ -221,7 +221,7 @@ async def text_to_speech(request: Request):
             },
             json={
                 "text": text,
-                "model_id": "eleven_multilingual_v2"
+                "model_id": "eleven_v3"
             },
             timeout=60.0
         )
