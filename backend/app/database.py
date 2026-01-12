@@ -66,9 +66,19 @@ CREATE TABLE IF NOT EXISTS users (
     email TEXT UNIQUE NOT NULL,
     first_name TEXT,
     last_name TEXT,
+    credits INTEGER DEFAULT 3,  -- Starting credits for new users
     created_at TIMESTAMPTZ DEFAULT NOW(),
     updated_at TIMESTAMPTZ DEFAULT NOW()
 );
+
+-- Add credits column if it doesn't exist (for existing databases)
+DO $$
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns
+                   WHERE table_name = 'users' AND column_name = 'credits') THEN
+        ALTER TABLE users ADD COLUMN credits INTEGER DEFAULT 3;
+    END IF;
+END $$;
 
 -- Conversations table
 CREATE TABLE IF NOT EXISTS conversations (
@@ -149,14 +159,14 @@ async def upsert_user(user_id: str, email: str, first_name: str = None, last_nam
     async with get_connection() as conn:
         row = await conn.fetchrow(
             """
-            INSERT INTO users (id, email, first_name, last_name)
-            VALUES ($1, $2, $3, $4)
+            INSERT INTO users (id, email, first_name, last_name, credits)
+            VALUES ($1, $2, $3, $4, 3)
             ON CONFLICT (id) DO UPDATE SET
                 email = EXCLUDED.email,
                 first_name = EXCLUDED.first_name,
                 last_name = EXCLUDED.last_name,
                 updated_at = NOW()
-            RETURNING id, email, first_name, last_name, created_at, updated_at
+            RETURNING id, email, first_name, last_name, credits, created_at, updated_at
             """,
             user_id, email, first_name, last_name
         )
@@ -167,10 +177,50 @@ async def get_user(user_id: str) -> Optional[dict]:
     """Get a user by ID."""
     async with get_connection() as conn:
         row = await conn.fetchrow(
-            "SELECT id, email, first_name, last_name, created_at, updated_at FROM users WHERE id = $1",
+            "SELECT id, email, first_name, last_name, credits, created_at, updated_at FROM users WHERE id = $1",
             user_id
         )
         return dict(row) if row else None
+
+
+async def get_user_credits(user_id: str) -> Optional[int]:
+    """Get a user's remaining credits."""
+    async with get_connection() as conn:
+        row = await conn.fetchrow(
+            "SELECT credits FROM users WHERE id = $1",
+            user_id
+        )
+        return row['credits'] if row else None
+
+
+async def consume_credit(user_id: str) -> bool:
+    """Consume one credit from user. Returns True if successful, False if no credits."""
+    async with get_connection() as conn:
+        result = await conn.fetchrow(
+            """
+            UPDATE users
+            SET credits = credits - 1, updated_at = NOW()
+            WHERE id = $1 AND credits > 0
+            RETURNING credits
+            """,
+            user_id
+        )
+        return result is not None
+
+
+async def add_credits(user_id: str, amount: int) -> Optional[int]:
+    """Add credits to a user's account. Returns new balance."""
+    async with get_connection() as conn:
+        row = await conn.fetchrow(
+            """
+            UPDATE users
+            SET credits = credits + $2, updated_at = NOW()
+            WHERE id = $1
+            RETURNING credits
+            """,
+            user_id, amount
+        )
+        return row['credits'] if row else None
 
 
 # Conversation operations

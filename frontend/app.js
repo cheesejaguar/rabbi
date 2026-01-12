@@ -40,6 +40,12 @@ const sidebarUserName = document.getElementById('sidebarUserName');
 const userProfile = document.getElementById('userProfile');
 const sidebarUserMenuToggle = document.getElementById('sidebarUserMenuToggle');
 const sidebarDropdown = document.getElementById('sidebarDropdown');
+const settingsScreen = document.getElementById('settingsScreen');
+const settingsBtn = document.getElementById('settingsBtn');
+const settingsBackBtn = document.getElementById('settingsBackBtn');
+const creditsValue = document.getElementById('creditsValue');
+const settingsUserName = document.getElementById('settingsUserName');
+const settingsUserEmail = document.getElementById('settingsUserEmail');
 
 // Initialize
 document.addEventListener('DOMContentLoaded', init);
@@ -187,6 +193,16 @@ function setupEventListeners() {
         sidebarDropdown.classList.add('hidden');
         document.querySelectorAll('.conversation-dropdown').forEach(d => d.classList.add('hidden'));
     });
+
+    // Settings button
+    settingsBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        sidebarDropdown.classList.add('hidden');
+        showSettings();
+    });
+
+    // Settings back button
+    settingsBackBtn.addEventListener('click', hideSettings);
 
     // Suggestion chips
     suggestionChips.forEach(chip => {
@@ -396,6 +412,7 @@ async function loadConversation(conversationId) {
 
             // Switch to chat screen
             welcomeScreen.classList.add('hidden');
+            settingsScreen.classList.add('hidden');
             chatScreen.classList.remove('hidden');
 
             // Update active state in sidebar
@@ -446,6 +463,7 @@ async function sendFromWelcome() {
 
     // Switch to chat screen
     welcomeScreen.classList.add('hidden');
+    settingsScreen.classList.add('hidden');
     chatScreen.classList.remove('hidden');
     chatTitle.textContent = 'New conversation';
 
@@ -753,6 +771,7 @@ function startNewConversation() {
 
     // Switch to welcome screen
     chatScreen.classList.add('hidden');
+    settingsScreen.classList.add('hidden');
     welcomeScreen.classList.remove('hidden');
 
     // Update sidebar
@@ -775,4 +794,61 @@ function scrollToBottom() {
     setTimeout(() => {
         chatMessages.scrollTop = chatMessages.scrollHeight;
     }, 100);
+}
+
+// Settings functions
+async function showSettings() {
+    // Hide other screens
+    welcomeScreen.classList.add('hidden');
+    chatScreen.classList.add('hidden');
+    settingsScreen.classList.remove('hidden');
+
+    // Close mobile sidebar
+    closeSidebarMobile();
+
+    // Update profile info
+    if (currentUser) {
+        const firstName = currentUser.first_name || '';
+        const lastName = currentUser.last_name || '';
+        const fullName = [firstName, lastName].filter(Boolean).join(' ') || 'User';
+        settingsUserName.textContent = fullName;
+        settingsUserEmail.textContent = currentUser.email || '-';
+    }
+
+    // Load credits
+    await loadCredits();
+}
+
+function hideSettings() {
+    settingsScreen.classList.add('hidden');
+
+    // Show appropriate screen
+    if (currentConversationId && conversationHistory.length > 0) {
+        chatScreen.classList.remove('hidden');
+    } else {
+        welcomeScreen.classList.remove('hidden');
+    }
+}
+
+async function loadCredits() {
+    creditsValue.textContent = 'Loading...';
+    creditsValue.classList.remove('credits-value');
+
+    try {
+        const response = await fetch(`${API_BASE}/credits`);
+        if (response.ok) {
+            const data = await response.json();
+            if (data.unlimited) {
+                creditsValue.textContent = 'Unlimited';
+            } else {
+                creditsValue.textContent = data.credits;
+                creditsValue.classList.add('credits-value');
+            }
+        } else {
+            creditsValue.textContent = 'Error loading';
+        }
+    } catch (error) {
+        console.error('Failed to load credits:', error);
+        creditsValue.textContent = 'Error loading';
+    }
 }

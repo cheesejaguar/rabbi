@@ -131,6 +131,25 @@ async def get_greeting():
     return GreetingResponse(greeting=greeting)
 
 
+@app.get("/api/credits")
+async def get_credits(request: Request):
+    """Get the current user's remaining credits."""
+    user = get_current_user(request)
+    if not user:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+
+    if not settings.db_url:
+        # If no database, return unlimited credits
+        return {"credits": -1, "unlimited": True}
+
+    try:
+        credits = await db.get_user_credits(user["id"])
+        return {"credits": credits if credits is not None else 3, "unlimited": False}
+    except Exception as e:
+        print(f"Error getting credits: {e}")
+        return {"credits": 3, "unlimited": False}
+
+
 @app.post("/api/chat", response_model=ChatResponse)
 async def chat(request: ChatRequest):
     """
@@ -190,6 +209,18 @@ async def chat_stream(chat_request: ChatRequest, request: Request):
 
     # Get current user for database operations
     user = get_current_user(request)
+
+    # Check and consume credit before processing
+    if user and settings.db_url:
+        try:
+            has_credit = await db.consume_credit(user["id"])
+            if not has_credit:
+                return StreamingResponse(
+                    iter([f"data: {json.dumps({'type': 'error', 'message': 'No credits remaining. Please contact support.'})}\n\n"]),
+                    media_type="text/event-stream",
+                )
+        except Exception as e:
+            print(f"Warning: Could not check credits: {e}")
 
     # Save user message to database if conversation_id provided
     if conversation_id and user and settings.db_url:
