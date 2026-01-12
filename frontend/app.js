@@ -177,13 +177,11 @@ function setupEventListeners() {
         sidebarDropdown.classList.toggle('hidden');
     });
 
-    // Close dropdown when clicking outside
+    // Close dropdowns when clicking outside
     document.addEventListener('click', () => {
         sidebarDropdown.classList.add('hidden');
+        document.querySelectorAll('.conversation-dropdown').forEach(d => d.classList.add('hidden'));
     });
-
-    // Prevent dropdown from closing when clicking inside
-    sidebarDropdown.addEventListener('click', (e) => e.stopPropagation());
 
     // Suggestion chips
     suggestionChips.forEach(chip => {
@@ -286,33 +284,62 @@ function renderConversationsList() {
     }
 
     conversationsList.innerHTML = conversations.map(conv => `
-        <button class="conversation-item ${conv.id === currentConversationId ? 'active' : ''}"
-                data-id="${conv.id}">
+        <div class="conversation-item ${conv.id === currentConversationId ? 'active' : ''}" data-id="${conv.id}">
             <span class="conversation-title">${escapeHtml(conv.title || conv.first_message || 'New conversation')}</span>
-            <button class="delete-btn" data-delete-id="${conv.id}" title="Delete conversation">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
-                    <circle cx="5" cy="12" r="2"/>
-                    <circle cx="12" cy="12" r="2"/>
-                    <circle cx="19" cy="12" r="2"/>
-                </svg>
-            </button>
-        </button>
+            <div class="conversation-menu">
+                <button class="conversation-menu-btn" data-menu-id="${conv.id}" aria-label="Conversation options">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+                        <circle cx="5" cy="12" r="2"/>
+                        <circle cx="12" cy="12" r="2"/>
+                        <circle cx="19" cy="12" r="2"/>
+                    </svg>
+                </button>
+                <div class="conversation-dropdown hidden" data-dropdown-id="${conv.id}">
+                    <button class="dropdown-item dropdown-item-danger" data-delete-id="${conv.id}">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
+                        </svg>
+                        Delete
+                    </button>
+                </div>
+            </div>
+        </div>
     `).join('');
 
-    // Add click handlers
+    // Add click handlers for conversation items
     conversationsList.querySelectorAll('.conversation-item').forEach(item => {
         item.addEventListener('click', (e) => {
-            // Don't load conversation if clicking delete button
-            if (e.target.closest('.delete-btn')) return;
+            // Don't load conversation if clicking menu
+            if (e.target.closest('.conversation-menu')) return;
             loadConversation(item.dataset.id);
         });
     });
 
-    conversationsList.querySelectorAll('.delete-btn').forEach(btn => {
+    // Add click handlers for menu buttons
+    conversationsList.querySelectorAll('.conversation-menu-btn').forEach(btn => {
         btn.addEventListener('click', (e) => {
             e.stopPropagation();
-            deleteConversation(btn.dataset.deleteId);
+            const menuId = btn.dataset.menuId;
+            const dropdown = document.querySelector(`[data-dropdown-id="${menuId}"]`);
+
+            // Close all other dropdowns first
+            document.querySelectorAll('.conversation-dropdown').forEach(d => {
+                if (d !== dropdown) d.classList.add('hidden');
+            });
+
+            dropdown.classList.toggle('hidden');
         });
+    });
+
+    // Add click handlers for delete buttons
+    conversationsList.querySelectorAll('[data-delete-id]').forEach(btn => {
+        if (btn.classList.contains('dropdown-item')) {
+            btn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                const convId = btn.dataset.deleteId;
+                deleteConversation(convId);
+            });
+        }
     });
 }
 
@@ -374,7 +401,8 @@ async function loadConversation(conversationId) {
 }
 
 async function deleteConversation(conversationId) {
-    if (!confirm('Delete this conversation?')) return;
+    // Close any open dropdown
+    document.querySelectorAll('.conversation-dropdown').forEach(d => d.classList.add('hidden'));
 
     try {
         const response = await fetch(`${API_BASE}/conversations/${conversationId}`, {

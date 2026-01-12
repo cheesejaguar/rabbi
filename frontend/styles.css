@@ -203,10 +203,16 @@ body {
     text-overflow: ellipsis;
 }
 
-.conversation-item .delete-btn {
+/* Conversation menu */
+.conversation-menu {
+    position: relative;
+    flex-shrink: 0;
+}
+
+.conversation-menu-btn {
     opacity: 0;
-    width: 24px;
-    height: 24px;
+    width: 28px;
+    height: 28px;
     display: flex;
     align-items: center;
     justify-content: center;
@@ -216,16 +222,38 @@ body {
     color: var(--text-muted);
     cursor: pointer;
     transition: all var(--transition-fast);
-    flex-shrink: 0;
 }
 
-.conversation-item:hover .delete-btn {
+.conversation-item:hover .conversation-menu-btn {
     opacity: 1;
 }
 
-.conversation-item .delete-btn:hover {
-    background: rgba(239, 68, 68, 0.1);
-    color: #ef4444;
+.conversation-menu-btn:hover {
+    background: var(--bg-tertiary);
+    color: var(--text-primary);
+}
+
+.conversation-dropdown {
+    position: absolute;
+    top: 100%;
+    right: 0;
+    margin-top: 4px;
+    min-width: 140px;
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-md);
+    box-shadow: var(--shadow-lg);
+    z-index: 100;
+    animation: dropdownIn 0.15s ease;
+}
+
+.conversation-dropdown .dropdown-item {
+    width: 100%;
+    padding: 10px 14px;
+    border: none;
+    background: transparent;
+    font-family: inherit;
+    cursor: pointer;
 }
 
 .sidebar-footer {
