@@ -922,7 +922,9 @@ function createMessageActions(content, messageId) {
 }
 
 // Current audio for speak functionality
-let currentAudio = null;
+// Web Audio API for better autoplay policy handling
+let audioContext = null;
+let currentAudioSource = null;
 
 function handleMessageAction(event, actionsDiv) {
     const button = event.currentTarget;
@@ -955,10 +957,25 @@ async function handleCopy(content) {
 }
 
 async function handleSpeak(content, button) {
+    // Initialize AudioContext on first use - must happen in user gesture
+    if (!audioContext) {
+        audioContext = new (window.AudioContext || window.webkitAudioContext)();
+    }
+
+    // Resume AudioContext immediately - this satisfies autoplay policy
+    // because it happens synchronously in the user gesture handler
+    if (audioContext.state === 'suspended') {
+        await audioContext.resume();
+    }
+
     // If already playing, stop
-    if (currentAudio && !currentAudio.paused) {
-        currentAudio.pause();
-        currentAudio = null;
+    if (currentAudioSource) {
+        try {
+            currentAudioSource.stop();
+        } catch (e) {
+            // Ignore - source may have already stopped
+        }
+        currentAudioSource = null;
         button.classList.remove('playing');
         return;
     }
@@ -978,37 +995,26 @@ async function handleSpeak(content, button) {
             throw new Error('Speech generation failed');
         }
 
-        // Get the raw array buffer and create blob with explicit type
         const arrayBuffer = await response.arrayBuffer();
-        const audioBlob = new Blob([arrayBuffer], { type: 'audio/mpeg' });
-        const audioUrl = URL.createObjectURL(audioBlob);
 
-        currentAudio = new Audio(audioUrl);
+        // Decode audio using Web Audio API
+        const audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
 
-        currentAudio.onended = () => {
+        // Create buffer source and connect to output
+        const source = audioContext.createBufferSource();
+        source.buffer = audioBuffer;
+        source.connect(audioContext.destination);
+
+        source.onended = () => {
             button.classList.remove('playing');
-            URL.revokeObjectURL(audioUrl);
-            currentAudio = null;
-        };
-
-        currentAudio.onerror = (e) => {
-            console.error('Audio playback error:', e);
-            button.classList.remove('playing', 'loading');
-            URL.revokeObjectURL(audioUrl);
-            currentAudio = null;
-            showToast('Audio playback failed');
+            currentAudioSource = null;
         };
 
         button.classList.remove('loading');
         button.classList.add('playing');
 
-        // Play immediately - don't wait for canplaythrough
-        // The browser will buffer as needed
-        currentAudio.play().catch(err => {
-            console.error('Play failed:', err);
-            button.classList.remove('playing');
-            showToast('Could not play audio');
-        });
+        currentAudioSource = source;
+        source.start(0);
 
     } catch (error) {
         console.error('Speech generation failed:', error);
