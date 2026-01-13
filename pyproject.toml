@@ -18,6 +18,7 @@ dependencies = [
     "mangum>=0.17.0",
     "asyncpg>=0.29.0",
     "slowapi>=0.1.9",
+    "stripe>=8.0.0",
 ]
 
 [project.optional-dependencies]

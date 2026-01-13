@@ -42,6 +42,11 @@ class Settings(BaseSettings):
     elevenlabs_api_key: str = ""
     elevenlabs_voice_id: str = "hQkoM7ZD59w5rbeIqZY4"
 
+    # Stripe payment configuration
+    stripe_secret_key: str = ""
+    stripe_publishable_key: str = ""
+    stripe_webhook_secret: str = ""
+
     @property
     def llm_api_key(self) -> str:
         """Get the API key for the selected gateway."""

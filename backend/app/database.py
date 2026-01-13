@@ -208,6 +208,33 @@ CREATE INDEX IF NOT EXISTS idx_analytics_events_user_id ON analytics_events(user
 CREATE INDEX IF NOT EXISTS idx_analytics_events_session_id ON analytics_events(session_id);
 CREATE INDEX IF NOT EXISTS idx_analytics_events_event_type ON analytics_events(event_type);
 CREATE INDEX IF NOT EXISTS idx_analytics_events_created_at ON analytics_events(created_at DESC);
+
+-- Add stripe_customer_id column to users if it doesn't exist
+DO $$
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns
+                   WHERE table_name = 'users' AND column_name = 'stripe_customer_id') THEN
+        ALTER TABLE users ADD COLUMN stripe_customer_id TEXT;
+    END IF;
+END $$;
+
+-- Purchases table for tracking credit purchases
+CREATE TABLE IF NOT EXISTS purchases (
+    id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
+    user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    stripe_payment_intent_id TEXT UNIQUE NOT NULL,
+    stripe_customer_id TEXT,
+    amount_cents INTEGER NOT NULL,
+    credits_purchased INTEGER NOT NULL,
+    package_id TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'completed', 'failed', 'refunded')),
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    completed_at TIMESTAMPTZ
+);
+
+CREATE INDEX IF NOT EXISTS idx_purchases_user_id ON purchases(user_id);
+CREATE INDEX IF NOT EXISTS idx_purchases_stripe_payment_intent_id ON purchases(stripe_payment_intent_id);
+CREATE INDEX IF NOT EXISTS idx_purchases_status ON purchases(status);
 """
 
 
@@ -299,6 +326,145 @@ async def add_credits(user_id: str, amount: int) -> Optional[int]:
             user_id, amount
         )
         return row['credits'] if row else None
+
+
+# Stripe customer operations
+async def get_stripe_customer_id(user_id: str) -> Optional[str]:
+    """Get the Stripe customer ID for a user."""
+    async with get_connection() as conn:
+        row = await conn.fetchrow(
+            "SELECT stripe_customer_id FROM users WHERE id = $1",
+            user_id
+        )
+        return row['stripe_customer_id'] if row else None
+
+
+async def set_stripe_customer_id(user_id: str, stripe_customer_id: str) -> bool:
+    """Set the Stripe customer ID for a user."""
+    async with get_connection() as conn:
+        result = await conn.execute(
+            """
+            UPDATE users
+            SET stripe_customer_id = $2, updated_at = NOW()
+            WHERE id = $1
+            """,
+            user_id, stripe_customer_id
+        )
+        return result == "UPDATE 1"
+
+
+# Purchase operations
+async def create_purchase(
+    user_id: str,
+    stripe_payment_intent_id: str,
+    stripe_customer_id: str,
+    amount_cents: int,
+    credits_purchased: int,
+    package_id: str
+) -> dict:
+    """Create a pending purchase record."""
+    async with get_connection() as conn:
+        row = await conn.fetchrow(
+            """
+            INSERT INTO purchases (user_id, stripe_payment_intent_id, stripe_customer_id, amount_cents, credits_purchased, package_id)
+            VALUES ($1, $2, $3, $4, $5, $6)
+            RETURNING id, user_id, stripe_payment_intent_id, amount_cents, credits_purchased, package_id, status, created_at
+            """,
+            user_id, stripe_payment_intent_id, stripe_customer_id, amount_cents, credits_purchased, package_id
+        )
+        return dict(row)
+
+
+async def get_purchase_by_intent_id(stripe_payment_intent_id: str) -> Optional[dict]:
+    """Get a purchase by Stripe payment intent ID."""
+    async with get_connection() as conn:
+        row = await conn.fetchrow(
+            """
+            SELECT id, user_id, stripe_payment_intent_id, amount_cents, credits_purchased, package_id, status, created_at, completed_at
+            FROM purchases
+            WHERE stripe_payment_intent_id = $1
+            """,
+            stripe_payment_intent_id
+        )
+        return dict(row) if row else None
+
+
+async def complete_purchase(stripe_payment_intent_id: str) -> Optional[dict]:
+    """Mark a purchase as completed and add credits to the user. Returns the updated purchase."""
+    async with get_connection() as conn:
+        async with conn.transaction():
+            # Get the purchase details
+            purchase = await conn.fetchrow(
+                """
+                SELECT id, user_id, credits_purchased, status
+                FROM purchases
+                WHERE stripe_payment_intent_id = $1
+                """,
+                stripe_payment_intent_id
+            )
+
+            if not purchase:
+                return None
+
+            # Check if already completed (idempotency)
+            if purchase['status'] == 'completed':
+                return dict(await conn.fetchrow(
+                    "SELECT * FROM purchases WHERE stripe_payment_intent_id = $1",
+                    stripe_payment_intent_id
+                ))
+
+            # Add credits to user
+            await conn.execute(
+                """
+                UPDATE users
+                SET credits = credits + $2, updated_at = NOW()
+                WHERE id = $1
+                """,
+                purchase['user_id'], purchase['credits_purchased']
+            )
+
+            # Mark purchase as completed
+            row = await conn.fetchrow(
+                """
+                UPDATE purchases
+                SET status = 'completed', completed_at = NOW()
+                WHERE stripe_payment_intent_id = $1
+                RETURNING id, user_id, stripe_payment_intent_id, amount_cents, credits_purchased, package_id, status, created_at, completed_at
+                """,
+                stripe_payment_intent_id
+            )
+            return dict(row)
+
+
+async def fail_purchase(stripe_payment_intent_id: str) -> Optional[dict]:
+    """Mark a purchase as failed."""
+    async with get_connection() as conn:
+        row = await conn.fetchrow(
+            """
+            UPDATE purchases
+            SET status = 'failed'
+            WHERE stripe_payment_intent_id = $1
+            RETURNING id, user_id, stripe_payment_intent_id, status
+            """,
+            stripe_payment_intent_id
+        )
+        return dict(row) if row else None
+
+
+async def get_user_purchases(user_id: str, limit: int = 50) -> list[dict]:
+    """Get purchase history for a user."""
+    async with get_connection() as conn:
+        rows = await conn.fetch(
+            """
+            SELECT id, stripe_payment_intent_id, amount_cents, credits_purchased, package_id, status, created_at, completed_at
+            FROM purchases
+            WHERE user_id = $1
+            ORDER BY created_at DESC
+            LIMIT $2
+            """,
+            user_id, limit
+        )
+        return [dict(row) for row in rows]
 
 
 # Conversation operations

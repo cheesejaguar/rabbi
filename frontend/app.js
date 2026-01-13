@@ -92,6 +92,26 @@ const creditsValue = document.getElementById('creditsValue');
 const settingsUserName = document.getElementById('settingsUserName');
 const settingsUserEmail = document.getElementById('settingsUserEmail');
 
+// Payment modal elements
+const purchaseModal = document.getElementById('purchaseModal');
+const buyCreditsBtn = document.getElementById('buyCreditsBtn');
+const closePurchaseModal = document.getElementById('closePurchaseModal');
+const packageCards = document.querySelectorAll('.package-card');
+const submitPayment = document.getElementById('submitPayment');
+const paymentElementContainer = document.getElementById('paymentElementContainer');
+const packageSelection = document.getElementById('packageSelection');
+const modalFooter = document.getElementById('modalFooter');
+const paymentStatus = document.getElementById('paymentStatus');
+const paymentSuccess = document.getElementById('paymentSuccess');
+const paymentError = document.getElementById('paymentError');
+const paymentErrorMessage = document.getElementById('paymentErrorMessage');
+
+// Stripe payment state
+let stripe = null;
+let elements = null;
+let paymentElement = null;
+let selectedPackage = 'credits_10';
+
 // Initialize
 document.addEventListener('DOMContentLoaded', init);
 
@@ -253,6 +273,9 @@ function setupEventListeners() {
         sidebarDropdown.classList.add('hidden');
         showSettings();
     });
+
+    // Payment modal listeners
+    setupPaymentListeners();
 
     // Settings back button
     settingsBackBtn.addEventListener('click', hideSettings);
@@ -1213,4 +1236,232 @@ function showToast(message) {
         toast.classList.remove('visible');
         setTimeout(() => toast.remove(), 300);
     }, 2000);
+}
+
+// ========================================
+// Payment Modal Functions
+// ========================================
+
+function setupPaymentListeners() {
+    if (buyCreditsBtn) {
+        buyCreditsBtn.addEventListener('click', openPurchaseModal);
+    }
+    if (closePurchaseModal) {
+        closePurchaseModal.addEventListener('click', closePurchaseModalHandler);
+    }
+    if (purchaseModal) {
+        purchaseModal.addEventListener('click', (e) => {
+            if (e.target === purchaseModal) closePurchaseModalHandler();
+        });
+    }
+
+    packageCards.forEach(card => {
+        card.addEventListener('click', () => selectPackage(card.dataset.package));
+    });
+
+    if (submitPayment) {
+        submitPayment.addEventListener('click', handlePaymentSubmit);
+    }
+}
+
+async function openPurchaseModal() {
+    if (!purchaseModal) return;
+
+    // Reset modal state
+    resetModalState();
+
+    purchaseModal.classList.remove('hidden');
+    purchaseModal.classList.add('visible');
+
+    // Load Stripe.js if not already loaded
+    if (!stripe) {
+        await loadStripeJs();
+    }
+
+    // Create payment intent and mount form
+    await initializePaymentForm();
+}
+
+function closePurchaseModalHandler() {
+    if (!purchaseModal) return;
+
+    purchaseModal.classList.remove('visible');
+    purchaseModal.classList.add('hidden');
+
+    // Clean up payment element
+    if (paymentElement) {
+        paymentElement.destroy();
+        paymentElement = null;
+    }
+    elements = null;
+
+    // Reset modal state after animation
+    setTimeout(resetModalState, 300);
+}
+
+function resetModalState() {
+    // Show package selection and footer
+    if (packageSelection) packageSelection.classList.remove('hidden');
+    if (modalFooter) modalFooter.classList.remove('hidden');
+    if (paymentElementContainer) {
+        paymentElementContainer.classList.remove('hidden');
+        paymentElementContainer.innerHTML = '<div class="payment-loading">Loading payment form...</div>';
+    }
+
+    // Hide status messages
+    if (paymentStatus) paymentStatus.classList.add('hidden');
+    if (paymentSuccess) paymentSuccess.classList.add('hidden');
+    if (paymentError) paymentError.classList.add('hidden');
+
+    // Reset button
+    if (submitPayment) {
+        submitPayment.disabled = true;
+        submitPayment.textContent = 'Pay Now';
+    }
+
+    // Reset package selection
+    selectedPackage = 'credits_10';
+    packageCards.forEach(card => {
+        card.classList.toggle('selected', card.dataset.package === 'credits_10');
+    });
+}
+
+function selectPackage(packageId) {
+    selectedPackage = packageId;
+    packageCards.forEach(card => {
+        card.classList.toggle('selected', card.dataset.package === packageId);
+    });
+
+    // Reinitialize payment form with new package
+    initializePaymentForm();
+}
+
+function loadStripeJs() {
+    return new Promise((resolve, reject) => {
+        if (window.Stripe) {
+            resolve();
+            return;
+        }
+        const script = document.createElement('script');
+        script.src = 'https://js.stripe.com/v3/';
+        script.onload = resolve;
+        script.onerror = () => reject(new Error('Failed to load Stripe.js'));
+        document.head.appendChild(script);
+    });
+}
+
+async function initializePaymentForm() {
+    if (!paymentElementContainer || !submitPayment) return;
+
+    submitPayment.disabled = true;
+    paymentElementContainer.innerHTML = '<div class="payment-loading">Loading payment form...</div>';
+
+    try {
+        // Create payment intent
+        const response = await fetch(`${API_BASE}/payments/create-intent`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ package_id: selectedPackage })
+        });
+
+        if (!response.ok) {
+            const error = await response.json();
+            throw new Error(error.detail || 'Failed to create payment intent');
+        }
+
+        const { client_secret, customer_session_client_secret, publishable_key } = await response.json();
+
+        // Initialize Stripe if needed
+        if (!stripe) {
+            stripe = Stripe(publishable_key);
+        }
+
+        // Create Elements with customer session
+        elements = stripe.elements({
+            clientSecret: client_secret,
+            customerSessionClientSecret: customer_session_client_secret,
+            appearance: {
+                theme: 'night',
+                variables: {
+                    colorPrimary: '#d4a853',
+                    colorBackground: '#1a1a1a',
+                    colorText: '#e8e8e8',
+                    colorDanger: '#ef4444',
+                    fontFamily: 'Inter, -apple-system, BlinkMacSystemFont, sans-serif',
+                    borderRadius: '8px',
+                    spacingUnit: '4px',
+                }
+            }
+        });
+
+        // Create and mount PaymentElement
+        paymentElement = elements.create('payment');
+        paymentElementContainer.innerHTML = '';
+        paymentElement.mount(paymentElementContainer);
+
+        paymentElement.on('ready', () => {
+            submitPayment.disabled = false;
+        });
+
+        paymentElement.on('change', (event) => {
+            submitPayment.disabled = !event.complete;
+        });
+
+    } catch (error) {
+        console.error('Failed to initialize payment form:', error);
+        paymentElementContainer.innerHTML = `<p class="payment-error-text">${error.message || 'Failed to load payment form. Please try again.'}</p>`;
+    }
+}
+
+async function handlePaymentSubmit() {
+    if (!stripe || !elements || !submitPayment) return;
+
+    submitPayment.disabled = true;
+    submitPayment.textContent = 'Processing...';
+
+    try {
+        const { error } = await stripe.confirmPayment({
+            elements,
+            confirmParams: {
+                return_url: window.location.origin + '/?payment=success',
+            },
+            redirect: 'if_required'
+        });
+
+        if (error) {
+            showPaymentErrorMessage(error.message);
+            submitPayment.disabled = false;
+            submitPayment.textContent = 'Pay Now';
+        } else {
+            // Payment succeeded without redirect
+            showPaymentSuccessMessage();
+            // Refresh credits display
+            await loadCredits();
+            // Close modal after delay
+            setTimeout(closePurchaseModalHandler, 2000);
+        }
+    } catch (err) {
+        console.error('Payment error:', err);
+        showPaymentErrorMessage('An unexpected error occurred.');
+        submitPayment.disabled = false;
+        submitPayment.textContent = 'Pay Now';
+    }
+}
+
+function showPaymentSuccessMessage() {
+    if (packageSelection) packageSelection.classList.add('hidden');
+    if (paymentElementContainer) paymentElementContainer.classList.add('hidden');
+    if (modalFooter) modalFooter.classList.add('hidden');
+    if (paymentStatus) paymentStatus.classList.remove('hidden');
+    if (paymentSuccess) paymentSuccess.classList.remove('hidden');
+}
+
+function showPaymentErrorMessage(message) {
+    if (paymentErrorMessage) paymentErrorMessage.textContent = message;
+    if (paymentError) {
+        paymentError.classList.remove('hidden');
+        setTimeout(() => {
+            paymentError.classList.add('hidden');
+        }, 5000);
+    }
 }
