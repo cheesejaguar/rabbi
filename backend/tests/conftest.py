@@ -24,14 +24,19 @@ def mock_anthropic_client(mock_openai_client):
 
 @pytest.fixture
 def mock_claude_response():
-    """Create a mock OpenAI-compatible API response."""
-    def _create_response(text: str):
+    """Create a mock OpenAI-compatible API response with usage metrics."""
+    def _create_response(text: str, input_tokens: int = 100, output_tokens: int = 50):
         response = MagicMock()
         choice = MagicMock()
         message = MagicMock()
         message.content = text
         choice.message = message
         response.choices = [choice]
+        # Add usage metrics for cost calculation
+        usage = MagicMock()
+        usage.prompt_tokens = input_tokens
+        usage.completion_tokens = output_tokens
+        response.usage = usage
         return response
     return _create_response
 

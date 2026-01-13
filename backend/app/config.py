@@ -75,7 +75,16 @@ class Settings(BaseSettings):
     next_public_stack_publishable_client_key: str = ""
     stack_secret_server_key: str = ""
 
-    cors_origins: list[str] = ["*"]
+    # CORS origins - set via environment variable for production
+    # Default allows localhost for development
+    cors_origins: list[str] = [
+        "http://localhost:8613",
+        "http://127.0.0.1:8613",
+    ]
+
+    # Rate limiting settings
+    rate_limit_per_minute: int = 30  # Requests per minute per IP
+    rate_limit_chat_per_minute: int = 10  # Chat requests per minute per user
 
     @property
     def db_url(self) -> str:

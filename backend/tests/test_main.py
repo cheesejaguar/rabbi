@@ -183,7 +183,7 @@ class TestCORSMiddleware:
         response = client.options(
             "/api/health",
             headers={
-                "Origin": "http://localhost:3000",
+                "Origin": "http://localhost:8613",
                 "Access-Control-Request-Method": "GET",
             },
         )

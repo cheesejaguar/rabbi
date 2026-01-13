@@ -23,7 +23,11 @@ class TestSettings:
             assert settings.openrouter_api_key == ""
             assert settings.openrouter_base_url == "https://openrouter.ai/api/v1"
             assert settings.llm_model == "anthropic/claude-sonnet-4-20250514"
-            assert settings.cors_origins == ["*"]
+            # Secure defaults for CORS - localhost only
+            assert settings.cors_origins == ["http://localhost:8613", "http://127.0.0.1:8613"]
+            # Rate limiting defaults
+            assert settings.rate_limit_per_minute == 30
+            assert settings.rate_limit_chat_per_minute == 10
 
     def test_env_override(self):
         """Test that environment variables override defaults."""
@@ -45,10 +49,13 @@ class TestSettings:
             assert settings.llm_model == "anthropic/claude-opus-4-20250514"
 
     def test_cors_origins_default(self):
-        """Test default CORS origins."""
+        """Test default CORS origins are secure (localhost only)."""
         with patch.dict(os.environ, {}, clear=True):
             settings = Settings(_env_file=None)
-            assert "*" in settings.cors_origins
+            # Should NOT allow all origins by default
+            assert "*" not in settings.cors_origins
+            # Should allow localhost for development
+            assert "http://localhost:8613" in settings.cors_origins
 
     def test_gateway_vercel_default(self):
         """Test that Vercel gateway is used by default."""

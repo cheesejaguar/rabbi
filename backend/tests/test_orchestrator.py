@@ -16,14 +16,19 @@ from app.agents.base import (
 )
 
 
-def create_openai_response(text: str):
-    """Helper to create OpenAI-compatible mock response."""
+def create_openai_response(text: str, input_tokens: int = 100, output_tokens: int = 50):
+    """Helper to create OpenAI-compatible mock response with usage metrics."""
     response = Mock()
     choice = Mock()
     message = Mock()
     message.content = text
     choice.message = message
     response.choices = [choice]
+    # Add usage metrics for cost calculation
+    usage = Mock()
+    usage.prompt_tokens = input_tokens
+    usage.completion_tokens = output_tokens
+    response.usage = usage
     return response
 
 

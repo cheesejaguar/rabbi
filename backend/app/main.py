@@ -7,8 +7,11 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI, HTTPException, Request, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse, RedirectResponse, StreamingResponse
+from fastapi.responses import FileResponse, RedirectResponse, StreamingResponse, JSONResponse
 from starlette.middleware.base import BaseHTTPMiddleware
+from slowapi import Limiter
+from slowapi.util import get_remote_address
+from slowapi.errors import RateLimitExceeded
 import os
 
 from .config import get_settings
@@ -24,6 +27,32 @@ from .conversations import router as conversations_router
 from . import database as db
 
 settings = get_settings()
+
+
+def get_rate_limit_key(request: Request) -> str:
+    """Get rate limit key - use user ID if authenticated, otherwise IP address."""
+    # Check for authenticated user
+    user = get_current_user(request)
+    if user:
+        return f"user:{user['id']}"
+    # Fall back to IP address
+    return get_remote_address(request)
+
+
+# Initialize rate limiter
+limiter = Limiter(key_func=get_rate_limit_key)
+
+
+def rate_limit_exceeded_handler(request: Request, exc: RateLimitExceeded):
+    """Handle rate limit exceeded errors."""
+    return JSONResponse(
+        status_code=429,
+        content={
+            "detail": "Rate limit exceeded. Please slow down.",
+            "retry_after": exc.detail,
+        },
+        headers={"Retry-After": str(getattr(exc, 'retry_after', 60))},
+    )
 
 
 @asynccontextmanager
@@ -48,13 +77,40 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+# Add rate limiter to app state and exception handler
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, rate_limit_exceeded_handler)
+
+# CORS middleware - origins configured via environment
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.cors_origins,
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["GET", "POST", "DELETE", "OPTIONS"],
+    allow_headers=["Content-Type", "Authorization", "Cookie"],
+    expose_headers=["X-RateLimit-Limit", "X-RateLimit-Remaining", "Retry-After"],
 )
+
+
+class SecurityHeadersMiddleware(BaseHTTPMiddleware):
+    """Add security headers to all responses."""
+
+    async def dispatch(self, request: Request, call_next):
+        response = await call_next(request)
+        # Prevent clickjacking
+        response.headers["X-Frame-Options"] = "DENY"
+        # Prevent MIME type sniffing
+        response.headers["X-Content-Type-Options"] = "nosniff"
+        # XSS protection (legacy but still useful)
+        response.headers["X-XSS-Protection"] = "1; mode=block"
+        # Referrer policy
+        response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+        # Permissions policy - disable unnecessary features
+        response.headers["Permissions-Policy"] = "camera=(), microphone=(), geolocation=()"
+        return response
+
+
+app.add_middleware(SecurityHeadersMiddleware)
 
 
 class AuthMiddleware(BaseHTTPMiddleware):
@@ -127,13 +183,15 @@ async def health_check():
 
 
 @app.get("/api/greeting", response_model=GreetingResponse)
-async def get_greeting():
+@limiter.limit("30/minute")
+async def get_greeting(request: Request):
     """Get initial greeting message."""
     greeting = await orchestrator.get_greeting()
     return GreetingResponse(greeting=greeting)
 
 
 @app.get("/api/credits")
+@limiter.limit("60/minute")
 async def get_credits(request: Request):
     """Get the current user's remaining credits."""
     user = get_current_user(request)
@@ -153,6 +211,7 @@ async def get_credits(request: Request):
 
 
 @app.post("/api/feedback")
+@limiter.limit("30/minute")
 async def submit_feedback(request: Request):
     """Submit thumbs up/down feedback for a message."""
     user = get_current_user(request)
@@ -178,6 +237,7 @@ async def submit_feedback(request: Request):
 
 
 @app.delete("/api/feedback/{message_id}")
+@limiter.limit("30/minute")
 async def remove_feedback(request: Request, message_id: str):
     """Remove feedback for a message."""
     user = get_current_user(request)
@@ -196,6 +256,7 @@ async def remove_feedback(request: Request, message_id: str):
 
 
 @app.post("/api/tts-event")
+@limiter.limit("60/minute")
 async def log_tts_event(request: Request):
     """Log a TTS (text-to-speech) usage event."""
     user = get_current_user(request)
@@ -231,6 +292,7 @@ async def log_tts_event(request: Request):
 
 
 @app.post("/api/analytics")
+@limiter.limit("120/minute")
 async def log_analytics_event(request: Request):
     """Log an analytics event (page view, session, etc.)."""
     user = get_current_user(request)
@@ -268,6 +330,7 @@ async def log_analytics_event(request: Request):
 
 
 @app.post("/api/speak")
+@limiter.limit("10/minute")
 async def text_to_speech(request: Request):
     """Convert text to speech using ElevenLabs streaming API with PCM output."""
     user = get_current_user(request)
@@ -320,7 +383,8 @@ async def text_to_speech(request: Request):
 
 
 @app.post("/api/chat", response_model=ChatResponse)
-async def chat(request: ChatRequest):
+@limiter.limit(f"{settings.rate_limit_chat_per_minute}/minute")
+async def chat(request: Request, chat_request: ChatRequest):
     """
     Process a chat message through the rebbe.dev pipeline.
 
@@ -333,15 +397,15 @@ async def chat(request: ChatRequest):
     try:
         conversation_history = [
             {"role": msg.role, "content": msg.content}
-            for msg in request.conversation_history
+            for msg in chat_request.conversation_history
         ]
 
         result = await orchestrator.process_message(
-            user_message=request.message,
+            user_message=chat_request.message,
             conversation_history=conversation_history,
         )
 
-        session_id = request.session_id or str(uuid.uuid4())
+        session_id = chat_request.session_id or str(uuid.uuid4())
 
         return ChatResponse(
             response=result["response"],
@@ -358,7 +422,8 @@ async def chat(request: ChatRequest):
 
 
 @app.post("/api/chat/stream")
-async def chat_stream(chat_request: ChatRequest, request: Request):
+@limiter.limit(f"{settings.rate_limit_chat_per_minute}/minute")
+async def chat_stream(request: Request, chat_request: ChatRequest):
     """
     Process a chat message with streaming response using Server-Sent Events.
 

@@ -185,12 +185,16 @@ class TestBaseAgent:
         agent = ConcreteAgent(mock_anthropic_client)
         mock_anthropic_client.chat.completions.create.return_value = mock_claude_response("Test response")
 
-        result = agent._call_claude(
+        response, metrics = agent._call_claude(
             [{"role": "user", "content": "Hello"}],
             "System prompt"
         )
 
-        assert result == "Test response"
+        assert response == "Test response"
+        # Check that metrics were captured
+        assert metrics.input_tokens == 100
+        assert metrics.output_tokens == 50
+        assert metrics.estimated_cost_usd > 0
         mock_anthropic_client.chat.completions.create.assert_called_once_with(
             model="anthropic/claude-sonnet-4-20250514",
             max_tokens=2048,
