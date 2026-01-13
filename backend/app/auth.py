@@ -92,8 +92,9 @@ async def login(request: Request):
     state = secrets.token_urlsafe(32)
 
     # Get authorization URL from WorkOS User Management (AuthKit)
+    # Use effective_redirect_uri which handles Vercel preview deployments
     authorization_url = get_workos_client().user_management.get_authorization_url(
-        redirect_uri=settings.workos_redirect_uri,
+        redirect_uri=settings.effective_redirect_uri,
         state=state,
         provider="authkit",  # Use AuthKit for universal login
     )

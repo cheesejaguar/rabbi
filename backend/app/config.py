@@ -67,6 +67,22 @@ class Settings(BaseSettings):
     session_secret_key: str = "change-me-in-production"
     workos_redirect_uri: str = "http://localhost:8613/auth/callback"
 
+    # Vercel deployment URL (automatically set by Vercel for preview deployments)
+    vercel_url: str = ""
+
+    @property
+    def effective_redirect_uri(self) -> str:
+        """Get the effective WorkOS redirect URI.
+
+        For non-production environments with VERCEL_URL set, construct the
+        redirect URI from the Vercel deployment URL. This allows preview
+        deployments to use SSO while redirecting back to the preview URL.
+        """
+        if not self.is_production and self.vercel_url:
+            # VERCEL_URL doesn't include protocol, add https://
+            return f"https://{self.vercel_url}/auth/callback"
+        return self.workos_redirect_uri
+
     @field_validator('session_secret_key')
     @classmethod
     def validate_session_secret(cls, v, info):
