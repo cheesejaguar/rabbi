@@ -1494,3 +1494,280 @@ body {
         height: 14px;
     }
 }
+
+/* ========================================
+   Purchase Credits Modal
+   ======================================== */
+
+.modal-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.7);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 200;
+    opacity: 0;
+    visibility: hidden;
+    transition: all var(--transition-normal);
+    backdrop-filter: blur(4px);
+}
+
+.modal-overlay.visible {
+    opacity: 1;
+    visibility: visible;
+}
+
+.modal-content {
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-lg);
+    width: 100%;
+    max-width: 440px;
+    max-height: 90vh;
+    overflow-y: auto;
+    animation: modalIn 0.2s ease;
+    margin: 20px;
+}
+
+@keyframes modalIn {
+    from {
+        opacity: 0;
+        transform: scale(0.95) translateY(-10px);
+    }
+    to {
+        opacity: 1;
+        transform: scale(1) translateY(0);
+    }
+}
+
+.modal-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 20px 24px;
+    border-bottom: 1px solid var(--border-color);
+}
+
+.modal-header h2 {
+    font-size: 1.1rem;
+    font-weight: 600;
+    color: var(--text-primary);
+}
+
+.modal-close {
+    width: 32px;
+    height: 32px;
+    border-radius: var(--radius-sm);
+    background: transparent;
+    border: none;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--text-muted);
+    transition: all var(--transition-fast);
+}
+
+.modal-close:hover {
+    background: var(--bg-tertiary);
+    color: var(--text-primary);
+}
+
+/* Package Selection */
+.package-selection {
+    display: flex;
+    gap: 12px;
+    padding: 24px;
+}
+
+.package-card {
+    flex: 1;
+    padding: 20px 16px;
+    background: var(--bg-primary);
+    border: 2px solid var(--border-color);
+    border-radius: var(--radius-md);
+    cursor: pointer;
+    transition: all var(--transition-fast);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+    position: relative;
+}
+
+.package-card:hover {
+    border-color: var(--border-light);
+}
+
+.package-card.selected {
+    border-color: var(--accent);
+    background: rgba(212, 168, 83, 0.1);
+}
+
+.package-credits {
+    font-size: 1.1rem;
+    font-weight: 600;
+    color: var(--text-primary);
+}
+
+.package-price {
+    font-size: 0.9rem;
+    color: var(--accent);
+    font-weight: 500;
+}
+
+.package-badge {
+    position: absolute;
+    top: -10px;
+    right: -10px;
+    background: var(--accent);
+    color: var(--bg-primary);
+    font-size: 0.65rem;
+    font-weight: 600;
+    padding: 4px 8px;
+    border-radius: var(--radius-full);
+    text-transform: uppercase;
+}
+
+/* Payment Element Container */
+#paymentElementContainer {
+    padding: 0 24px 24px;
+    min-height: 150px;
+}
+
+.payment-loading {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 150px;
+    color: var(--text-muted);
+    font-size: 0.875rem;
+}
+
+.payment-error-text {
+    color: #ef4444;
+    text-align: center;
+    padding: 20px;
+    font-size: 0.875rem;
+}
+
+/* Modal Footer */
+.modal-footer {
+    padding: 0 24px 24px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.purchase-btn {
+    width: 100%;
+    padding: 14px 24px;
+    background: var(--accent);
+    border: none;
+    border-radius: var(--radius-md);
+    color: var(--bg-primary);
+    font-family: inherit;
+    font-size: 1rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all var(--transition-fast);
+}
+
+.purchase-btn:hover:not(:disabled) {
+    background: var(--accent-hover);
+}
+
+.purchase-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.payment-secure {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    font-size: 0.75rem;
+    color: var(--text-muted);
+}
+
+/* Payment Status */
+.payment-status {
+    padding: 40px 24px;
+    text-align: center;
+}
+
+.payment-success {
+    color: var(--success);
+}
+
+.payment-success svg {
+    margin-bottom: 16px;
+}
+
+.payment-success p {
+    font-size: 1rem;
+    font-weight: 500;
+}
+
+.payment-error p {
+    color: #ef4444;
+    font-size: 0.875rem;
+}
+
+/* Buy Credits Button in Settings */
+.buy-credits-btn {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 16px;
+    background: var(--accent);
+    border: none;
+    border-radius: var(--radius-sm);
+    color: var(--bg-primary);
+    font-family: inherit;
+    font-size: 0.875rem;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all var(--transition-fast);
+    margin-top: 16px;
+    width: 100%;
+    justify-content: center;
+}
+
+.buy-credits-btn:hover {
+    background: var(--accent-hover);
+}
+
+/* Mobile responsive for modal */
+@media (max-width: 480px) {
+    .modal-content {
+        margin: 10px;
+        max-height: calc(100vh - 20px);
+    }
+
+    .package-selection {
+        padding: 16px;
+        gap: 8px;
+    }
+
+    .package-card {
+        padding: 16px 12px;
+    }
+
+    .package-credits {
+        font-size: 1rem;
+    }
+
+    #paymentElementContainer {
+        padding: 0 16px 16px;
+    }
+
+    .modal-footer {
+        padding: 0 16px 16px;
+    }
+}

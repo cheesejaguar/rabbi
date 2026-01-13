@@ -27,6 +27,7 @@ from .models import (
 from .agents import RabbiOrchestrator
 from .auth import router as auth_router, get_current_user, require_auth
 from .conversations import router as conversations_router
+from .payments import router as payments_router
 from . import database as db
 
 settings = get_settings()
@@ -152,6 +153,7 @@ class AuthMiddleware(BaseHTTPMiddleware):
         "/auth/check",
         "/api/health",
         "/api/analytics",  # Allow anonymous session tracking
+        "/api/payments/webhook",  # Stripe webhook (verified by signature)
         "/docs",
         "/openapi.json",
         "/redoc",
@@ -194,6 +196,7 @@ app.add_middleware(AuthMiddleware)
 # Include routers
 app.include_router(auth_router)
 app.include_router(conversations_router)
+app.include_router(payments_router)
 
 orchestrator = RabbiOrchestrator(
     api_key=settings.llm_api_key or None,
