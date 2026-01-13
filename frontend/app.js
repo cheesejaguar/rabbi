@@ -119,6 +119,9 @@ async function init() {
     // Show logged-out state immediately (will be updated if authenticated)
     showLoggedOutState();
 
+    // Setup event listeners immediately so UI is responsive
+    setupEventListeners();
+
     // Track session start (only once per browser session)
     if (!sessionStorage.getItem('sessionTracked')) {
         trackEvent('session_start', { new_session: true });
@@ -127,15 +130,10 @@ async function init() {
     // Always track page view
     trackEvent('page_view');
 
-    // Check authentication first
+    // Check authentication
     const isAuthenticated = await checkAuth();
 
-    // Always setup event listeners (some work when logged out)
-    setupEventListeners();
-
     if (!isAuthenticated) {
-        // Show logged-out state in UI
-        showLoggedOutState();
         return;
     }
 
