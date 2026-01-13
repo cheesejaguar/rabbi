@@ -1465,7 +1465,7 @@ async function handlePaymentSubmit() {
             submitPayment.disabled = false;
             submitPayment.textContent = 'Pay Now';
         } else if (paymentIntent && paymentIntent.status === 'succeeded') {
-            // Payment succeeded - verify and fulfill immediately
+            // Payment succeeded - try to verify and fulfill immediately (non-production only)
             submitPayment.textContent = 'Adding credits...';
 
             try {
@@ -1475,19 +1475,26 @@ async function handlePaymentSubmit() {
                     body: JSON.stringify({ payment_intent_id: paymentIntent.id })
                 });
 
-                const result = await verifyResponse.json();
-
-                if (result.success) {
+                if (verifyResponse.status === 404) {
+                    // Endpoint disabled in production - webhooks will handle fulfillment
                     showPaymentSuccessMessage();
                     await loadCredits();
                     setTimeout(closePurchaseModalHandler, 2000);
                 } else {
-                    // Payment succeeded but fulfillment failed - show partial success
-                    console.error('Fulfillment issue:', result.message);
-                    showPaymentSuccessMessage();
-                    showToast('Payment received. Credits will be added shortly.');
-                    await loadCredits();
-                    setTimeout(closePurchaseModalHandler, 2000);
+                    const result = await verifyResponse.json();
+
+                    if (result.success) {
+                        showPaymentSuccessMessage();
+                        await loadCredits();
+                        setTimeout(closePurchaseModalHandler, 2000);
+                    } else {
+                        // Payment succeeded but fulfillment failed - show partial success
+                        console.error('Fulfillment issue:', result.message);
+                        showPaymentSuccessMessage();
+                        showToast('Payment received. Credits will be added shortly.');
+                        await loadCredits();
+                        setTimeout(closePurchaseModalHandler, 2000);
+                    }
                 }
             } catch (verifyError) {
                 // Payment succeeded but verification call failed

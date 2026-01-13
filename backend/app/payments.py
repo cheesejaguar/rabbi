@@ -110,7 +110,13 @@ async def verify_and_fulfill(request: Request, body: VerifyPaymentRequest):
 
     This endpoint provides immediate feedback after payment completion,
     complementing webhooks which may be delayed or unavailable in some environments.
+
+    DISABLED in production - use webhooks for production fulfillment.
     """
+    # Only allow in non-production environments for security
+    if settings.is_production:
+        raise HTTPException(status_code=404, detail="Not found")
+
     user = get_current_user(request)
     if not user:
         raise HTTPException(status_code=401, detail="Not authenticated")
