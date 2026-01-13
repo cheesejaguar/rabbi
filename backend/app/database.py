@@ -212,9 +212,23 @@ CREATE INDEX IF NOT EXISTS idx_analytics_events_created_at ON analytics_events(c
 
 
 async def init_schema():
-    """Initialize the database schema."""
+    """Initialize the database schema.
+
+    Uses PostgreSQL advisory locks to prevent concurrent schema initialization
+    from multiple serverless function instances.
+    """
     async with get_connection() as conn:
-        await conn.execute(SCHEMA_SQL)
+        # Try to acquire advisory lock (non-blocking)
+        # Lock ID 1 is reserved for schema initialization
+        acquired = await conn.fetchval("SELECT pg_try_advisory_lock(1)")
+        if not acquired:
+            # Another process is initializing, skip
+            return
+        try:
+            await conn.execute(SCHEMA_SQL)
+        finally:
+            # Release the advisory lock
+            await conn.execute("SELECT pg_advisory_unlock(1)")
 
 
 # User operations

@@ -98,8 +98,6 @@ async def login(request: Request):
         provider="authkit",  # Use AuthKit for universal login
     )
 
-    logger.info(f"Login initiated - redirect_uri: {settings.workos_redirect_uri}, is_production: {settings.is_production}, state: {state[:10]}...")
-
     # Set state in cookie for verification
     response = RedirectResponse(url=authorization_url, status_code=302)
     response.set_cookie(
@@ -125,9 +123,7 @@ async def callback(request: Request, code: str = None, state: str = None, error:
 
     # Verify state for CSRF protection
     stored_state = request.cookies.get("oauth_state")
-    logger.info(f"OAuth callback - state param: {state[:10] if state else 'None'}..., cookie: {stored_state[:10] if stored_state else 'None'}..., all cookies: {list(request.cookies.keys())}")
     if not stored_state or stored_state != state:
-        logger.warning(f"State mismatch - expected: {state}, got cookie: {stored_state}")
         raise HTTPException(status_code=400, detail="Invalid state parameter")
 
     try:

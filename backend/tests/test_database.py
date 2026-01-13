@@ -497,8 +497,10 @@ class TestInitSchema:
 
     @pytest.mark.asyncio
     async def test_init_schema_executes_sql(self):
-        """Test that init_schema executes the schema SQL."""
+        """Test that init_schema executes the schema SQL with advisory lock."""
         mock_connection = AsyncMock()
+        # Mock advisory lock acquisition (returns True = lock acquired)
+        mock_connection.fetchval = AsyncMock(return_value=True)
 
         with patch('app.database.get_connection') as mock_ctx:
             mock_ctx.return_value.__aenter__ = AsyncMock(return_value=mock_connection)
@@ -507,4 +509,26 @@ class TestInitSchema:
             from app.database import init_schema, SCHEMA_SQL
             await init_schema()
 
-            mock_connection.execute.assert_called_once_with(SCHEMA_SQL)
+            # Should acquire lock, execute schema, then release lock
+            mock_connection.fetchval.assert_called_once_with("SELECT pg_try_advisory_lock(1)")
+            assert mock_connection.execute.call_count == 2
+            mock_connection.execute.assert_any_call(SCHEMA_SQL)
+            mock_connection.execute.assert_any_call("SELECT pg_advisory_unlock(1)")
+
+    @pytest.mark.asyncio
+    async def test_init_schema_skips_when_lock_not_acquired(self):
+        """Test that init_schema skips execution when advisory lock is not acquired."""
+        mock_connection = AsyncMock()
+        # Mock advisory lock acquisition failure (returns False)
+        mock_connection.fetchval = AsyncMock(return_value=False)
+
+        with patch('app.database.get_connection') as mock_ctx:
+            mock_ctx.return_value.__aenter__ = AsyncMock(return_value=mock_connection)
+            mock_ctx.return_value.__aexit__ = AsyncMock()
+
+            from app.database import init_schema
+            await init_schema()
+
+            # Should only try to acquire lock, then skip
+            mock_connection.fetchval.assert_called_once()
+            mock_connection.execute.assert_not_called()
