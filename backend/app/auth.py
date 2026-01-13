@@ -197,7 +197,7 @@ async def logged_out():
                 text-align: center;
                 padding: 40px;
             }
-            .icon { font-size: 3rem; margin-bottom: 16px; color: #d4a853; }
+            .icon { margin-bottom: 16px; color: #d4a853; }
             h1 { color: #e8e8e8; margin-bottom: 8px; font-size: 1.75rem; }
             p { color: #a0a0a0; margin-bottom: 32px; font-size: 0.95rem; }
             a {
@@ -216,7 +216,12 @@ async def logged_out():
     </head>
     <body>
         <div class="container">
-            <div class="icon">&#x2721;</div>
+            <div class="icon">
+                <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M12 2L16.5 9H7.5L12 2Z"/>
+                    <path d="M12 22L7.5 15H16.5L12 22Z"/>
+                </svg>
+            </div>
             <h1>rebbe.dev</h1>
             <p>Sign in to continue</p>
             <a href="/auth/login">Sign In</a>
