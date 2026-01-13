@@ -66,7 +66,7 @@ async def create_payment_intent(request: Request, body: CreateIntentRequest):
                 "package_id": body.package_id,
                 "credits": str(package["credits"]),
             },
-            payment_method_types=["card", "amazon_pay", "google_pay"],
+            payment_method_types=["card", "amazon_pay"],
         )
 
         # Create CustomerSession for embedded form
