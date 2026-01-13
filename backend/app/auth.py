@@ -1,16 +1,24 @@
 """WorkOS SSO Authentication module."""
 
+import logging
 from fastapi import APIRouter, Request, HTTPException, Depends
 from fastapi.responses import RedirectResponse, JSONResponse
 from itsdangerous import URLSafeTimedSerializer, BadSignature, SignatureExpired
 from workos import WorkOSClient
+from slowapi import Limiter
+from slowapi.util import get_remote_address
 from typing import Optional
 import secrets
 
 from .config import get_settings
 
+logger = logging.getLogger(__name__)
+
 router = APIRouter(prefix="/auth", tags=["authentication"])
 settings = get_settings()
+
+# Rate limiter for auth endpoints (by IP address only)
+limiter = Limiter(key_func=get_remote_address)
 
 # Lazy-initialized WorkOS client
 _workos_client: Optional[WorkOSClient] = None
@@ -71,6 +79,7 @@ def require_auth(request: Request) -> dict:
 
 
 @router.get("/login")
+@limiter.limit("10/minute")
 async def login(request: Request):
     """Initiate SSO login flow."""
     if not settings.workos_api_key or not settings.workos_client_id:
@@ -95,7 +104,7 @@ async def login(request: Request):
         key="oauth_state",
         value=state,
         httponly=True,
-        secure=False,  # Set to True in production with HTTPS
+        secure=settings.is_production,
         samesite="lax",
         max_age=600,  # 10 minutes
     )
@@ -123,14 +132,12 @@ async def callback(request: Request, code: str = None, state: str = None, error:
         )
         user = auth_response.user
 
-        # Create session data including authentication_token for logout
+        # Create session data (only store user info, not tokens)
         user_data = {
             "id": user.id,
             "email": user.email,
             "first_name": user.first_name,
             "last_name": user.last_name,
-            "access_token": auth_response.access_token,
-            "refresh_token": getattr(auth_response, 'refresh_token', None),
         }
 
         # Create session token
@@ -142,7 +149,7 @@ async def callback(request: Request, code: str = None, state: str = None, error:
             key="session",
             value=session_token,
             httponly=True,
-            secure=False,  # Set to True in production with HTTPS
+            secure=settings.is_production,
             samesite="lax",
             max_age=86400,  # 24 hours
             path="/",  # Explicit path for consistent cookie handling

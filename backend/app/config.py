@@ -1,8 +1,12 @@
 """Application configuration."""
 
+import logging
 from functools import lru_cache
 from urllib.parse import quote_plus
 from pydantic_settings import BaseSettings
+from pydantic import field_validator
+
+logger = logging.getLogger(__name__)
 
 
 class Settings(BaseSettings):
@@ -11,6 +15,14 @@ class Settings(BaseSettings):
     app_name: str = "rebbe.dev"
     app_version: str = "1.0.0"
     debug: bool = False
+
+    # Environment: "development" or "production"
+    environment: str = "development"
+
+    @property
+    def is_production(self) -> bool:
+        """Check if running in production environment."""
+        return self.environment.lower() == "production"
 
     # Gateway selection: "vercel" (default) or "openrouter"
     gateway: str = "vercel"
@@ -49,6 +61,19 @@ class Settings(BaseSettings):
     workos_client_id: str = ""
     session_secret_key: str = "change-me-in-production"
     workos_redirect_uri: str = "http://localhost:8613/auth/callback"
+
+    @field_validator('session_secret_key')
+    @classmethod
+    def validate_session_secret(cls, v, info):
+        """Validate session secret is secure in production."""
+        # Get environment from values if available
+        env = info.data.get('environment', 'development') if info.data else 'development'
+        if env.lower() == 'production':
+            if v == "change-me-in-production":
+                raise ValueError("SESSION_SECRET_KEY must be changed in production")
+            if len(v) < 32:
+                raise ValueError("SESSION_SECRET_KEY must be at least 32 characters in production")
+        return v
 
     # Database configuration (Vercel Postgres / Neon)
     # Full connection URLs

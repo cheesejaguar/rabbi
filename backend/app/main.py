@@ -3,6 +3,7 @@
 import uuid
 import json
 import httpx
+import logging
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, HTTPException, Request, Depends
 from fastapi.middleware.cors import CORSMiddleware
@@ -13,6 +14,8 @@ from slowapi import Limiter
 from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
 import os
+
+logger = logging.getLogger(__name__)
 
 from .config import get_settings
 from .models import (
@@ -62,9 +65,9 @@ async def lifespan(app: FastAPI):
     if settings.db_url:
         try:
             await db.init_schema()
-            print("Database schema initialized")
+            logger.info("Database schema initialized")
         except Exception as e:
-            print(f"Warning: Could not initialize database: {e}")
+            logger.warning(f"Could not initialize database: {e}")
     yield
     # Shutdown: Close database pool
     await db.close_pool()
@@ -107,10 +110,36 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
         response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
         # Permissions policy - disable unnecessary features
         response.headers["Permissions-Policy"] = "camera=(), microphone=(), geolocation=()"
+        # HSTS - only in production (when cookies are secure)
+        if settings.is_production:
+            response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
         return response
 
 
 app.add_middleware(SecurityHeadersMiddleware)
+
+
+class RequestSizeLimitMiddleware(BaseHTTPMiddleware):
+    """Limit request body size to prevent DoS attacks."""
+
+    MAX_BODY_SIZE = 1 * 1024 * 1024  # 1MB limit
+
+    async def dispatch(self, request: Request, call_next):
+        # Check Content-Length header
+        content_length = request.headers.get("content-length")
+        if content_length:
+            try:
+                if int(content_length) > self.MAX_BODY_SIZE:
+                    return JSONResponse(
+                        status_code=413,
+                        content={"detail": "Request body too large"},
+                    )
+            except ValueError:
+                pass  # Invalid Content-Length, let request proceed
+        return await call_next(request)
+
+
+app.add_middleware(RequestSizeLimitMiddleware)
 
 
 class AuthMiddleware(BaseHTTPMiddleware):
@@ -206,7 +235,7 @@ async def get_credits(request: Request):
         credits = await db.get_user_credits(user["id"])
         return {"credits": credits if credits is not None else 3, "unlimited": False}
     except Exception as e:
-        print(f"Error getting credits: {e}")
+        logger.error(f"Error getting credits: {e}")
         return {"credits": 3, "unlimited": False}
 
 
@@ -232,7 +261,7 @@ async def submit_feedback(request: Request):
         result = await db.upsert_feedback(message_id, user["id"], feedback_type)
         return {"success": True, "feedback": result}
     except Exception as e:
-        print(f"Error saving feedback: {e}")
+        logger.error(f"Error saving feedback: {e}")
         raise HTTPException(status_code=500, detail="Failed to save feedback")
 
 
@@ -251,7 +280,7 @@ async def remove_feedback(request: Request, message_id: str):
         deleted = await db.delete_feedback(message_id, user["id"])
         return {"success": deleted}
     except Exception as e:
-        print(f"Error deleting feedback: {e}")
+        logger.error(f"Error deleting feedback: {e}")
         raise HTTPException(status_code=500, detail="Failed to delete feedback")
 
 
@@ -287,7 +316,7 @@ async def log_tts_event(request: Request):
         )
         return {"success": True, "event_id": result.get("id")}
     except Exception as e:
-        print(f"Error logging TTS event: {e}")
+        logger.error(f"Error logging TTS event: {e}")
         return {"success": False}
 
 
@@ -325,7 +354,7 @@ async def log_analytics_event(request: Request):
         )
         return {"success": True, "event_id": result.get("id")}
     except Exception as e:
-        print(f"Error logging analytics event: {e}")
+        logger.error(f"Error logging analytics event: {e}")
         return {"success": False}
 
 
@@ -365,7 +394,7 @@ async def text_to_speech(request: Request):
             ) as response:
                 if response.status_code != 200:
                     error_text = await response.aread()
-                    print(f"ElevenLabs API error: {response.status_code} - {error_text}")
+                    logger.error(f"ElevenLabs API error: {response.status_code}")
                     return
                 async for chunk in response.aiter_bytes():
                     yield chunk
@@ -415,9 +444,10 @@ async def chat(request: Request, chat_request: ChatRequest):
         )
 
     except Exception as e:
+        logger.error(f"Chat error: {e}")
         raise HTTPException(
             status_code=500,
-            detail=f"An error occurred processing your message. Please try again. Error: {str(e)}"
+            detail="An error occurred processing your message. Please try again."
         )
 
 
@@ -454,14 +484,14 @@ async def chat_stream(request: Request, chat_request: ChatRequest):
                     media_type="text/event-stream",
                 )
         except Exception as e:
-            print(f"Warning: Could not check credits: {e}")
+            logger.warning(f"Could not check credits: {e}")
 
     # Save user message to database if conversation_id provided
     if conversation_id and user and settings.db_url:
         try:
             await db.add_message(conversation_id, "user", chat_request.message)
         except Exception as e:
-            print(f"Warning: Could not save user message: {e}")
+            logger.warning(f"Could not save user message: {e}")
 
     async def event_generator():
         full_response = ""
@@ -499,7 +529,7 @@ async def chat_stream(request: Request, chat_request: ChatRequest):
                         if title:
                             await db.update_conversation(conversation_id, user["id"], title)
                 except Exception as e:
-                    print(f"Warning: Could not save assistant message: {e}")
+                    logger.warning(f"Could not save assistant message: {e}")
 
             # Send done event
             yield f"data: {json.dumps({'type': 'done'})}\n\n"

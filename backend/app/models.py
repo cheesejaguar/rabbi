@@ -1,30 +1,40 @@
 """Pydantic models for API request/response."""
 
-from pydantic import BaseModel, Field
-from typing import Optional
+from pydantic import BaseModel, Field, field_validator
+from typing import Optional, Literal
 
 
 class Message(BaseModel):
     """A single message in the conversation."""
-    role: str = Field(..., description="Role: 'user' or 'assistant'")
-    content: str = Field(..., description="Message content")
+    role: Literal["user", "assistant"] = Field(..., description="Role: 'user' or 'assistant'")
+    content: str = Field(..., description="Message content", max_length=50000)
 
 
 class ChatRequest(BaseModel):
     """Request body for chat endpoint."""
-    message: str = Field(..., description="User's message", min_length=1)
+    message: str = Field(..., description="User's message", min_length=1, max_length=10000)
     conversation_history: list[Message] = Field(
         default_factory=list,
         description="Previous messages in the conversation"
     )
     session_id: Optional[str] = Field(
         None,
-        description="Optional session ID for tracking conversations"
+        description="Optional session ID for tracking conversations",
+        max_length=100
     )
     conversation_id: Optional[str] = Field(
         None,
-        description="Optional conversation ID for persisting to database"
+        description="Optional conversation ID for persisting to database",
+        max_length=100
     )
+
+    @field_validator('conversation_history')
+    @classmethod
+    def validate_history_length(cls, v):
+        """Limit conversation history to prevent abuse."""
+        if len(v) > 100:
+            raise ValueError("Conversation history cannot exceed 100 messages")
+        return v
 
 
 class ChatResponse(BaseModel):

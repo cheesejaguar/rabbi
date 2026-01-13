@@ -493,16 +493,19 @@ async def log_error(
 
 async def get_error_stats(days: int = 7) -> list[dict]:
     """Get error statistics for the last N days."""
+    # Validate days parameter
+    days = max(1, min(days, 365))
     async with get_connection() as conn:
         rows = await conn.fetch(
             """
             SELECT error_type, COUNT(*) as count,
                    DATE_TRUNC('day', created_at) as day
             FROM errors
-            WHERE created_at > NOW() - INTERVAL '%s days'
+            WHERE created_at > NOW() - INTERVAL '1 day' * $1
             GROUP BY error_type, DATE_TRUNC('day', created_at)
             ORDER BY day DESC, count DESC
-            """ % days
+            """,
+            days
         )
         return [dict(row) for row in rows]
 
@@ -531,6 +534,8 @@ async def log_tts_event(
 
 async def get_tts_stats(days: int = 7) -> dict:
     """Get TTS usage statistics for the last N days."""
+    # Validate days parameter
+    days = max(1, min(days, 365))
     async with get_connection() as conn:
         row = await conn.fetchrow(
             """
@@ -542,8 +547,9 @@ async def get_tts_stats(days: int = 7) -> dict:
                 AVG(duration_ms) FILTER (WHERE event_type = 'complete') as avg_duration_ms,
                 SUM(text_length) FILTER (WHERE event_type = 'start') as total_chars_spoken
             FROM tts_events
-            WHERE created_at > NOW() - INTERVAL '%s days'
-            """ % days
+            WHERE created_at > NOW() - INTERVAL '1 day' * $1
+            """,
+            days
         )
         return dict(row) if row else {}
 
@@ -575,6 +581,8 @@ async def log_analytics_event(
 
 async def get_session_stats(days: int = 7) -> dict:
     """Get session statistics for the last N days."""
+    # Validate days parameter
+    days = max(1, min(days, 365))
     async with get_connection() as conn:
         row = await conn.fetchrow(
             """
@@ -583,14 +591,17 @@ async def get_session_stats(days: int = 7) -> dict:
                 COUNT(*) FILTER (WHERE event_type = 'page_view') as total_page_views,
                 COUNT(DISTINCT user_id) FILTER (WHERE user_id IS NOT NULL) as unique_users
             FROM analytics_events
-            WHERE created_at > NOW() - INTERVAL '%s days'
-            """ % days
+            WHERE created_at > NOW() - INTERVAL '1 day' * $1
+            """,
+            days
         )
         return dict(row) if row else {}
 
 
 async def get_referrer_stats(days: int = 7) -> list[dict]:
     """Get referrer statistics for the last N days."""
+    # Validate days parameter
+    days = max(1, min(days, 365))
     async with get_connection() as conn:
         rows = await conn.fetch(
             """
@@ -599,17 +610,20 @@ async def get_referrer_stats(days: int = 7) -> list[dict]:
                 COUNT(DISTINCT session_id) as sessions
             FROM analytics_events
             WHERE event_type = 'session_start'
-              AND created_at > NOW() - INTERVAL '%s days'
+              AND created_at > NOW() - INTERVAL '1 day' * $1
             GROUP BY referrer
             ORDER BY sessions DESC
             LIMIT 20
-            """ % days
+            """,
+            days
         )
         return [dict(row) for row in rows]
 
 
 async def get_device_stats(days: int = 7) -> list[dict]:
     """Get device/browser statistics for the last N days."""
+    # Validate days parameter
+    days = max(1, min(days, 365))
     async with get_connection() as conn:
         rows = await conn.fetch(
             """
@@ -622,9 +636,10 @@ async def get_device_stats(days: int = 7) -> list[dict]:
                 COUNT(DISTINCT session_id) as sessions
             FROM analytics_events
             WHERE event_type = 'session_start'
-              AND created_at > NOW() - INTERVAL '%s days'
+              AND created_at > NOW() - INTERVAL '1 day' * $1
             GROUP BY device_type
             ORDER BY sessions DESC
-            """ % days
+            """,
+            days
         )
         return [dict(row) for row in rows]
