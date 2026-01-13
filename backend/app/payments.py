@@ -56,6 +56,7 @@ async def create_payment_intent(request: Request, body: CreateIntentRequest):
         stripe_customer_id = await get_or_create_stripe_customer(user)
 
         # Create PaymentIntent
+        # Card includes Apple Pay and Google Pay on supported devices
         payment_intent = stripe.PaymentIntent.create(
             amount=package["price_cents"],
             currency="usd",
@@ -65,7 +66,7 @@ async def create_payment_intent(request: Request, body: CreateIntentRequest):
                 "package_id": body.package_id,
                 "credits": str(package["credits"]),
             },
-            automatic_payment_methods={"enabled": True},
+            payment_method_types=["card", "amazon_pay"],
         )
 
         # Create CustomerSession for embedded form
