@@ -107,6 +107,7 @@ async def login(request: Request):
         secure=settings.is_production,
         samesite="lax",
         max_age=600,  # 10 minutes
+        path="/",  # Ensure cookie is available on callback
     )
     return response
 
@@ -155,7 +156,7 @@ async def callback(request: Request, code: str = None, state: str = None, error:
             path="/",  # Explicit path for consistent cookie handling
         )
         # Clear the oauth state cookie
-        response.delete_cookie("oauth_state")
+        response.delete_cookie("oauth_state", path="/")
         return response
 
     except Exception as e:
