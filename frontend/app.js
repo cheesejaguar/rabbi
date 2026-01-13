@@ -116,6 +116,9 @@ let selectedPackage = 'credits_10';
 document.addEventListener('DOMContentLoaded', init);
 
 async function init() {
+    // Show logged-out state immediately (will be updated if authenticated)
+    showLoggedOutState();
+
     // Track session start (only once per browser session)
     if (!sessionStorage.getItem('sessionTracked')) {
         trackEvent('session_start', { new_session: true });
