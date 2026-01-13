@@ -1452,7 +1452,7 @@ async function handlePaymentSubmit() {
     submitPayment.textContent = 'Processing...';
 
     try {
-        const { error } = await stripe.confirmPayment({
+        const { error, paymentIntent } = await stripe.confirmPayment({
             elements,
             confirmParams: {
                 return_url: window.location.origin + '/?payment=success',
@@ -1464,12 +1464,43 @@ async function handlePaymentSubmit() {
             showPaymentErrorMessage(error.message);
             submitPayment.disabled = false;
             submitPayment.textContent = 'Pay Now';
+        } else if (paymentIntent && paymentIntent.status === 'succeeded') {
+            // Payment succeeded - verify and fulfill immediately
+            submitPayment.textContent = 'Adding credits...';
+
+            try {
+                const verifyResponse = await fetch(`${API_BASE}/payments/verify-and-fulfill`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ payment_intent_id: paymentIntent.id })
+                });
+
+                const result = await verifyResponse.json();
+
+                if (result.success) {
+                    showPaymentSuccessMessage();
+                    await loadCredits();
+                    setTimeout(closePurchaseModalHandler, 2000);
+                } else {
+                    // Payment succeeded but fulfillment failed - show partial success
+                    console.error('Fulfillment issue:', result.message);
+                    showPaymentSuccessMessage();
+                    showToast('Payment received. Credits will be added shortly.');
+                    await loadCredits();
+                    setTimeout(closePurchaseModalHandler, 2000);
+                }
+            } catch (verifyError) {
+                // Payment succeeded but verification call failed
+                console.error('Verification error:', verifyError);
+                showPaymentSuccessMessage();
+                showToast('Payment received. Credits will be added shortly.');
+                await loadCredits();
+                setTimeout(closePurchaseModalHandler, 2000);
+            }
         } else {
-            // Payment succeeded without redirect
+            // Payment requires additional action or is processing
             showPaymentSuccessMessage();
-            // Refresh credits display
             await loadCredits();
-            // Close modal after delay
             setTimeout(closePurchaseModalHandler, 2000);
         }
     } catch (err) {

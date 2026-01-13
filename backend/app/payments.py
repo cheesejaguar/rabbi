@@ -26,6 +26,11 @@ class CreateIntentRequest(BaseModel):
     package_id: str
 
 
+class VerifyPaymentRequest(BaseModel):
+    """Request body for verifying a payment."""
+    payment_intent_id: str
+
+
 @router.get("/packages")
 async def get_packages():
     """Return available credit packages."""
@@ -97,6 +102,63 @@ async def create_payment_intent(request: Request, body: CreateIntentRequest):
     except Exception as e:
         logger.error(f"Error creating payment intent: {e}")
         raise HTTPException(status_code=500, detail=f"Payment error: {str(e)}")
+
+
+@router.post("/verify-and-fulfill")
+async def verify_and_fulfill(request: Request, body: VerifyPaymentRequest):
+    """Verify payment with Stripe and fulfill if successful.
+
+    This endpoint provides immediate feedback after payment completion,
+    complementing webhooks which may be delayed or unavailable in some environments.
+    """
+    user = get_current_user(request)
+    if not user:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+
+    if not settings.stripe_secret_key:
+        raise HTTPException(status_code=503, detail="Payment system not configured")
+
+    stripe.api_key = settings.stripe_secret_key
+
+    try:
+        # Retrieve the payment intent from Stripe
+        payment_intent = stripe.PaymentIntent.retrieve(body.payment_intent_id)
+
+        # Verify the payment belongs to this user
+        if payment_intent.metadata.get("user_id") != user["id"]:
+            raise HTTPException(status_code=403, detail="Payment not found")
+
+        # Check if payment succeeded
+        if payment_intent.status != "succeeded":
+            return {
+                "success": False,
+                "status": payment_intent.status,
+                "message": "Payment has not succeeded yet",
+            }
+
+        # Complete the purchase (idempotent - safe to call multiple times)
+        result = await db.complete_purchase(body.payment_intent_id)
+
+        if result:
+            return {
+                "success": True,
+                "credits_added": result["credits_purchased"],
+                "message": f"Added {result['credits_purchased']} credits to your account",
+            }
+        else:
+            # Purchase record not found - unusual but payment did succeed
+            logger.warning(f"No purchase record for verified payment: {body.payment_intent_id}")
+            return {
+                "success": False,
+                "message": "Payment verified but purchase record not found. Please contact support.",
+            }
+
+    except stripe.error.StripeError as e:
+        logger.error(f"Stripe error verifying payment: {e}")
+        raise HTTPException(status_code=500, detail=f"Verification error: {str(e)}")
+    except Exception as e:
+        logger.error(f"Error verifying payment: {e}")
+        raise HTTPException(status_code=500, detail=f"Verification error: {str(e)}")
 
 
 @router.post("/webhook")
