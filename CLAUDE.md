@@ -23,9 +23,12 @@ The app runs at http://localhost:8000
 
 ## Configuration
 
-Copy `backend/.env.example` to `backend/.env` and set:
-- `ANTHROPIC_API_KEY` (required)
-- `CLAUDE_MODEL` (optional, defaults to claude-sonnet-4-20250514)
+Copy `.env.example` to `.env` and set:
+- `OPENROUTER_API_KEY` or `AI_GATEWAY_API_KEY` (required for LLM)
+- `LLM_MODEL` (optional, defaults to anthropic/claude-sonnet-4-20250514)
+- `WORKOS_API_KEY` and `WORKOS_CLIENT_ID` (for authentication)
+- `STRIPE_SECRET_KEY`, `STRIPE_PUBLISHABLE_KEY`, `STRIPE_WEBHOOK_SECRET` (for payments)
+- `DATABASE_URL` (PostgreSQL connection string)
 
 ## Architecture
 
@@ -53,9 +56,26 @@ The `RabbiOrchestrator` (`orchestrator.py`) coordinates this pipeline. If the mo
 - `GET /api/greeting` - Initial greeting message
 - `POST /api/chat` - Main chat endpoint (processes through full pipeline)
 
+### Payment Endpoints (`payments.py`)
+
+- `GET /api/payments/packages` - Available credit packages (10 for $1, 25 for $2)
+- `POST /api/payments/create-intent` - Create Stripe PaymentIntent and CustomerSession
+- `POST /api/payments/webhook` - Handle Stripe webhook events (payment success/failure)
+- `POST /api/payments/verify-and-fulfill` - Client-side verification (non-production only)
+
+### Database (`database.py`)
+
+PostgreSQL with asyncpg. Key tables:
+- `users` - User accounts with credits balance and stripe_customer_id
+- `conversations` - Chat conversation metadata
+- `messages` - Individual messages in conversations
+- `purchases` - Credit purchase history with Stripe payment intent IDs
+
+Schema auto-initializes on startup with advisory locks for concurrent safety.
+
 ### Frontend
 
-Static files in `frontend/` served at root. Vanilla HTML/JS/CSS chat interface.
+Static files in `frontend/` served at root. Vanilla HTML/JS/CSS chat interface with Stripe Elements for payments.
 
 ## Design Principles
 

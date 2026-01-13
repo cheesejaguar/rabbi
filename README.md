@@ -24,6 +24,8 @@ rebbe.dev is a chatbot that provides guidance on questions of Jewish law, ethics
 - Mobile-friendly dark theme UI
 - Multi-agent reasoning pipeline
 - Token-by-token response streaming
+- Credit-based usage with Stripe payments
+- Tiered credit packages ($1 for 10 credits, $2 for 25 credits)
 
 ## Quick Start
 
@@ -141,6 +143,8 @@ rabbi/
 │   │   │   └── orchestrator.py
 │   │   ├── auth.py          # WorkOS SSO authentication
 │   │   ├── config.py        # Settings and configuration
+│   │   ├── database.py      # PostgreSQL database operations
+│   │   ├── payments.py      # Stripe payment processing
 │   │   ├── main.py          # FastAPI application
 │   │   └── models.py        # Pydantic models
 │   └── tests/               # Test suite
@@ -164,6 +168,9 @@ rabbi/
 | GET | `/auth/login` | Initiate SSO login |
 | GET | `/auth/logout` | Log out |
 | GET | `/auth/check` | Check authentication status |
+| GET | `/api/payments/packages` | Get available credit packages |
+| POST | `/api/payments/create-intent` | Create Stripe PaymentIntent |
+| POST | `/api/payments/webhook` | Stripe webhook handler |
 
 ## Configuration
 
@@ -178,6 +185,10 @@ rabbi/
 | `WORKOS_CLIENT_ID` | No | WorkOS client ID |
 | `WORKOS_REDIRECT_URI` | No | OAuth callback URL |
 | `SESSION_SECRET_KEY` | No | Secret for session tokens |
+| `STRIPE_SECRET_KEY` | No | Stripe secret key for payments |
+| `STRIPE_PUBLISHABLE_KEY` | No | Stripe publishable key for frontend |
+| `STRIPE_WEBHOOK_SECRET` | No | Stripe webhook signing secret |
+| `DATABASE_URL` | No | PostgreSQL connection URL |
 
 ## Architecture
 
@@ -237,4 +248,5 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 - Built with [FastAPI](https://fastapi.tiangolo.com/)
 - LLM access via [OpenRouter](https://openrouter.ai/)
 - Authentication via [WorkOS](https://workos.com/)
+- Payments via [Stripe](https://stripe.com/)
 - Package management with [uv](https://docs.astral.sh/uv/)
