@@ -93,10 +93,10 @@ async def create_payment_intent(request: Request, body: CreateIntentRequest):
 
     except stripe.error.StripeError as e:
         logger.error(f"Stripe error creating payment intent: {e}")
-        raise HTTPException(status_code=500, detail="Failed to create payment")
+        raise HTTPException(status_code=500, detail=f"Stripe error: {str(e)}")
     except Exception as e:
         logger.error(f"Error creating payment intent: {e}")
-        raise HTTPException(status_code=500, detail="Failed to create payment")
+        raise HTTPException(status_code=500, detail=f"Payment error: {str(e)}")
 
 
 @router.post("/webhook")
