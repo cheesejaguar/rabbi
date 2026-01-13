@@ -137,6 +137,15 @@ async function init() {
         return;
     }
 
+    // Check for payment success redirect (from external payment methods like Amazon Pay)
+    const urlParams = new URLSearchParams(window.location.search);
+    if (urlParams.get('payment') === 'success') {
+        // Clear the URL parameter
+        window.history.replaceState({}, '', window.location.pathname);
+        // Show success message
+        showToast('Payment successful! Credits have been added to your account.');
+    }
+
     await Promise.all([
         loadGreeting(),
         loadConversations()
@@ -1393,7 +1402,8 @@ async function initializePaymentForm() {
         const response = await fetch(`${API_BASE}/payments/create-intent`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ package_id: selectedPackage })
+            body: JSON.stringify({ package_id: selectedPackage }),
+            credentials: 'include'
         });
 
         if (!response.ok) {
@@ -1472,7 +1482,8 @@ async function handlePaymentSubmit() {
                 const verifyResponse = await fetch(`${API_BASE}/payments/verify-and-fulfill`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ payment_intent_id: paymentIntent.id })
+                    body: JSON.stringify({ payment_intent_id: paymentIntent.id }),
+                    credentials: 'include'
                 });
 
                 if (verifyResponse.status === 404) {

@@ -12,6 +12,10 @@ from . import database as db
 logger = logging.getLogger(__name__)
 settings = get_settings()
 
+# Configure Stripe API key once at module load (thread-safe)
+if settings.stripe_secret_key:
+    stripe.api_key = settings.stripe_secret_key
+
 router = APIRouter(prefix="/api/payments", tags=["payments"])
 
 # Credit packages available for purchase
@@ -52,9 +56,6 @@ async def create_payment_intent(request: Request, body: CreateIntentRequest):
     # Check Stripe configuration
     if not settings.stripe_secret_key:
         raise HTTPException(status_code=503, detail="Payment system not configured")
-
-    # Initialize Stripe
-    stripe.api_key = settings.stripe_secret_key
 
     try:
         # Get or create Stripe customer
@@ -124,8 +125,6 @@ async def verify_and_fulfill(request: Request, body: VerifyPaymentRequest):
     if not settings.stripe_secret_key:
         raise HTTPException(status_code=503, detail="Payment system not configured")
 
-    stripe.api_key = settings.stripe_secret_key
-
     try:
         # Retrieve the payment intent from Stripe
         payment_intent = stripe.PaymentIntent.retrieve(body.payment_intent_id)
@@ -180,8 +179,6 @@ async def stripe_webhook(request: Request):
 
     if not sig_header:
         raise HTTPException(status_code=400, detail="Missing signature")
-
-    stripe.api_key = settings.stripe_secret_key
 
     try:
         event = stripe.Webhook.construct_event(

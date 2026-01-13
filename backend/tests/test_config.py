@@ -187,6 +187,97 @@ class TestSettings:
             assert "@db.example.com/mydb?sslmode=require" in settings.db_url
 
 
+class TestIsProduction:
+    """Test is_production property."""
+
+    def test_is_production_true(self):
+        """Test is_production returns True for production environment."""
+        env_vars = {
+            "ENVIRONMENT": "production",
+            "SESSION_SECRET_KEY": "a-very-secure-session-secret-key-for-testing-production",
+        }
+        with patch.dict(os.environ, env_vars, clear=True):
+            settings = Settings(_env_file=None)
+            assert settings.is_production is True
+
+    def test_is_production_false_for_development(self):
+        """Test is_production returns False for development environment."""
+        env_vars = {"ENVIRONMENT": "development"}
+        with patch.dict(os.environ, env_vars, clear=True):
+            settings = Settings(_env_file=None)
+            assert settings.is_production is False
+
+    def test_is_production_case_insensitive(self):
+        """Test is_production is case insensitive."""
+        env_vars = {
+            "ENVIRONMENT": "PRODUCTION",
+            "SESSION_SECRET_KEY": "a-very-secure-session-secret-key-for-testing-production",
+        }
+        with patch.dict(os.environ, env_vars, clear=True):
+            settings = Settings(_env_file=None)
+            assert settings.is_production is True
+
+    def test_is_production_default_false(self):
+        """Test is_production defaults to False."""
+        with patch.dict(os.environ, {}, clear=True):
+            settings = Settings(_env_file=None)
+            assert settings.is_production is False
+
+
+class TestEffectiveRedirectUri:
+    """Test effective_redirect_uri property."""
+
+    def test_uses_workos_redirect_uri_in_production(self):
+        """Test that production uses the configured workos_redirect_uri."""
+        env_vars = {
+            "ENVIRONMENT": "production",
+            "SESSION_SECRET_KEY": "a-very-secure-session-secret-key-for-testing-production",
+            "WORKOS_REDIRECT_URI": "https://rebbe.dev/auth/callback",
+            "VERCEL_URL": "rebbe-preview-123.vercel.app",
+        }
+        with patch.dict(os.environ, env_vars, clear=True):
+            settings = Settings(_env_file=None)
+            assert settings.effective_redirect_uri == "https://rebbe.dev/auth/callback"
+
+    def test_uses_vercel_url_in_preview(self):
+        """Test that preview deployment uses VERCEL_URL."""
+        env_vars = {
+            "ENVIRONMENT": "preview",
+            "WORKOS_REDIRECT_URI": "https://rebbe.dev/auth/callback",
+            "VERCEL_URL": "rebbe-preview-123.vercel.app",
+        }
+        with patch.dict(os.environ, env_vars, clear=True):
+            settings = Settings(_env_file=None)
+            assert settings.effective_redirect_uri == "https://rebbe-preview-123.vercel.app/auth/callback"
+
+    def test_uses_vercel_url_in_development_with_vercel_url(self):
+        """Test that development with VERCEL_URL uses dynamic redirect."""
+        env_vars = {
+            "ENVIRONMENT": "development",
+            "WORKOS_REDIRECT_URI": "http://localhost:8613/auth/callback",
+            "VERCEL_URL": "rebbe-dev-456.vercel.app",
+        }
+        with patch.dict(os.environ, env_vars, clear=True):
+            settings = Settings(_env_file=None)
+            assert settings.effective_redirect_uri == "https://rebbe-dev-456.vercel.app/auth/callback"
+
+    def test_uses_workos_redirect_uri_without_vercel_url(self):
+        """Test that without VERCEL_URL, workos_redirect_uri is used."""
+        env_vars = {
+            "ENVIRONMENT": "development",
+            "WORKOS_REDIRECT_URI": "http://localhost:8613/auth/callback",
+        }
+        with patch.dict(os.environ, env_vars, clear=True):
+            settings = Settings(_env_file=None)
+            assert settings.effective_redirect_uri == "http://localhost:8613/auth/callback"
+
+    def test_default_redirect_uri(self):
+        """Test default redirect URI without any configuration."""
+        with patch.dict(os.environ, {}, clear=True):
+            settings = Settings(_env_file=None)
+            assert settings.effective_redirect_uri == "http://localhost:8613/auth/callback"
+
+
 class TestGetSettings:
     """Test get_settings function."""
 
