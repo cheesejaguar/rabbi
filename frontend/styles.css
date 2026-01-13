@@ -507,7 +507,7 @@ body {
     border-radius: var(--radius-lg);
     padding: 16px 20px;
     display: flex;
-    align-items: flex-end;
+    align-items: center;
     gap: 12px;
     transition: all var(--transition-normal);
     animation: slideUp 0.6s ease 0.1s both;
