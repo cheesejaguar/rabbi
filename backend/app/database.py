@@ -157,6 +157,57 @@ CREATE TABLE IF NOT EXISTS feedback (
 
 CREATE INDEX IF NOT EXISTS idx_feedback_message_id ON feedback(message_id);
 CREATE INDEX IF NOT EXISTS idx_feedback_user_id ON feedback(user_id);
+
+-- Errors table for tracking failures and API errors
+CREATE TABLE IF NOT EXISTS errors (
+    id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
+    user_id TEXT REFERENCES users(id) ON DELETE SET NULL,
+    conversation_id TEXT REFERENCES conversations(id) ON DELETE SET NULL,
+    error_type TEXT NOT NULL,  -- 'llm_error', 'tts_error', 'auth_error', 'validation_error', etc.
+    error_message TEXT NOT NULL,
+    stack_trace TEXT,
+    request_context JSONB DEFAULT '{}',  -- Request details for debugging
+    created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_errors_user_id ON errors(user_id);
+CREATE INDEX IF NOT EXISTS idx_errors_error_type ON errors(error_type);
+CREATE INDEX IF NOT EXISTS idx_errors_created_at ON errors(created_at DESC);
+
+-- TTS events table for tracking speak button usage
+CREATE TABLE IF NOT EXISTS tts_events (
+    id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
+    user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    message_id TEXT REFERENCES messages(id) ON DELETE SET NULL,
+    event_type TEXT NOT NULL CHECK (event_type IN ('start', 'stop', 'complete', 'error')),
+    text_length INTEGER,  -- Character count of text being spoken
+    duration_ms INTEGER,  -- Audio duration if completed
+    error_message TEXT,   -- Error details if event_type is 'error'
+    created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_tts_events_user_id ON tts_events(user_id);
+CREATE INDEX IF NOT EXISTS idx_tts_events_message_id ON tts_events(message_id);
+CREATE INDEX IF NOT EXISTS idx_tts_events_created_at ON tts_events(created_at DESC);
+
+-- Analytics events table for flexible event tracking
+-- Tracks sessions, page views, referrers, device info, etc.
+CREATE TABLE IF NOT EXISTS analytics_events (
+    id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
+    user_id TEXT REFERENCES users(id) ON DELETE SET NULL,
+    session_id TEXT NOT NULL,  -- Client-generated session identifier
+    event_type TEXT NOT NULL,  -- 'page_view', 'session_start', 'session_end', 'click', etc.
+    event_data JSONB DEFAULT '{}',  -- Flexible data for different event types
+    page_path TEXT,
+    referrer TEXT,
+    user_agent TEXT,
+    created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_analytics_events_user_id ON analytics_events(user_id);
+CREATE INDEX IF NOT EXISTS idx_analytics_events_session_id ON analytics_events(session_id);
+CREATE INDEX IF NOT EXISTS idx_analytics_events_event_type ON analytics_events(event_type);
+CREATE INDEX IF NOT EXISTS idx_analytics_events_created_at ON analytics_events(created_at DESC);
 """
 
 
@@ -414,3 +465,166 @@ async def get_message_feedback(message_id: str, user_id: str) -> Optional[dict]:
             message_id, user_id
         )
         return dict(row) if row else None
+
+
+# Error logging operations
+async def log_error(
+    error_type: str,
+    error_message: str,
+    user_id: str = None,
+    conversation_id: str = None,
+    stack_trace: str = None,
+    request_context: dict = None
+) -> dict:
+    """Log an error to the database."""
+    import json
+    async with get_connection() as conn:
+        row = await conn.fetchrow(
+            """
+            INSERT INTO errors (user_id, conversation_id, error_type, error_message, stack_trace, request_context)
+            VALUES ($1, $2, $3, $4, $5, $6)
+            RETURNING id, user_id, conversation_id, error_type, error_message, created_at
+            """,
+            user_id, conversation_id, error_type, error_message, stack_trace,
+            json.dumps(request_context or {})
+        )
+        return dict(row)
+
+
+async def get_error_stats(days: int = 7) -> list[dict]:
+    """Get error statistics for the last N days."""
+    async with get_connection() as conn:
+        rows = await conn.fetch(
+            """
+            SELECT error_type, COUNT(*) as count,
+                   DATE_TRUNC('day', created_at) as day
+            FROM errors
+            WHERE created_at > NOW() - INTERVAL '%s days'
+            GROUP BY error_type, DATE_TRUNC('day', created_at)
+            ORDER BY day DESC, count DESC
+            """ % days
+        )
+        return [dict(row) for row in rows]
+
+
+# TTS event operations
+async def log_tts_event(
+    user_id: str,
+    event_type: str,
+    message_id: str = None,
+    text_length: int = None,
+    duration_ms: int = None,
+    error_message: str = None
+) -> dict:
+    """Log a TTS event (start, stop, complete, error)."""
+    async with get_connection() as conn:
+        row = await conn.fetchrow(
+            """
+            INSERT INTO tts_events (user_id, message_id, event_type, text_length, duration_ms, error_message)
+            VALUES ($1, $2, $3, $4, $5, $6)
+            RETURNING id, user_id, message_id, event_type, text_length, duration_ms, created_at
+            """,
+            user_id, message_id, event_type, text_length, duration_ms, error_message
+        )
+        return dict(row)
+
+
+async def get_tts_stats(days: int = 7) -> dict:
+    """Get TTS usage statistics for the last N days."""
+    async with get_connection() as conn:
+        row = await conn.fetchrow(
+            """
+            SELECT
+                COUNT(*) FILTER (WHERE event_type = 'start') as total_starts,
+                COUNT(*) FILTER (WHERE event_type = 'complete') as total_completes,
+                COUNT(*) FILTER (WHERE event_type = 'stop') as total_stops,
+                COUNT(*) FILTER (WHERE event_type = 'error') as total_errors,
+                AVG(duration_ms) FILTER (WHERE event_type = 'complete') as avg_duration_ms,
+                SUM(text_length) FILTER (WHERE event_type = 'start') as total_chars_spoken
+            FROM tts_events
+            WHERE created_at > NOW() - INTERVAL '%s days'
+            """ % days
+        )
+        return dict(row) if row else {}
+
+
+# Analytics event operations
+async def log_analytics_event(
+    session_id: str,
+    event_type: str,
+    user_id: str = None,
+    event_data: dict = None,
+    page_path: str = None,
+    referrer: str = None,
+    user_agent: str = None
+) -> dict:
+    """Log an analytics event."""
+    import json
+    async with get_connection() as conn:
+        row = await conn.fetchrow(
+            """
+            INSERT INTO analytics_events (user_id, session_id, event_type, event_data, page_path, referrer, user_agent)
+            VALUES ($1, $2, $3, $4, $5, $6, $7)
+            RETURNING id, session_id, event_type, page_path, created_at
+            """,
+            user_id, session_id, event_type, json.dumps(event_data or {}),
+            page_path, referrer, user_agent
+        )
+        return dict(row)
+
+
+async def get_session_stats(days: int = 7) -> dict:
+    """Get session statistics for the last N days."""
+    async with get_connection() as conn:
+        row = await conn.fetchrow(
+            """
+            SELECT
+                COUNT(DISTINCT session_id) as unique_sessions,
+                COUNT(*) FILTER (WHERE event_type = 'page_view') as total_page_views,
+                COUNT(DISTINCT user_id) FILTER (WHERE user_id IS NOT NULL) as unique_users
+            FROM analytics_events
+            WHERE created_at > NOW() - INTERVAL '%s days'
+            """ % days
+        )
+        return dict(row) if row else {}
+
+
+async def get_referrer_stats(days: int = 7) -> list[dict]:
+    """Get referrer statistics for the last N days."""
+    async with get_connection() as conn:
+        rows = await conn.fetch(
+            """
+            SELECT
+                COALESCE(referrer, 'direct') as referrer,
+                COUNT(DISTINCT session_id) as sessions
+            FROM analytics_events
+            WHERE event_type = 'session_start'
+              AND created_at > NOW() - INTERVAL '%s days'
+            GROUP BY referrer
+            ORDER BY sessions DESC
+            LIMIT 20
+            """ % days
+        )
+        return [dict(row) for row in rows]
+
+
+async def get_device_stats(days: int = 7) -> list[dict]:
+    """Get device/browser statistics for the last N days."""
+    async with get_connection() as conn:
+        rows = await conn.fetch(
+            """
+            SELECT
+                CASE
+                    WHEN user_agent ILIKE '%%mobile%%' OR user_agent ILIKE '%%android%%' OR user_agent ILIKE '%%iphone%%' THEN 'mobile'
+                    WHEN user_agent ILIKE '%%tablet%%' OR user_agent ILIKE '%%ipad%%' THEN 'tablet'
+                    ELSE 'desktop'
+                END as device_type,
+                COUNT(DISTINCT session_id) as sessions
+            FROM analytics_events
+            WHERE event_type = 'session_start'
+              AND created_at > NOW() - INTERVAL '%s days'
+            GROUP BY device_type
+            ORDER BY sessions DESC
+            """ % days
+        )
+        return [dict(row) for row in rows]

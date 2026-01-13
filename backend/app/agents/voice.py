@@ -3,6 +3,7 @@
 from .base import (
     BaseAgent,
     AgentContext,
+    LLMMetrics,
 )
 
 
@@ -129,7 +130,8 @@ Do not use headers, bullet points, or formatting. Write as if speaking directly 
             }
         ]
 
-        response = self._call_claude(messages, self.system_prompt)
+        response, metrics = self._call_claude(messages, self.system_prompt)
+        self._update_context_metrics(context, metrics)
 
         context.final_response = response
 
@@ -204,5 +206,10 @@ Do not use headers, bullet points, or formatting. Write as if speaking directly 
             }
         ]
 
-        for chunk in self._call_claude_stream(messages, self.system_prompt):
-            yield chunk
+        for item in self._call_claude_stream(messages, self.system_prompt):
+            if isinstance(item, LLMMetrics):
+                # Final metrics - update context and yield
+                self._update_context_metrics(context, item)
+                yield item
+            else:
+                yield item

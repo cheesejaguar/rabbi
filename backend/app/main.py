@@ -66,6 +66,7 @@ class AuthMiddleware(BaseHTTPMiddleware):
         "/auth/callback",
         "/auth/check",
         "/api/health",
+        "/api/analytics",  # Allow anonymous session tracking
         "/docs",
         "/openapi.json",
         "/redoc",
@@ -192,6 +193,78 @@ async def remove_feedback(request: Request, message_id: str):
     except Exception as e:
         print(f"Error deleting feedback: {e}")
         raise HTTPException(status_code=500, detail="Failed to delete feedback")
+
+
+@app.post("/api/tts-event")
+async def log_tts_event(request: Request):
+    """Log a TTS (text-to-speech) usage event."""
+    user = get_current_user(request)
+    if not user:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+
+    if not settings.db_url:
+        return {"success": False, "message": "Database not configured"}
+
+    body = await request.json()
+    event_type = body.get("event_type")
+    message_id = body.get("message_id")
+    text_length = body.get("text_length")
+    duration_ms = body.get("duration_ms")
+    error_message = body.get("error_message")
+
+    if event_type not in ("start", "stop", "complete", "error"):
+        raise HTTPException(status_code=400, detail="Invalid event_type")
+
+    try:
+        result = await db.log_tts_event(
+            user_id=user["id"],
+            event_type=event_type,
+            message_id=message_id,
+            text_length=text_length,
+            duration_ms=duration_ms,
+            error_message=error_message
+        )
+        return {"success": True, "event_id": result.get("id")}
+    except Exception as e:
+        print(f"Error logging TTS event: {e}")
+        return {"success": False}
+
+
+@app.post("/api/analytics")
+async def log_analytics_event(request: Request):
+    """Log an analytics event (page view, session, etc.)."""
+    user = get_current_user(request)
+
+    if not settings.db_url:
+        return {"success": False, "message": "Database not configured"}
+
+    body = await request.json()
+    session_id = body.get("session_id")
+    event_type = body.get("event_type")
+    event_data = body.get("event_data", {})
+    page_path = body.get("page_path")
+    referrer = body.get("referrer")
+
+    if not session_id or not event_type:
+        raise HTTPException(status_code=400, detail="session_id and event_type required")
+
+    # Get user agent from headers
+    user_agent = request.headers.get("user-agent", "")
+
+    try:
+        result = await db.log_analytics_event(
+            session_id=session_id,
+            event_type=event_type,
+            user_id=user["id"] if user else None,
+            event_data=event_data,
+            page_path=page_path,
+            referrer=referrer,
+            user_agent=user_agent
+        )
+        return {"success": True, "event_id": result.get("id")}
+    except Exception as e:
+        print(f"Error logging analytics event: {e}")
+        return {"success": False}
 
 
 @app.post("/api/speak")
@@ -327,6 +400,7 @@ async def chat_stream(chat_request: ChatRequest, request: Request):
 
     async def event_generator():
         full_response = ""
+        metrics_data = None
         try:
             # Send session_id and conversation_id first
             yield f"data: {json.dumps({'type': 'session', 'session_id': session_id, 'conversation_id': conversation_id})}\n\n"
@@ -340,11 +414,16 @@ async def chat_stream(chat_request: ChatRequest, request: Request):
                 # Accumulate response for database
                 if event.get("type") == "token":
                     full_response += event.get("data", "")
+                # Capture metrics
+                elif event.get("type") == "metrics":
+                    metrics_data = event.get("data", {})
 
-            # Save assistant response to database
+            # Save assistant response to database with metrics
             if conversation_id and user and settings.db_url and full_response:
                 try:
-                    message = await db.add_message(conversation_id, "assistant", full_response)
+                    # Include metrics in message metadata
+                    metadata = metrics_data if metrics_data else {}
+                    message = await db.add_message(conversation_id, "assistant", full_response, metadata)
                     # Emit message_id so frontend can track feedback
                     if message and message.get("id"):
                         yield f"data: {json.dumps({'type': 'message_saved', 'message_id': message['id']})}\n\n"
@@ -361,6 +440,18 @@ async def chat_stream(chat_request: ChatRequest, request: Request):
             yield f"data: {json.dumps({'type': 'done'})}\n\n"
 
         except Exception as e:
+            # Log error to database
+            if settings.db_url:
+                try:
+                    await db.log_error(
+                        error_type="llm_error",
+                        error_message=str(e),
+                        user_id=user["id"] if user else None,
+                        conversation_id=conversation_id,
+                        request_context={"message": chat_request.message[:500]}
+                    )
+                except Exception:
+                    pass
             yield f"data: {json.dumps({'type': 'error', 'message': str(e)})}\n\n"
 
     return StreamingResponse(

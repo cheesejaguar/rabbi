@@ -2,7 +2,7 @@
 
 from openai import OpenAI
 from typing import Optional
-from .base import AgentContext
+from .base import AgentContext, LLMMetrics
 from .pastoral import PastoralContextAgent
 from .halachic import HalachicReasoningAgent
 from .moral import MoralEthicalAgent
@@ -109,6 +109,12 @@ Please re-analyze with special attention to:
                 "pastoral_mode": None,
                 "vulnerability_detected": False,
                 "moral_reconsideration": context.metadata.get("moral_reconsideration", False),
+                # Metrics
+                "total_input_tokens": context.total_input_tokens,
+                "total_output_tokens": context.total_output_tokens,
+                "total_latency_ms": context.total_latency_ms,
+                "estimated_cost_usd": round(context.total_estimated_cost_usd, 6),
+                "agent_metrics": context.agent_metrics,
             }
         }
 
@@ -153,12 +159,20 @@ Please re-analyze with special attention to:
         if context.moral_assessment and context.moral_assessment.requires_reconsideration:
             context = await self._reconsider_response(context)
 
-        # Build metadata to send before streaming
+        # Build metadata to send before streaming (includes pre-streaming agent metrics)
         metadata = {
             "requires_human_referral": False,
             "pastoral_mode": None,
             "vulnerability_detected": False,
             "moral_reconsideration": context.metadata.get("moral_reconsideration", False),
+            # Pre-streaming metrics (pastoral, halachic, moral agents)
+            "pre_stream_metrics": {
+                "input_tokens": context.total_input_tokens,
+                "output_tokens": context.total_output_tokens,
+                "latency_ms": context.total_latency_ms,
+                "estimated_cost_usd": round(context.total_estimated_cost_usd, 6),
+                "agent_metrics": context.agent_metrics.copy(),
+            }
         }
 
         if context.pastoral_context:
@@ -179,8 +193,21 @@ Please re-analyze with special attention to:
         yield {"type": "metadata", "data": metadata}
 
         # Stream the voice agent response
-        for chunk in self.voice_agent.process_stream(context):
-            yield {"type": "token", "data": chunk}
+        for item in self.voice_agent.process_stream(context):
+            if isinstance(item, LLMMetrics):
+                # Final metrics from voice agent - emit complete metrics
+                yield {
+                    "type": "metrics",
+                    "data": {
+                        "total_input_tokens": context.total_input_tokens,
+                        "total_output_tokens": context.total_output_tokens,
+                        "total_latency_ms": context.total_latency_ms,
+                        "estimated_cost_usd": round(context.total_estimated_cost_usd, 6),
+                        "agent_metrics": context.agent_metrics,
+                    }
+                }
+            else:
+                yield {"type": "token", "data": item}
 
     async def get_greeting(self) -> str:
         """Get an initial greeting message."""

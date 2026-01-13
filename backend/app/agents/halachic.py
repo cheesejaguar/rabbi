@@ -99,7 +99,8 @@ Provide a halachic landscape analysis for this question, adjusted appropriately 
             }
         ]
 
-        response = self._call_claude(messages, self.system_prompt)
+        response, metrics = self._call_claude(messages, self.system_prompt)
+        self._update_context_metrics(context, metrics)
 
         halachic_landscape = self._parse_response(response)
         context.halachic_landscape = halachic_landscape

@@ -112,7 +112,8 @@ Evaluate this for moral and ethical concerns. Does it increase holiness without 
             }
         ]
 
-        response = self._call_claude(messages, self.system_prompt)
+        response, metrics = self._call_claude(messages, self.system_prompt)
+        self._update_context_metrics(context, metrics)
 
         moral_assessment = self._parse_response(response)
         context.moral_assessment = moral_assessment

@@ -95,7 +95,8 @@ Respond ONLY with the JSON object, no additional text."""
             ])
             messages[0]["content"] += f"\n\nRecent conversation context:\n{history_summary}"
 
-        response = self._call_claude(messages, self.system_prompt)
+        response, metrics = self._call_claude(messages, self.system_prompt)
+        self._update_context_metrics(context, metrics)
 
         pastoral_context = self._parse_response(response)
         context.pastoral_context = pastoral_context

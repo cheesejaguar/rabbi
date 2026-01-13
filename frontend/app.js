@@ -13,6 +13,51 @@ let conversations = [];
 let isLoading = false;
 let currentUser = null;
 
+// Analytics session ID (persists across page loads within same browser session)
+let analyticsSessionId = sessionStorage.getItem('analyticsSessionId');
+if (!analyticsSessionId) {
+    analyticsSessionId = 'sess_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
+    sessionStorage.setItem('analyticsSessionId', analyticsSessionId);
+}
+
+// Analytics helper function
+async function trackEvent(eventType, eventData = {}, pagePath = null) {
+    try {
+        await fetch(`${API_BASE}/analytics`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                session_id: analyticsSessionId,
+                event_type: eventType,
+                event_data: eventData,
+                page_path: pagePath || window.location.pathname,
+                referrer: document.referrer || null
+            })
+        });
+    } catch (e) {
+        // Silently fail - analytics shouldn't break the app
+    }
+}
+
+// TTS event tracking
+async function trackTTSEvent(eventType, messageId = null, textLength = null, durationMs = null, errorMessage = null) {
+    try {
+        await fetch(`${API_BASE}/tts-event`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                event_type: eventType,
+                message_id: messageId,
+                text_length: textLength,
+                duration_ms: durationMs,
+                error_message: errorMessage
+            })
+        });
+    } catch (e) {
+        // Silently fail
+    }
+}
+
 // DOM Elements
 const welcomeScreen = document.getElementById('welcomeScreen');
 const chatScreen = document.getElementById('chatScreen');
@@ -51,6 +96,14 @@ const settingsUserEmail = document.getElementById('settingsUserEmail');
 document.addEventListener('DOMContentLoaded', init);
 
 async function init() {
+    // Track session start (only once per browser session)
+    if (!sessionStorage.getItem('sessionTracked')) {
+        trackEvent('session_start', { new_session: true });
+        sessionStorage.setItem('sessionTracked', 'true');
+    }
+    // Always track page view
+    trackEvent('page_view');
+
     // Check authentication first
     const isAuthenticated = await checkAuth();
 
@@ -971,6 +1024,11 @@ async function handleSpeak(content, button) {
         await audioContext.resume();
     }
 
+    // Get message ID for tracking (from parent message element)
+    const messageEl = button.closest('.message');
+    const messageId = messageEl ? messageEl.dataset.messageId : null;
+    const textLength = content ? content.length : 0;
+
     // If already playing, stop all sources
     if (isPlaying) {
         stopRequested = true;
@@ -985,12 +1043,17 @@ async function handleSpeak(content, button) {
         activeSources = [];
         button.classList.remove('playing');
         isPlaying = false;
+        trackTTSEvent('stop', messageId);
         return;
     }
 
     button.classList.add('loading');
     isPlaying = true;
     stopRequested = false;
+    const ttsStartTime = Date.now();
+
+    // Track TTS start
+    trackTTSEvent('start', messageId, textLength);
 
     const PCM_SAMPLE_RATE = 24000;
 
@@ -1075,6 +1138,9 @@ async function handleSpeak(content, button) {
                 button.classList.remove('playing');
                 isPlaying = false;
                 activeSources = [];
+                // Track completion with duration
+                const durationMs = Date.now() - ttsStartTime;
+                trackTTSEvent('complete', messageId, textLength, durationMs);
             };
         } else {
             button.classList.remove('playing', 'loading');
@@ -1088,6 +1154,8 @@ async function handleSpeak(content, button) {
         isPlaying = false;
         activeSources = [];
         showToast('Could not generate speech');
+        // Track error
+        trackTTSEvent('error', messageId, textLength, null, error.message || 'Unknown error');
     }
 }
 

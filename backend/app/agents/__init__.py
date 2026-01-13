@@ -1,5 +1,5 @@
 # rebbe.dev Agents
-from .base import BaseAgent
+from .base import BaseAgent, LLMMetrics, AgentContext
 from .pastoral import PastoralContextAgent
 from .halachic import HalachicReasoningAgent
 from .moral import MoralEthicalAgent
@@ -8,6 +8,8 @@ from .orchestrator import RabbiOrchestrator
 
 __all__ = [
     "BaseAgent",
+    "LLMMetrics",
+    "AgentContext",
     "PastoralContextAgent",
     "HalachicReasoningAgent",
     "MoralEthicalAgent",
