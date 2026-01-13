@@ -159,6 +159,8 @@ async def verify_and_fulfill(request: Request, body: VerifyPaymentRequest):
                 "message": "Payment verified but purchase record not found. Please contact support.",
             }
 
+    except HTTPException:
+        raise  # Re-raise HTTP exceptions as-is
     except stripe.error.StripeError as e:
         logger.error(f"Stripe error verifying payment: {e}")
         raise HTTPException(status_code=500, detail=f"Verification error: {str(e)}")

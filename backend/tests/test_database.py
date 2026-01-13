@@ -532,3 +532,261 @@ class TestInitSchema:
             # Should only try to acquire lock, then skip
             mock_connection.fetchval.assert_called_once()
             mock_connection.execute.assert_not_called()
+
+
+class TestStripeCustomerOperations:
+    """Test Stripe customer database operations."""
+
+    @pytest.fixture
+    def mock_connection(self):
+        """Create a mock database connection."""
+        return AsyncMock()
+
+    @pytest.mark.asyncio
+    async def test_get_stripe_customer_id_returns_id(self, mock_connection):
+        """Test getting existing Stripe customer ID."""
+        mock_row = {"stripe_customer_id": "cus_test123"}
+        mock_connection.fetchrow = AsyncMock(return_value=mock_row)
+
+        with patch('app.database.get_connection') as mock_ctx:
+            mock_ctx.return_value.__aenter__ = AsyncMock(return_value=mock_connection)
+            mock_ctx.return_value.__aexit__ = AsyncMock()
+
+            from app.database import get_stripe_customer_id
+            result = await get_stripe_customer_id("user-123")
+
+            assert result == "cus_test123"
+
+    @pytest.mark.asyncio
+    async def test_get_stripe_customer_id_returns_none(self, mock_connection):
+        """Test getting non-existent Stripe customer ID."""
+        mock_connection.fetchrow = AsyncMock(return_value=None)
+
+        with patch('app.database.get_connection') as mock_ctx:
+            mock_ctx.return_value.__aenter__ = AsyncMock(return_value=mock_connection)
+            mock_ctx.return_value.__aexit__ = AsyncMock()
+
+            from app.database import get_stripe_customer_id
+            result = await get_stripe_customer_id("user-123")
+
+            assert result is None
+
+    @pytest.mark.asyncio
+    async def test_set_stripe_customer_id(self, mock_connection):
+        """Test setting Stripe customer ID for user."""
+        mock_connection.execute = AsyncMock(return_value="UPDATE 1")
+
+        with patch('app.database.get_connection') as mock_ctx:
+            mock_ctx.return_value.__aenter__ = AsyncMock(return_value=mock_connection)
+            mock_ctx.return_value.__aexit__ = AsyncMock()
+
+            from app.database import set_stripe_customer_id
+            result = await set_stripe_customer_id("user-123", "cus_new123")
+
+            assert result is True
+            mock_connection.execute.assert_called_once()
+
+
+class TestPurchaseOperations:
+    """Test purchase database operations."""
+
+    @pytest.fixture
+    def mock_connection(self):
+        """Create a mock database connection."""
+        return AsyncMock()
+
+    @pytest.mark.asyncio
+    async def test_create_purchase(self, mock_connection):
+        """Test creating a new purchase record."""
+        mock_row = {
+            "id": "purchase-123",
+            "user_id": "user-123",
+            "stripe_payment_intent_id": "pi_test123",
+            "stripe_customer_id": "cus_test123",
+            "amount_cents": 100,
+            "credits_purchased": 10,
+            "package_id": "credits_10",
+            "status": "pending",
+            "created_at": "2024-01-01T00:00:00Z",
+        }
+        mock_connection.fetchrow = AsyncMock(return_value=mock_row)
+
+        with patch('app.database.get_connection') as mock_ctx:
+            mock_ctx.return_value.__aenter__ = AsyncMock(return_value=mock_connection)
+            mock_ctx.return_value.__aexit__ = AsyncMock()
+
+            from app.database import create_purchase
+            result = await create_purchase(
+                user_id="user-123",
+                stripe_payment_intent_id="pi_test123",
+                stripe_customer_id="cus_test123",
+                amount_cents=100,
+                credits_purchased=10,
+                package_id="credits_10",
+            )
+
+            assert result["id"] == "purchase-123"
+            assert result["status"] == "pending"
+
+    @pytest.mark.asyncio
+    async def test_get_purchase_by_intent_id(self, mock_connection):
+        """Test getting purchase by payment intent ID."""
+        mock_row = {
+            "id": "purchase-123",
+            "user_id": "user-123",
+            "stripe_payment_intent_id": "pi_test123",
+            "status": "pending",
+        }
+        mock_connection.fetchrow = AsyncMock(return_value=mock_row)
+
+        with patch('app.database.get_connection') as mock_ctx:
+            mock_ctx.return_value.__aenter__ = AsyncMock(return_value=mock_connection)
+            mock_ctx.return_value.__aexit__ = AsyncMock()
+
+            from app.database import get_purchase_by_intent_id
+            result = await get_purchase_by_intent_id("pi_test123")
+
+            assert result["stripe_payment_intent_id"] == "pi_test123"
+
+    @pytest.mark.asyncio
+    async def test_get_purchase_by_intent_id_not_found(self, mock_connection):
+        """Test getting non-existent purchase."""
+        mock_connection.fetchrow = AsyncMock(return_value=None)
+
+        with patch('app.database.get_connection') as mock_ctx:
+            mock_ctx.return_value.__aenter__ = AsyncMock(return_value=mock_connection)
+            mock_ctx.return_value.__aexit__ = AsyncMock()
+
+            from app.database import get_purchase_by_intent_id
+            result = await get_purchase_by_intent_id("pi_nonexistent")
+
+            assert result is None
+
+    @pytest.mark.asyncio
+    async def test_complete_purchase_adds_credits(self, mock_connection):
+        """Test completing a purchase adds credits to user."""
+        # First fetchrow returns the pending purchase
+        pending_purchase = {
+            "id": "purchase-123",
+            "user_id": "user-123",
+            "credits_purchased": 10,
+            "status": "pending",
+        }
+        # Second fetchrow returns the completed purchase (after UPDATE RETURNING)
+        completed_purchase = {
+            "id": "purchase-123",
+            "user_id": "user-123",
+            "credits_purchased": 10,
+            "status": "completed",
+        }
+        mock_connection.fetchrow = AsyncMock(side_effect=[pending_purchase, completed_purchase])
+        mock_connection.execute = AsyncMock()
+
+        # Mock the transaction context manager
+        mock_transaction = AsyncMock()
+        mock_transaction.__aenter__ = AsyncMock()
+        mock_transaction.__aexit__ = AsyncMock()
+        mock_connection.transaction = MagicMock(return_value=mock_transaction)
+
+        with patch('app.database.get_connection') as mock_ctx:
+            mock_ctx.return_value.__aenter__ = AsyncMock(return_value=mock_connection)
+            mock_ctx.return_value.__aexit__ = AsyncMock()
+
+            from app.database import complete_purchase
+            result = await complete_purchase("pi_test123")
+
+            assert result["status"] == "completed"
+            assert result["credits_purchased"] == 10
+            # Should have called execute to add credits
+            assert mock_connection.execute.called
+
+    @pytest.mark.asyncio
+    async def test_complete_purchase_idempotent(self, mock_connection):
+        """Test that completing already-completed purchase is idempotent."""
+        # First fetchrow returns already completed purchase
+        already_completed_check = {
+            "id": "purchase-123",
+            "user_id": "user-123",
+            "credits_purchased": 10,
+            "status": "completed",
+        }
+        # Second fetchrow returns full purchase for idempotent return
+        already_completed_full = {
+            "id": "purchase-123",
+            "user_id": "user-123",
+            "credits_purchased": 10,
+            "status": "completed",
+            "stripe_payment_intent_id": "pi_test123",
+        }
+        mock_connection.fetchrow = AsyncMock(side_effect=[already_completed_check, already_completed_full])
+
+        # Mock the transaction context manager
+        mock_transaction = AsyncMock()
+        mock_transaction.__aenter__ = AsyncMock()
+        mock_transaction.__aexit__ = AsyncMock()
+        mock_connection.transaction = MagicMock(return_value=mock_transaction)
+
+        with patch('app.database.get_connection') as mock_ctx:
+            mock_ctx.return_value.__aenter__ = AsyncMock(return_value=mock_connection)
+            mock_ctx.return_value.__aexit__ = AsyncMock()
+
+            from app.database import complete_purchase
+            result = await complete_purchase("pi_test123")
+
+            # Should return the purchase without modifying anything
+            assert result["status"] == "completed"
+            # execute should not be called for already completed purchase
+            mock_connection.execute.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_complete_purchase_not_found(self, mock_connection):
+        """Test completing non-existent purchase."""
+        mock_connection.fetchrow = AsyncMock(return_value=None)
+
+        # Mock the transaction context manager
+        mock_transaction = AsyncMock()
+        mock_transaction.__aenter__ = AsyncMock()
+        mock_transaction.__aexit__ = AsyncMock()
+        mock_connection.transaction = MagicMock(return_value=mock_transaction)
+
+        with patch('app.database.get_connection') as mock_ctx:
+            mock_ctx.return_value.__aenter__ = AsyncMock(return_value=mock_connection)
+            mock_ctx.return_value.__aexit__ = AsyncMock()
+
+            from app.database import complete_purchase
+            result = await complete_purchase("pi_nonexistent")
+
+            assert result is None
+
+    @pytest.mark.asyncio
+    async def test_fail_purchase(self, mock_connection):
+        """Test marking a purchase as failed."""
+        mock_row = {
+            "id": "purchase-123",
+            "user_id": "user-123",
+            "status": "failed",
+        }
+        mock_connection.fetchrow = AsyncMock(return_value=mock_row)
+
+        with patch('app.database.get_connection') as mock_ctx:
+            mock_ctx.return_value.__aenter__ = AsyncMock(return_value=mock_connection)
+            mock_ctx.return_value.__aexit__ = AsyncMock()
+
+            from app.database import fail_purchase
+            result = await fail_purchase("pi_test123")
+
+            assert result["status"] == "failed"
+
+    @pytest.mark.asyncio
+    async def test_fail_purchase_not_found(self, mock_connection):
+        """Test failing non-existent purchase."""
+        mock_connection.fetchrow = AsyncMock(return_value=None)
+
+        with patch('app.database.get_connection') as mock_ctx:
+            mock_ctx.return_value.__aenter__ = AsyncMock(return_value=mock_connection)
+            mock_ctx.return_value.__aexit__ = AsyncMock()
+
+            from app.database import fail_purchase
+            result = await fail_purchase("pi_nonexistent")
+
+            assert result is None
