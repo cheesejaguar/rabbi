@@ -120,7 +120,7 @@ LENIENCY APPROACH: {config.leniency_bias}
 USER'S QUESTION:
 {context.user_message}
 
-Provide a halachic landscape analysis for this question, adjusted appropriately for the pastoral context{' and the user\'s denominational background' if denomination_info else ''}."""
+Provide a halachic landscape analysis for this question, adjusted appropriately for the pastoral context{" and the user's denominational background" if denomination_info else ""}."""
             }
         ]
 
