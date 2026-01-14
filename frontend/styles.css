@@ -1305,12 +1305,11 @@ body {
     overflow-y: auto;
     -webkit-overflow-scrolling: touch;
     padding: 24px 20px;
-    max-width: 600px;
-    margin: 0 auto;
-    width: 100%;
 }
 
 .settings-section {
+    max-width: 600px;
+    margin: 0 auto;
     margin-bottom: 32px;
 }
 
