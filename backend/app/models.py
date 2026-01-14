@@ -61,3 +61,22 @@ class HealthResponse(BaseModel):
     """Health check response."""
     status: str = Field(..., description="Service status")
     version: str = Field(..., description="API version")
+
+
+class ProfileUpdate(BaseModel):
+    """Request body for updating user profile."""
+    denomination: Optional[str] = Field(
+        None,
+        description="User's Jewish denomination"
+    )
+    bio: Optional[str] = Field(
+        None,
+        description="User's bio (max 200 characters)",
+        max_length=200
+    )
+
+
+class ProfileResponse(BaseModel):
+    """Response for profile endpoint."""
+    denomination: str = Field(..., description="User's Jewish denomination")
+    bio: str = Field("", description="User's bio")

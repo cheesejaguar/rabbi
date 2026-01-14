@@ -41,6 +41,8 @@ class RabbiOrchestrator:
         self,
         user_message: str,
         conversation_history: Optional[list[dict]] = None,
+        user_denomination: Optional[str] = None,
+        user_bio: Optional[str] = None,
     ) -> dict:
         """
         Process a user message through the full agent pipeline.
@@ -48,6 +50,8 @@ class RabbiOrchestrator:
         Args:
             user_message: The user's question or message
             conversation_history: Previous messages in the conversation
+            user_denomination: User's Jewish denomination for personalized responses
+            user_bio: User's bio for additional context
 
         Returns:
             dict containing:
@@ -59,6 +63,8 @@ class RabbiOrchestrator:
         context = AgentContext(
             user_message=user_message,
             conversation_history=conversation_history or [],
+            user_denomination=user_denomination,
+            user_bio=user_bio,
         )
 
         context = await self.pastoral_agent.process(context)
@@ -139,6 +145,8 @@ Please re-analyze with special attention to:
         self,
         user_message: str,
         conversation_history: Optional[list[dict]] = None,
+        user_denomination: Optional[str] = None,
+        user_bio: Optional[str] = None,
     ):
         """
         Process a user message through the agent pipeline with streaming final response.
@@ -149,6 +157,8 @@ Please re-analyze with special attention to:
         context = AgentContext(
             user_message=user_message,
             conversation_history=conversation_history or [],
+            user_denomination=user_denomination,
+            user_bio=user_bio,
         )
 
         # Run non-streaming agents first (pastoral, halachic, moral)

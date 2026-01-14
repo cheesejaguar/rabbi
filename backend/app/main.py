@@ -23,7 +23,10 @@ from .models import (
     ChatResponse,
     GreetingResponse,
     HealthResponse,
+    ProfileUpdate,
+    ProfileResponse,
 )
+from .agents.denominations import VALID_DENOMINATIONS
 from .agents import RabbiOrchestrator
 from .auth import router as auth_router, get_current_user, require_auth
 from .conversations import router as conversations_router
@@ -242,6 +245,72 @@ async def get_credits(request: Request):
         return {"credits": 3, "unlimited": False}
 
 
+@app.get("/api/profile", response_model=ProfileResponse)
+@limiter.limit("60/minute")
+async def get_profile(request: Request):
+    """Get the current user's profile (denomination and bio)."""
+    user = get_current_user(request)
+    if not user:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+
+    if not settings.db_url:
+        # If no database, return defaults
+        return ProfileResponse(denomination="just_jewish", bio="")
+
+    try:
+        profile = await db.get_user_profile(user["id"])
+        if profile:
+            return ProfileResponse(
+                denomination=profile.get("denomination", "just_jewish"),
+                bio=profile.get("bio", "")
+            )
+        return ProfileResponse(denomination="just_jewish", bio="")
+    except Exception as e:
+        logger.error(f"Error getting profile: {e}")
+        return ProfileResponse(denomination="just_jewish", bio="")
+
+
+@app.put("/api/profile", response_model=ProfileResponse)
+@limiter.limit("30/minute")
+async def update_profile(request: Request, profile_update: ProfileUpdate):
+    """Update the current user's profile (denomination and/or bio)."""
+    user = get_current_user(request)
+    if not user:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+
+    if not settings.db_url:
+        raise HTTPException(status_code=503, detail="Database not configured")
+
+    # Validate denomination if provided
+    if profile_update.denomination is not None:
+        if profile_update.denomination not in VALID_DENOMINATIONS:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Invalid denomination. Must be one of: {', '.join(VALID_DENOMINATIONS)}"
+            )
+
+    try:
+        success = await db.update_user_profile(
+            user["id"],
+            denomination=profile_update.denomination,
+            bio=profile_update.bio
+        )
+        if not success:
+            raise HTTPException(status_code=500, detail="Failed to update profile")
+
+        # Return updated profile
+        profile = await db.get_user_profile(user["id"])
+        return ProfileResponse(
+            denomination=profile.get("denomination", "just_jewish"),
+            bio=profile.get("bio", "")
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error updating profile: {e}")
+        raise HTTPException(status_code=500, detail="Failed to update profile")
+
+
 @app.post("/api/feedback")
 @limiter.limit("30/minute")
 async def submit_feedback(request: Request):
@@ -432,9 +501,24 @@ async def chat(request: Request, chat_request: ChatRequest):
             for msg in chat_request.conversation_history
         ]
 
+        # Get user profile for personalized responses
+        user = get_current_user(request)
+        user_denomination = None
+        user_bio = None
+        if user and settings.db_url:
+            try:
+                profile = await db.get_user_profile(user["id"])
+                if profile:
+                    user_denomination = profile.get("denomination")
+                    user_bio = profile.get("bio")
+            except Exception as e:
+                logger.warning(f"Could not get user profile: {e}")
+
         result = await orchestrator.process_message(
             user_message=chat_request.message,
             conversation_history=conversation_history,
+            user_denomination=user_denomination,
+            user_bio=user_bio,
         )
 
         session_id = chat_request.session_id or str(uuid.uuid4())
@@ -477,6 +561,18 @@ async def chat_stream(request: Request, chat_request: ChatRequest):
     # Get current user for database operations
     user = get_current_user(request)
 
+    # Get user profile for personalized responses
+    user_denomination = None
+    user_bio = None
+    if user and settings.db_url:
+        try:
+            profile = await db.get_user_profile(user["id"])
+            if profile:
+                user_denomination = profile.get("denomination")
+                user_bio = profile.get("bio")
+        except Exception as e:
+            logger.warning(f"Could not get user profile: {e}")
+
     # Check and consume credit before processing
     if user and settings.db_url:
         try:
@@ -506,6 +602,8 @@ async def chat_stream(request: Request, chat_request: ChatRequest):
             async for event in orchestrator.process_message_stream(
                 user_message=chat_request.message,
                 conversation_history=conversation_history,
+                user_denomination=user_denomination,
+                user_bio=user_bio,
             ):
                 yield f"data: {json.dumps(event)}\n\n"
 

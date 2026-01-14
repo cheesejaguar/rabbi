@@ -81,10 +81,20 @@ Respond ONLY with the JSON object, no additional text."""
     async def process(self, context: AgentContext) -> AgentContext:
         """Analyze the user's message to determine pastoral context."""
 
+        # Build user background context from profile
+        user_background = ""
+        if context.user_denomination or context.user_bio:
+            user_background = "\n\nUSER BACKGROUND:"
+            if context.user_denomination:
+                user_background += f"\n- Denomination: {context.user_denomination}"
+            if context.user_bio:
+                user_background += f"\n- Bio: {context.user_bio}"
+            user_background += "\nConsider what vulnerability and appropriate tone mean for someone from this background."
+
         messages = [
             {
                 "role": "user",
-                "content": f"Analyze this message for pastoral context:\n\n{context.user_message}"
+                "content": f"Analyze this message for pastoral context:\n\n{context.user_message}{user_background}"
             }
         ]
 

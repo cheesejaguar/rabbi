@@ -5,6 +5,7 @@ from .base import (
     AgentContext,
     LLMMetrics,
 )
+from .denominations import get_denomination_config
 
 
 class MetaRabbinicVoiceAgent(BaseAgent):
@@ -61,6 +62,28 @@ The response should:
 
 Respond with ONLY the final response text that will be shown to the user. Make it conversational and warm, not clinical or academic. This is a person seeking guidance, not a research paper."""
 
+    def _build_denomination_guidance(self, context: AgentContext) -> str:
+        """Build denomination-specific voice guidance."""
+        if not context.user_denomination:
+            return ""
+
+        config = get_denomination_config(context.user_denomination)
+        if not config:
+            return ""
+
+        return f"""
+USER'S DENOMINATIONAL CONTEXT: {config.display_name}
+Adapt your voice to resonate with someone from a {config.display_name} background:
+
+VOICE GUIDANCE:
+{config.voice_description}
+
+AUTHORITY FRAMING:
+{config.authority_framing}
+
+When suggesting human consultation, say: "...speak with {config.refer_to_rabbi_phrasing}"
+"""
+
     async def process(self, context: AgentContext) -> AgentContext:
         """Craft the final response with appropriate rabbinic voice."""
 
@@ -113,6 +136,21 @@ CRITICAL: This person may need human support. Ensure your response:
 - Does not leave them feeling alone
 """
 
+        # Get denomination-specific voice guidance
+        denomination_guidance = self._build_denomination_guidance(context)
+
+        # Add user bio context if available
+        user_bio_info = ""
+        if context.user_bio:
+            user_bio_info = f"\nUSER BACKGROUND: {context.user_bio}\n"
+
+        # Determine voice description based on denomination
+        voice_desc = "a progressive Modern Orthodox rabbi"
+        if context.user_denomination:
+            config = get_denomination_config(context.user_denomination)
+            if config:
+                voice_desc = f"a {config.display_name} rabbi"
+
         messages = [
             {
                 "role": "user",
@@ -123,8 +161,10 @@ CRITICAL: This person may need human support. Ensure your response:
 {halachic_info}
 {moral_info}
 {crisis_guidance}
+{denomination_guidance}
+{user_bio_info}
 
-Craft a warm, authentic response in the voice of a progressive Modern Orthodox rabbi. Remember: the goal is for this person to feel SEEN, even if the answer is complex or not what they hoped for.
+Craft a warm, authentic response in the voice of {voice_desc}. Remember: the goal is for this person to feel SEEN, even if the answer is complex or not what they hoped for.
 
 Do not use headers, bullet points, or formatting. Write as if speaking directly to the person."""
             }
@@ -189,6 +229,21 @@ CRITICAL: This person may need human support. Ensure your response:
 - Does not leave them feeling alone
 """
 
+        # Get denomination-specific voice guidance
+        denomination_guidance = self._build_denomination_guidance(context)
+
+        # Add user bio context if available
+        user_bio_info = ""
+        if context.user_bio:
+            user_bio_info = f"\nUSER BACKGROUND: {context.user_bio}\n"
+
+        # Determine voice description based on denomination
+        voice_desc = "a progressive Modern Orthodox rabbi"
+        if context.user_denomination:
+            config = get_denomination_config(context.user_denomination)
+            if config:
+                voice_desc = f"a {config.display_name} rabbi"
+
         messages = [
             {
                 "role": "user",
@@ -199,8 +254,10 @@ CRITICAL: This person may need human support. Ensure your response:
 {halachic_info}
 {moral_info}
 {crisis_guidance}
+{denomination_guidance}
+{user_bio_info}
 
-Craft a warm, authentic response in the voice of a progressive Modern Orthodox rabbi. Remember: the goal is for this person to feel SEEN, even if the answer is complex or not what they hoped for.
+Craft a warm, authentic response in the voice of {voice_desc}. Remember: the goal is for this person to feel SEEN, even if the answer is complex or not what they hoped for.
 
 Do not use headers, bullet points, or formatting. Write as if speaking directly to the person."""
             }

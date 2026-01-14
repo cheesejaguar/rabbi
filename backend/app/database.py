@@ -218,6 +218,24 @@ BEGIN
     END IF;
 END $$;
 
+-- Add denomination column to users if it doesn't exist
+DO $$
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns
+                   WHERE table_name = 'users' AND column_name = 'denomination') THEN
+        ALTER TABLE users ADD COLUMN denomination TEXT DEFAULT 'just_jewish';
+    END IF;
+END $$;
+
+-- Add bio column to users if it doesn't exist
+DO $$
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns
+                   WHERE table_name = 'users' AND column_name = 'bio') THEN
+        ALTER TABLE users ADD COLUMN bio TEXT;
+    END IF;
+END $$;
+
 -- Purchases table for tracking credit purchases
 CREATE TABLE IF NOT EXISTS purchases (
     id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
@@ -350,6 +368,52 @@ async def set_stripe_customer_id(user_id: str, stripe_customer_id: str) -> bool:
             """,
             user_id, stripe_customer_id
         )
+        return result == "UPDATE 1"
+
+
+# User profile operations
+async def get_user_profile(user_id: str) -> Optional[dict]:
+    """Get a user's profile (denomination and bio)."""
+    async with get_connection() as conn:
+        row = await conn.fetchrow(
+            "SELECT denomination, bio FROM users WHERE id = $1",
+            user_id
+        )
+        if row:
+            return {
+                "denomination": row['denomination'] or 'just_jewish',
+                "bio": row['bio'] or ''
+            }
+        return None
+
+
+async def update_user_profile(user_id: str, denomination: str = None, bio: str = None) -> bool:
+    """Update a user's profile (denomination and/or bio). Returns True if successful."""
+    async with get_connection() as conn:
+        # Build dynamic update query based on what's provided
+        updates = []
+        params = [user_id]
+        param_idx = 2
+
+        if denomination is not None:
+            updates.append(f"denomination = ${param_idx}")
+            params.append(denomination)
+            param_idx += 1
+
+        if bio is not None:
+            updates.append(f"bio = ${param_idx}")
+            params.append(bio)
+            param_idx += 1
+
+        if not updates:
+            return False
+
+        query = f"""
+            UPDATE users
+            SET {', '.join(updates)}, updated_at = NOW()
+            WHERE id = $1
+        """
+        result = await conn.execute(query, *params)
         return result == "UPDATE 1"
 
 
