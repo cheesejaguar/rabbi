@@ -281,8 +281,8 @@ async def update_profile(request: Request, profile_update: ProfileUpdate):
     if not settings.db_url:
         raise HTTPException(status_code=503, detail="Database not configured")
 
-    # Validate denomination if provided
-    if profile_update.denomination is not None:
+    # Validate denomination if provided and non-empty
+    if profile_update.denomination is not None and profile_update.denomination != "":
         if profile_update.denomination not in VALID_DENOMINATIONS:
             raise HTTPException(
                 status_code=400,

@@ -78,5 +78,5 @@ class ProfileUpdate(BaseModel):
 
 class ProfileResponse(BaseModel):
     """Response for profile endpoint."""
-    denomination: str = Field(..., description="User's Jewish denomination")
+    denomination: Optional[str] = Field(default="just_jewish", description="User's Jewish denomination")
     bio: str = Field("", description="User's bio")
