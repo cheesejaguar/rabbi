@@ -7,6 +7,7 @@ from .base import (
     AgentContext,
     HalachicLandscape,
 )
+from .denominations import get_denomination_config
 
 
 class HalachicReasoningAgent(BaseAgent):
@@ -87,15 +88,39 @@ PASTORAL CONTEXT (from Pastoral Agent - this guides your approach):
 CRITICAL: If vulnerability is detected, you MUST lead with compassion and emphasize paths of leniency.
 """
 
+        # Build denomination-specific guidance
+        denomination_info = ""
+        if context.user_denomination:
+            config = get_denomination_config(context.user_denomination)
+            if config:
+                sources_list = "\n  - ".join(config.primary_sources)
+                denomination_info = f"""
+USER'S DENOMINATIONAL CONTEXT: {config.display_name}
+The user identifies with {config.display_name} Judaism. Tailor your response accordingly:
+
+PRIMARY SOURCES TO EMPHASIZE:
+  - {sources_list}
+
+HALACHIC APPROACH FOR THIS DENOMINATION:
+{config.halachic_stance}
+
+LENIENCY APPROACH: {config.leniency_bias}
+{config.source_approach}
+"""
+
+        # Add user bio context if available
+        user_bio_info = ""
+        if context.user_bio:
+            user_bio_info = f"\nUSER BACKGROUND: {context.user_bio}\n"
+
         messages = [
             {
                 "role": "user",
-                "content": f"""{pastoral_info}
-
+                "content": f"""{pastoral_info}{denomination_info}{user_bio_info}
 USER'S QUESTION:
 {context.user_message}
 
-Provide a halachic landscape analysis for this question, adjusted appropriately for the pastoral context."""
+Provide a halachic landscape analysis for this question, adjusted appropriately for the pastoral context{" and the user's denominational background" if denomination_info else ""}."""
             }
         ]
 

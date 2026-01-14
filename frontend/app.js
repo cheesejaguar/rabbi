@@ -91,6 +91,10 @@ const settingsBackBtn = document.getElementById('settingsBackBtn');
 const creditsValue = document.getElementById('creditsValue');
 const settingsUserName = document.getElementById('settingsUserName');
 const settingsUserEmail = document.getElementById('settingsUserEmail');
+const denominationSelect = document.getElementById('denominationSelect');
+const bioInput = document.getElementById('bioInput');
+const bioCharCount = document.getElementById('bioCharCount');
+const saveProfileBtn = document.getElementById('saveProfileBtn');
 
 // Payment modal elements
 const purchaseModal = document.getElementById('purchaseModal');
@@ -320,6 +324,10 @@ function setupEventListeners() {
 
     // Settings back button
     settingsBackBtn.addEventListener('click', hideSettings);
+
+    // Profile form listeners
+    bioInput.addEventListener('input', updateBioCharCount);
+    saveProfileBtn.addEventListener('click', saveProfile);
 
     // Suggestion chips
     suggestionChips.forEach(chip => {
@@ -955,8 +963,8 @@ async function showSettings() {
         settingsUserEmail.textContent = currentUser.email || '-';
     }
 
-    // Load credits
-    await loadCredits();
+    // Load credits and profile in parallel
+    await Promise.all([loadCredits(), loadProfile()]);
 }
 
 function hideSettings() {
@@ -991,6 +999,62 @@ async function loadCredits() {
         console.error('Failed to load credits:', error);
         creditsValue.textContent = 'Error loading';
     }
+}
+
+async function loadProfile() {
+    try {
+        const response = await fetch(`${API_BASE}/profile`);
+        if (response.ok) {
+            const data = await response.json();
+            denominationSelect.value = data.denomination || '';
+            bioInput.value = data.bio || '';
+            updateBioCharCount();
+        }
+    } catch (error) {
+        console.error('Failed to load profile:', error);
+    }
+}
+
+async function saveProfile() {
+    const originalText = saveProfileBtn.innerHTML;
+    saveProfileBtn.disabled = true;
+    saveProfileBtn.innerHTML = '<span class="saving-spinner"></span> Saving...';
+
+    try {
+        const response = await fetch(`${API_BASE}/profile`, {
+            method: 'PUT',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                denomination: denominationSelect.value || null,
+                bio: bioInput.value || null,
+            }),
+        });
+
+        if (response.ok) {
+            saveProfileBtn.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg> Saved!';
+            setTimeout(() => {
+                saveProfileBtn.innerHTML = originalText;
+                saveProfileBtn.disabled = false;
+            }, 2000);
+        } else {
+            const errorData = await response.json();
+            alert(errorData.detail || 'Failed to save profile');
+            saveProfileBtn.innerHTML = originalText;
+            saveProfileBtn.disabled = false;
+        }
+    } catch (error) {
+        console.error('Failed to save profile:', error);
+        alert('Failed to save profile. Please try again.');
+        saveProfileBtn.innerHTML = originalText;
+        saveProfileBtn.disabled = false;
+    }
+}
+
+function updateBioCharCount() {
+    const count = bioInput.value.length;
+    bioCharCount.textContent = count;
 }
 
 // Message action buttons

@@ -84,6 +84,10 @@ class AgentContext:
     """Shared context passed through the agent pipeline."""
     user_message: str
     conversation_history: list[dict] = field(default_factory=list)
+    # User profile for personalized responses
+    user_denomination: Optional[str] = None
+    user_bio: Optional[str] = None
+    # Agent outputs
     pastoral_context: Optional[PastoralContext] = None
     halachic_landscape: Optional[HalachicLandscape] = None
     moral_assessment: Optional[MoralAssessment] = None

@@ -276,6 +276,66 @@
                                     <span class="settings-row-value" id="settingsUserEmail">-</span>
                                 </div>
                             </div>
+                            <div class="settings-divider"></div>
+                            <div class="settings-row">
+                                <div class="settings-row-icon">
+                                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                        <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/>
+                                    </svg>
+                                </div>
+                                <div class="settings-row-content">
+                                    <span class="settings-row-label">Denomination</span>
+                                    <select class="settings-select" id="denominationSelect">
+                                        <option value="">Select...</option>
+                                        <option value="reconstructionist">Reconstructionist</option>
+                                        <option value="renewal">Jewish Renewal</option>
+                                        <option value="humanistic">Humanistic</option>
+                                        <option value="reform">Reform</option>
+                                        <option value="conservative">Conservative</option>
+                                        <option value="orthodox">Orthodox</option>
+                                        <option value="modern_orthodox">Modern Orthodox</option>
+                                        <option value="haredi">Haredi</option>
+                                        <option value="hasidic">Hasidic</option>
+                                        <option value="litvish">Litvish/Yeshivish</option>
+                                        <option value="open_orthodox">Open Orthodox</option>
+                                        <option value="just_jewish">Just Jewish</option>
+                                        <option value="secular">Secular/Cultural</option>
+                                        <option value="not_jewish">Not Jewish</option>
+                                    </select>
+                                </div>
+                            </div>
+                            <div class="settings-row-description">
+                                Your background helps tailor responses to your perspective.
+                            </div>
+                            <div class="settings-divider"></div>
+                            <div class="settings-row settings-row-bio">
+                                <div class="settings-row-icon">
+                                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                                        <polyline points="14 2 14 8 20 8"/>
+                                        <line x1="16" y1="13" x2="8" y2="13"/>
+                                        <line x1="16" y1="17" x2="8" y2="17"/>
+                                    </svg>
+                                </div>
+                                <div class="settings-row-content">
+                                    <span class="settings-row-label">Bio</span>
+                                    <div class="bio-input-container">
+                                        <textarea class="settings-textarea" id="bioInput" maxlength="200" rows="3" placeholder="Tell us about yourself..."></textarea>
+                                        <span class="char-count"><span id="bioCharCount">0</span>/200</span>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="settings-row-description">
+                                Your bio provides context to help personalize responses.
+                            </div>
+                            <button class="save-profile-btn" id="saveProfileBtn">
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                    <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/>
+                                    <polyline points="17 21 17 13 7 13 7 21"/>
+                                    <polyline points="7 3 7 8 15 8"/>
+                                </svg>
+                                Save Profile
+                            </button>
                         </div>
                     </div>
                 </div>
