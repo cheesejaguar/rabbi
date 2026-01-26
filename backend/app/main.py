@@ -10,10 +10,9 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, RedirectResponse, StreamingResponse, JSONResponse
 from starlette.middleware.base import BaseHTTPMiddleware
-from slowapi import Limiter
-from slowapi.util import get_remote_address
-from slowapi.errors import RateLimitExceeded
 import os
+
+from .rate_limiter import RateLimiter, get_remote_address, RateLimitExceeded, rate_limit_exceeded_handler
 
 logger = logging.getLogger(__name__)
 
@@ -47,19 +46,7 @@ def get_rate_limit_key(request: Request) -> str:
 
 
 # Initialize rate limiter
-limiter = Limiter(key_func=get_rate_limit_key)
-
-
-def rate_limit_exceeded_handler(request: Request, exc: RateLimitExceeded):
-    """Handle rate limit exceeded errors."""
-    return JSONResponse(
-        status_code=429,
-        content={
-            "detail": "Rate limit exceeded. Please slow down.",
-            "retry_after": exc.detail,
-        },
-        headers={"Retry-After": str(getattr(exc, 'retry_after', 60))},
-    )
+limiter = RateLimiter(key_func=get_rate_limit_key)
 
 
 @asynccontextmanager

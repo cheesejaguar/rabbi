@@ -5,7 +5,8 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any, Optional, AsyncGenerator
-from openai import OpenAI
+
+from ..llm_client import LLMClient
 
 
 # Approximate token costs per 1M tokens (in USD) for Claude Sonnet 4
@@ -105,7 +106,7 @@ class AgentContext:
 class BaseAgent(ABC):
     """Abstract base class for all rebbe.dev agents."""
 
-    def __init__(self, client: OpenAI, model: str = "anthropic/claude-sonnet-4-20250514"):
+    def __init__(self, client: LLMClient, model: str = "anthropic/claude-sonnet-4-20250514"):
         self.client = client
         self.model = model
         self.name = self.__class__.__name__

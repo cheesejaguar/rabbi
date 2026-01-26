@@ -16,8 +16,8 @@ from app.agents.base import (
 )
 
 
-def create_openai_response(text: str, input_tokens: int = 100, output_tokens: int = 50):
-    """Helper to create OpenAI-compatible mock response with usage metrics."""
+def create_llm_response(text: str, input_tokens: int = 100, output_tokens: int = 50):
+    """Helper to create mock LLM response with usage metrics."""
     response = Mock()
     choice = Mock()
     message = Mock()
@@ -36,7 +36,7 @@ class TestRabbiOrchestrator:
     """Test RabbiOrchestrator class."""
 
     def test_initialization_with_api_key(self):
-        with patch('app.agents.orchestrator.OpenAI') as mock_openai:
+        with patch('app.agents.orchestrator.LLMClient') as mock_openai:
             orchestrator = RabbiOrchestrator(api_key="test-key")
             mock_openai.assert_called_once_with(
                 api_key="test-key",
@@ -45,7 +45,7 @@ class TestRabbiOrchestrator:
             assert orchestrator.model == "anthropic/claude-sonnet-4-20250514"
 
     def test_initialization_with_custom_base_url(self):
-        with patch('app.agents.orchestrator.OpenAI') as mock_openai:
+        with patch('app.agents.orchestrator.LLMClient') as mock_openai:
             orchestrator = RabbiOrchestrator(
                 api_key="test-key",
                 base_url="https://custom.api/v1",
@@ -56,7 +56,7 @@ class TestRabbiOrchestrator:
             )
 
     def test_initialization_custom_model(self):
-        with patch('app.agents.orchestrator.OpenAI'):
+        with patch('app.agents.orchestrator.LLMClient'):
             orchestrator = RabbiOrchestrator(
                 api_key="key",
                 model="anthropic/claude-opus-4-20250514",
@@ -64,7 +64,7 @@ class TestRabbiOrchestrator:
             assert orchestrator.model == "anthropic/claude-opus-4-20250514"
 
     def test_agents_initialized(self):
-        with patch('app.agents.orchestrator.OpenAI'):
+        with patch('app.agents.orchestrator.LLMClient'):
             orchestrator = RabbiOrchestrator(api_key="test-key")
             assert orchestrator.pastoral_agent is not None
             assert orchestrator.halachic_agent is not None
@@ -73,7 +73,7 @@ class TestRabbiOrchestrator:
 
     @pytest.mark.asyncio
     async def test_process_message_full_pipeline(self):
-        with patch('app.agents.orchestrator.OpenAI') as mock_openai:
+        with patch('app.agents.orchestrator.LLMClient') as mock_openai:
             responses = [
                 json.dumps({
                     "mode": "curiosity",
@@ -104,7 +104,7 @@ class TestRabbiOrchestrator:
 
             call_count = [0]
             def side_effect(*args, **kwargs):
-                resp = create_openai_response(responses[min(call_count[0], len(responses) - 1)])
+                resp = create_llm_response(responses[min(call_count[0], len(responses) - 1)])
                 call_count[0] += 1
                 return resp
 
@@ -122,7 +122,7 @@ class TestRabbiOrchestrator:
 
     @pytest.mark.asyncio
     async def test_process_message_with_conversation_history(self):
-        with patch('app.agents.orchestrator.OpenAI') as mock_openai:
+        with patch('app.agents.orchestrator.LLMClient') as mock_openai:
             responses = [
                 json.dumps({"mode": "teaching", "tone": "exploratory", "authority_level": "suggestive", "vulnerability_detected": False, "crisis_indicators": [], "emotional_state": "engaged", "requires_human_referral": False}),
                 json.dumps({"majority_view": "View", "minority_views": [], "underlying_principles": [], "precedents_for_leniency": [], "non_negotiable_boundaries": [], "sources_cited": []}),
@@ -132,7 +132,7 @@ class TestRabbiOrchestrator:
 
             call_count = [0]
             def side_effect(*args, **kwargs):
-                resp = create_openai_response(responses[min(call_count[0], len(responses) - 1)])
+                resp = create_llm_response(responses[min(call_count[0], len(responses) - 1)])
                 call_count[0] += 1
                 return resp
 
@@ -154,7 +154,7 @@ class TestRabbiOrchestrator:
 
     @pytest.mark.asyncio
     async def test_process_message_with_reconsideration(self):
-        with patch('app.agents.orchestrator.OpenAI') as mock_openai:
+        with patch('app.agents.orchestrator.LLMClient') as mock_openai:
             responses = [
                 json.dumps({"mode": "counseling", "tone": "gentle", "authority_level": "suggestive", "vulnerability_detected": True, "crisis_indicators": [], "emotional_state": "vulnerable", "requires_human_referral": False}),
                 json.dumps({"majority_view": "Strict view", "minority_views": [], "underlying_principles": [], "precedents_for_leniency": [], "non_negotiable_boundaries": [], "sources_cited": []}),
@@ -165,7 +165,7 @@ class TestRabbiOrchestrator:
 
             call_count = [0]
             def side_effect(*args, **kwargs):
-                resp = create_openai_response(responses[min(call_count[0], len(responses) - 1)])
+                resp = create_llm_response(responses[min(call_count[0], len(responses) - 1)])
                 call_count[0] += 1
                 return resp
 
@@ -181,7 +181,7 @@ class TestRabbiOrchestrator:
 
     @pytest.mark.asyncio
     async def test_process_message_crisis_detection(self):
-        with patch('app.agents.orchestrator.OpenAI') as mock_openai:
+        with patch('app.agents.orchestrator.LLMClient') as mock_openai:
             responses = [
                 json.dumps({"mode": "crisis", "tone": "gentle", "authority_level": "exploratory", "vulnerability_detected": True, "crisis_indicators": ["self-harm"], "emotional_state": "distressed", "requires_human_referral": True}),
                 json.dumps({"majority_view": "Supportive view", "minority_views": [], "underlying_principles": ["pikuach nefesh"], "precedents_for_leniency": [], "non_negotiable_boundaries": [], "sources_cited": []}),
@@ -191,7 +191,7 @@ class TestRabbiOrchestrator:
 
             call_count = [0]
             def side_effect(*args, **kwargs):
-                resp = create_openai_response(responses[min(call_count[0], len(responses) - 1)])
+                resp = create_llm_response(responses[min(call_count[0], len(responses) - 1)])
                 call_count[0] += 1
                 return resp
 
@@ -208,7 +208,7 @@ class TestRabbiOrchestrator:
             assert "crisis_indicators" in result["metadata"]
 
     def test_build_response_minimal_context(self):
-        with patch('app.agents.orchestrator.OpenAI'):
+        with patch('app.agents.orchestrator.LLMClient'):
             orchestrator = RabbiOrchestrator(api_key="test-key")
 
             context = AgentContext(
@@ -224,7 +224,7 @@ class TestRabbiOrchestrator:
             assert result["metadata"]["moral_reconsideration"] is False
 
     def test_build_response_with_pastoral_context(self):
-        with patch('app.agents.orchestrator.OpenAI'):
+        with patch('app.agents.orchestrator.LLMClient'):
             orchestrator = RabbiOrchestrator(api_key="test-key")
 
             pastoral = PastoralContext(
@@ -249,7 +249,7 @@ class TestRabbiOrchestrator:
             assert result["metadata"]["crisis_indicators"] == ["stress"]
 
     def test_build_response_with_halachic_landscape(self):
-        with patch('app.agents.orchestrator.OpenAI'):
+        with patch('app.agents.orchestrator.LLMClient'):
             orchestrator = RabbiOrchestrator(api_key="test-key")
 
             halachic = HalachicLandscape(
@@ -268,7 +268,7 @@ class TestRabbiOrchestrator:
             assert result["metadata"]["principles"] == ["kavod habriyot"]
 
     def test_build_response_with_reconsideration_metadata(self):
-        with patch('app.agents.orchestrator.OpenAI'):
+        with patch('app.agents.orchestrator.LLMClient'):
             orchestrator = RabbiOrchestrator(api_key="test-key")
 
             context = AgentContext(
@@ -283,7 +283,7 @@ class TestRabbiOrchestrator:
 
     @pytest.mark.asyncio
     async def test_get_greeting(self):
-        with patch('app.agents.orchestrator.OpenAI'):
+        with patch('app.agents.orchestrator.LLMClient'):
             orchestrator = RabbiOrchestrator(api_key="test-key")
             greeting = await orchestrator.get_greeting()
 
