@@ -34,7 +34,7 @@ def test_app():
         for mod in mods_to_remove:
             del sys.modules[mod]
 
-        with patch('app.agents.orchestrator.OpenAI'):
+        with patch('app.agents.orchestrator.LLMClient'):
             with patch('app.agents.RabbiOrchestrator', return_value=mock_orchestrator_instance):
                 # Mock authentication to always return a user
                 with patch('app.auth.get_current_user', return_value=mock_user):

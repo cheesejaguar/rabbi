@@ -1,7 +1,8 @@
 """Rabbi Orchestrator - Coordinates the multi-agent pipeline."""
 
-from openai import OpenAI
 from typing import Optional
+
+from ..llm_client import LLMClient
 from .base import AgentContext, LLMMetrics
 from .pastoral import PastoralContextAgent
 from .halachic import HalachicReasoningAgent
@@ -26,7 +27,7 @@ class RabbiOrchestrator:
         model: str = "anthropic/claude-sonnet-4-20250514",
     ):
         """Initialize the orchestrator with all agents."""
-        self.client = OpenAI(
+        self.client = LLMClient(
             api_key=api_key,
             base_url=base_url,
         )

@@ -29,10 +29,10 @@ def app_with_mocks():
         "metadata": {},
     })
 
-    # Set a dummy API key to prevent OpenAI client initialization errors
+    # Set a dummy API key to prevent LLM client initialization errors
     # and patch the orchestrator class
     with patch.dict(os.environ, {"OPENROUTER_API_KEY": "test-key-for-testing"}):
-        with patch('app.agents.orchestrator.OpenAI'):
+        with patch('app.agents.orchestrator.LLMClient'):
             with patch('app.agents.RabbiOrchestrator', return_value=mock_orchestrator_instance):
                 # Clear settings cache to pick up the test API key
                 from app.config import get_settings

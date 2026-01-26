@@ -5,8 +5,7 @@ from fastapi import APIRouter, Request, HTTPException, Depends
 from fastapi.responses import RedirectResponse, JSONResponse
 from itsdangerous import URLSafeTimedSerializer, BadSignature, SignatureExpired
 from workos import WorkOSClient
-from slowapi import Limiter
-from slowapi.util import get_remote_address
+from .rate_limiter import RateLimiter, get_remote_address
 from typing import Optional
 import secrets
 
@@ -18,7 +17,7 @@ router = APIRouter(prefix="/auth", tags=["authentication"])
 settings = get_settings()
 
 # Rate limiter for auth endpoints (by IP address only)
-limiter = Limiter(key_func=get_remote_address)
+limiter = RateLimiter(key_func=get_remote_address)
 
 # Lazy-initialized WorkOS client
 _workos_client: Optional[WorkOSClient] = None
