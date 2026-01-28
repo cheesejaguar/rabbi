@@ -70,6 +70,30 @@ def get_current_user(request: Request) -> Optional[dict]:
     return verify_session_token(token)
 
 
+# Guest chat tracking
+GUEST_FREE_CHAT_LIMIT = 1
+LOGGED_IN_FREE_CREDITS = 3
+
+
+def get_guest_chats_used(request: Request) -> int:
+    """Get the number of chats used by a guest from signed cookie."""
+    token = request.cookies.get("guest_chats_used")
+    if not token:
+        return 0
+    try:
+        serializer = get_serializer()
+        data = serializer.loads(token, max_age=86400 * 30)  # 30 days
+        return data.get("count", 0)
+    except (BadSignature, SignatureExpired):
+        return 0
+
+
+def create_guest_chat_cookie(count: int) -> str:
+    """Create a signed cookie for guest chat tracking."""
+    serializer = get_serializer()
+    return serializer.dumps({"count": count})
+
+
 def require_auth(request: Request) -> dict:
     """Dependency that requires authentication."""
     user = get_current_user(request)
