@@ -37,6 +37,11 @@ from .auth import (
     GUEST_FREE_CHAT_LIMIT,
     LOGGED_IN_FREE_CREDITS,
 )
+from .security import (
+    guest_security,
+    input_validator,
+    GUEST_RATE_LIMIT_PER_MINUTE,
+)
 from .conversations import router as conversations_router
 from .payments import router as payments_router
 from . import database as db
@@ -50,8 +55,13 @@ def get_rate_limit_key(request: Request) -> str:
     user = get_current_user(request)
     if user:
         return f"user:{user['id']}"
-    # Fall back to IP address
-    return get_remote_address(request)
+    # Fall back to IP address for guests
+    return f"guest:{get_remote_address(request)}"
+
+
+def get_guest_rate_limit_key(request: Request) -> str:
+    """Get rate limit key specifically for guest tracking."""
+    return f"guest:{get_remote_address(request)}"
 
 
 # Initialize rate limiter
@@ -250,13 +260,29 @@ async def get_guest_status(request: Request):
             "limit": LOGGED_IN_FREE_CREDITS,
         })
 
-    # Guest user - check cookie
-    chats_used = get_guest_chats_used(request)
-    chats_remaining = max(0, GUEST_FREE_CHAT_LIMIT - chats_used)
+    # Check if IP is blocked
+    is_blocked, block_reason = guest_security.is_ip_blocked(request)
+    if is_blocked:
+        return JSONResponse(
+            status_code=403,
+            content={
+                "is_guest": True,
+                "chats_used": GUEST_FREE_CHAT_LIMIT,
+                "chats_remaining": 0,
+                "limit": GUEST_FREE_CHAT_LIMIT,
+                "blocked": True,
+                "block_reason": block_reason,
+            }
+        )
+
+    # Guest user - check both cookie and IP tracking
+    cookie_count = get_guest_chats_used(request)
+    effective_count = guest_security.get_effective_guest_count(request, cookie_count)
+    chats_remaining = max(0, GUEST_FREE_CHAT_LIMIT - effective_count)
 
     return JSONResponse(content={
         "is_guest": True,
-        "chats_used": chats_used,
+        "chats_used": effective_count,
         "chats_remaining": chats_remaining,
         "limit": GUEST_FREE_CHAT_LIMIT,
     })
@@ -532,6 +558,28 @@ async def chat(request: Request, chat_request: ChatRequest):
     3. Moral-Ethical Agent - Ensures dignity and prevents harm
     4. Meta-Rabbinic Voice Agent - Crafts the final response
     """
+    user = get_current_user(request)
+
+    # Security checks for unauthenticated users
+    if not user:
+        # Check if IP is blocked
+        is_blocked, block_reason = guest_security.is_ip_blocked(request)
+        if is_blocked:
+            raise HTTPException(status_code=403, detail=block_reason)
+
+        # Check guest rate limit
+        rate_ok, rate_error = guest_security.check_rate_limit(request)
+        if not rate_ok:
+            raise HTTPException(status_code=429, detail=rate_error)
+
+    # Input validation
+    is_valid, validation_error = input_validator.validate_message(chat_request.message)
+    if not is_valid:
+        raise HTTPException(status_code=400, detail=validation_error)
+
+    # Sanitize the message
+    sanitized_message = input_validator.sanitize_message(chat_request.message)
+
     try:
         conversation_history = [
             {"role": msg.role, "content": msg.content}
@@ -539,7 +587,6 @@ async def chat(request: Request, chat_request: ChatRequest):
         ]
 
         # Get user profile for personalized responses
-        user = get_current_user(request)
         user_denomination = None
         user_bio = None
         if user and settings.db_url:
@@ -552,7 +599,7 @@ async def chat(request: Request, chat_request: ChatRequest):
                 logger.warning(f"Could not get user profile: {e}")
 
         result = await orchestrator.process_message(
-            user_message=chat_request.message,
+            user_message=sanitized_message,
             conversation_history=conversation_history,
             user_denomination=user_denomination,
             user_bio=user_bio,
@@ -587,6 +634,39 @@ async def chat_stream(request: Request, chat_request: ChatRequest):
     3. Moral-Ethical Agent - Ensures dignity and prevents harm
     4. Meta-Rabbinic Voice Agent - Streams the final response
     """
+    # Get current user for database operations
+    user = get_current_user(request)
+
+    # Security checks for unauthenticated users
+    if not user:
+        # Check if IP is blocked
+        is_blocked, block_reason = guest_security.is_ip_blocked(request)
+        if is_blocked:
+            logger.warning(f"Blocked request from IP: {block_reason}")
+            return StreamingResponse(
+                iter([f"data: {json.dumps({'type': 'error', 'message': 'access_restricted', 'detail': block_reason})}\n\n"]),
+                media_type="text/event-stream",
+            )
+
+        # Check guest rate limit (stricter than authenticated users)
+        rate_ok, rate_error = guest_security.check_rate_limit(request)
+        if not rate_ok:
+            return StreamingResponse(
+                iter([f"data: {json.dumps({'type': 'error', 'message': 'rate_limited', 'detail': rate_error})}\n\n"]),
+                media_type="text/event-stream",
+            )
+
+    # Input validation
+    is_valid, validation_error = input_validator.validate_message(chat_request.message)
+    if not is_valid:
+        return StreamingResponse(
+            iter([f"data: {json.dumps({'type': 'error', 'message': 'invalid_input', 'detail': validation_error})}\n\n"]),
+            media_type="text/event-stream",
+        )
+
+    # Sanitize the message
+    sanitized_message = input_validator.sanitize_message(chat_request.message)
+
     conversation_history = [
         {"role": msg.role, "content": msg.content}
         for msg in chat_request.conversation_history
@@ -595,25 +675,35 @@ async def chat_stream(request: Request, chat_request: ChatRequest):
     session_id = chat_request.session_id or str(uuid.uuid4())
     conversation_id = chat_request.conversation_id
 
-    # Get current user for database operations
-    user = get_current_user(request)
-
     # Track if this is a guest chat that needs cookie update
     is_guest_chat = False
     new_guest_chats_used = 0
 
     # Handle guest users (not logged in)
     if not user:
-        chats_used = get_guest_chats_used(request)
-        if chats_used >= GUEST_FREE_CHAT_LIMIT:
+        cookie_count = get_guest_chats_used(request)
+
+        # Check IP-based tracking (catches cookie clearing)
+        ip_allowed, ip_error = guest_security.check_guest_chat_allowed(request, cookie_count)
+        if not ip_allowed:
+            return StreamingResponse(
+                iter([f"data: {json.dumps({'type': 'error', 'message': 'guest_limit_reached', 'detail': ip_error})}\n\n"]),
+                media_type="text/event-stream",
+            )
+
+        # Use effective count (max of cookie and IP tracking)
+        effective_count = guest_security.get_effective_guest_count(request, cookie_count)
+
+        if effective_count >= GUEST_FREE_CHAT_LIMIT:
             # Guest has used their free chat - prompt to login
             return StreamingResponse(
                 iter([f"data: {json.dumps({'type': 'error', 'message': 'guest_limit_reached', 'detail': 'Sign in for 3 more free chats'})}\n\n"]),
                 media_type="text/event-stream",
             )
+
         # Guest can chat - mark for cookie update after response
         is_guest_chat = True
-        new_guest_chats_used = chats_used + 1
+        new_guest_chats_used = effective_count + 1
 
     # Get user profile for personalized responses
     user_denomination = None
@@ -642,7 +732,7 @@ async def chat_stream(request: Request, chat_request: ChatRequest):
     # Save user message to database if conversation_id provided
     if conversation_id and user and settings.db_url:
         try:
-            await db.add_message(conversation_id, "user", chat_request.message)
+            await db.add_message(conversation_id, "user", sanitized_message)
         except Exception as e:
             logger.warning(f"Could not save user message: {e}")
 
@@ -654,7 +744,7 @@ async def chat_stream(request: Request, chat_request: ChatRequest):
             yield f"data: {json.dumps({'type': 'session', 'session_id': session_id, 'conversation_id': conversation_id})}\n\n"
 
             async for event in orchestrator.process_message_stream(
-                user_message=chat_request.message,
+                user_message=sanitized_message,
                 conversation_history=conversation_history,
                 user_denomination=user_denomination,
                 user_bio=user_bio,
@@ -698,7 +788,7 @@ async def chat_stream(request: Request, chat_request: ChatRequest):
                         error_message=str(e),
                         user_id=user["id"] if user else None,
                         conversation_id=conversation_id,
-                        request_context={"message": chat_request.message[:500]}
+                        request_context={"message": sanitized_message[:500]}
                     )
                 except Exception:
                     pass
@@ -713,7 +803,7 @@ async def chat_stream(request: Request, chat_request: ChatRequest):
         }
     )
 
-    # Set guest chat cookie to track usage
+    # Set guest chat cookie and record to IP tracker
     if is_guest_chat:
         guest_cookie = create_guest_chat_cookie(new_guest_chats_used)
         response.set_cookie(
@@ -725,6 +815,8 @@ async def chat_stream(request: Request, chat_request: ChatRequest):
             max_age=86400 * 30,  # 30 days
             path="/",
         )
+        # Also record in IP tracker (guards against cookie clearing)
+        guest_security.record_guest_chat(request)
 
     return response
 
