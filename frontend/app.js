@@ -12,6 +12,7 @@ let currentConversationId = null;
 let conversations = [];
 let isLoading = false;
 let currentUser = null;
+let guestStatus = null; // Track guest chat status
 
 // Analytics session ID (persists across page loads within same browser session)
 let analyticsSessionId = sessionStorage.getItem('analyticsSessionId');
@@ -137,7 +138,12 @@ async function init() {
     // Check authentication
     const isAuthenticated = await checkAuth();
 
+    // Load greeting for all users (authenticated and guests)
+    await loadGreeting();
+
     if (!isAuthenticated) {
+        // Check guest status for non-authenticated users
+        await checkGuestStatus();
         return;
     }
 
@@ -150,10 +156,20 @@ async function init() {
         showToast('Payment successful! Credits have been added to your account.');
     }
 
-    await Promise.all([
-        loadGreeting(),
-        loadConversations()
-    ]);
+    await loadConversations();
+}
+
+async function checkGuestStatus() {
+    try {
+        const response = await fetch(`${API_BASE}/guest/status`);
+        if (response.ok) {
+            guestStatus = await response.json();
+            return guestStatus;
+        }
+    } catch (error) {
+        console.error('Failed to check guest status:', error);
+    }
+    return null;
 }
 
 async function checkAuth() {
@@ -239,21 +255,26 @@ function showLoggedOutState() {
     `;
 }
 
-function showLoginPrompt() {
+function showLoginPrompt(showFreeChatsMessage = false) {
     let prompt = document.getElementById('loginPrompt');
+    const message = showFreeChatsMessage
+        ? 'Sign in for 3 more free chats'
+        : 'Please sign in to chat with rebbe.dev';
+
     if (!prompt) {
         prompt = document.createElement('div');
         prompt.id = 'loginPrompt';
         prompt.className = 'login-prompt';
-        prompt.innerHTML = `
-            <div class="login-prompt-content">
-                <p>Please sign in to chat with rebbe.dev</p>
-                <a href="/auth/login" class="login-prompt-btn">Sign In</a>
-                <button class="login-prompt-close" onclick="hideLoginPrompt()">&times;</button>
-            </div>
-        `;
         document.body.appendChild(prompt);
     }
+
+    prompt.innerHTML = `
+        <div class="login-prompt-content">
+            <p>${message}</p>
+            <a href="/auth/login" class="login-prompt-btn">Sign In</a>
+            <button class="login-prompt-close" onclick="hideLoginPrompt()">&times;</button>
+        </div>
+    `;
     prompt.classList.add('visible');
 }
 
@@ -579,18 +600,20 @@ async function sendFromWelcome() {
     const message = messageInput.value.trim();
     if (!message || isLoading) return;
 
-    // Create a new conversation first
-    const convId = await createConversation();
-    if (!convId && currentUser) {
-        // Database might not be configured, continue without persistence
-        console.warn('Could not create conversation, continuing without persistence');
+    // Only create conversation for logged-in users
+    if (currentUser) {
+        const convId = await createConversation();
+        if (!convId) {
+            // Database might not be configured, continue without persistence
+            console.warn('Could not create conversation, continuing without persistence');
+        }
     }
 
     // Switch to chat screen
     welcomeScreen.classList.add('hidden');
     settingsScreen.classList.add('hidden');
     chatScreen.classList.remove('hidden');
-    chatTitle.textContent = 'New conversation';
+    chatTitle.textContent = currentUser ? 'New conversation' : 'Guest chat';
 
     // Clear welcome input
     messageInput.value = '';
@@ -616,10 +639,13 @@ function sendFromChat() {
 async function sendMessage(message) {
     if (isLoading) return;
 
-    // Check if user is authenticated
+    // Check if user is authenticated or is a guest with remaining chats
     if (!currentUser) {
-        showLoginPrompt();
-        return;
+        // For guests, check if they have remaining free chats
+        if (!guestStatus || guestStatus.chats_remaining <= 0) {
+            showLoginPrompt(true); // true = show "3 more free chats" message
+            return;
+        }
     }
 
     // Add user message to chat
@@ -686,6 +712,18 @@ async function sendMessage(message) {
                         } else if (data.type === 'message_saved') {
                             savedMessageId = data.message_id;
                         } else if (data.type === 'error') {
+                            if (data.message === 'guest_limit_reached') {
+                                // Guest has used their free chat - remove the user message we just added
+                                const lastUserMessage = chatMessages.querySelector('.message.user:last-of-type');
+                                if (lastUserMessage) {
+                                    lastUserMessage.remove();
+                                    conversationHistory.pop();
+                                }
+                                removeTypingIndicator();
+                                setLoading(false);
+                                showLoginPrompt(true);
+                                return;
+                            }
                             throw new Error(data.message);
                         }
                     } catch (e) {
@@ -708,8 +746,15 @@ async function sendMessage(message) {
             hideReferralNotice();
         }
 
-        // Refresh conversations list to get updated title
-        await loadConversations();
+        // Update guest status after successful chat
+        if (!currentUser) {
+            await checkGuestStatus();
+        }
+
+        // Refresh conversations list to get updated title (only for logged-in users)
+        if (currentUser) {
+            await loadConversations();
+        }
 
     } catch (error) {
         console.error('Error sending message:', error);

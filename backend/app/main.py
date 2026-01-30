@@ -28,7 +28,15 @@ from .models import (
 )
 from .agents.denominations import VALID_DENOMINATIONS
 from .agents import RabbiOrchestrator
-from .auth import router as auth_router, get_current_user, require_auth
+from .auth import (
+    router as auth_router,
+    get_current_user,
+    require_auth,
+    get_guest_chats_used,
+    create_guest_chat_cookie,
+    GUEST_FREE_CHAT_LIMIT,
+    LOGGED_IN_FREE_CREDITS,
+)
 from .conversations import router as conversations_router
 from .payments import router as payments_router
 from . import database as db
@@ -157,6 +165,9 @@ class AuthMiddleware(BaseHTTPMiddleware):
         "/api/health",
         "/api/analytics",  # Allow anonymous session tracking
         "/api/payments/webhook",  # Stripe webhook (verified by signature)
+        "/api/guest/status",  # Guest chat status check
+        "/api/chat/stream",  # Allow guest free chat (handled in endpoint)
+        "/api/greeting",  # Allow guests to see greeting
         "/docs",
         "/openapi.json",
         "/redoc",
@@ -223,6 +234,32 @@ async def get_greeting(request: Request):
     """Get initial greeting message."""
     greeting = await orchestrator.get_greeting()
     return GreetingResponse(greeting=greeting)
+
+
+@app.get("/api/guest/status")
+@limiter.limit("60/minute")
+async def get_guest_status(request: Request):
+    """Get guest chat status - how many free chats remain."""
+    user = get_current_user(request)
+    if user:
+        # User is logged in - they have their credits system
+        return JSONResponse(content={
+            "is_guest": False,
+            "chats_used": 0,
+            "chats_remaining": LOGGED_IN_FREE_CREDITS,
+            "limit": LOGGED_IN_FREE_CREDITS,
+        })
+
+    # Guest user - check cookie
+    chats_used = get_guest_chats_used(request)
+    chats_remaining = max(0, GUEST_FREE_CHAT_LIMIT - chats_used)
+
+    return JSONResponse(content={
+        "is_guest": True,
+        "chats_used": chats_used,
+        "chats_remaining": chats_remaining,
+        "limit": GUEST_FREE_CHAT_LIMIT,
+    })
 
 
 @app.get("/api/credits")
@@ -561,6 +598,23 @@ async def chat_stream(request: Request, chat_request: ChatRequest):
     # Get current user for database operations
     user = get_current_user(request)
 
+    # Track if this is a guest chat that needs cookie update
+    is_guest_chat = False
+    new_guest_chats_used = 0
+
+    # Handle guest users (not logged in)
+    if not user:
+        chats_used = get_guest_chats_used(request)
+        if chats_used >= GUEST_FREE_CHAT_LIMIT:
+            # Guest has used their free chat - prompt to login
+            return StreamingResponse(
+                iter([f"data: {json.dumps({'type': 'error', 'message': 'guest_limit_reached', 'detail': 'Sign in for 3 more free chats'})}\n\n"]),
+                media_type="text/event-stream",
+            )
+        # Guest can chat - mark for cookie update after response
+        is_guest_chat = True
+        new_guest_chats_used = chats_used + 1
+
     # Get user profile for personalized responses
     user_denomination = None
     user_bio = None
@@ -573,7 +627,7 @@ async def chat_stream(request: Request, chat_request: ChatRequest):
         except Exception as e:
             logger.warning(f"Could not get user profile: {e}")
 
-    # Check and consume credit before processing
+    # Check and consume credit before processing (only for logged-in users)
     if user and settings.db_url:
         try:
             has_credit = await db.consume_credit(user["id"])
@@ -650,7 +704,7 @@ async def chat_stream(request: Request, chat_request: ChatRequest):
                     pass
             yield f"data: {json.dumps({'type': 'error', 'message': str(e)})}\n\n"
 
-    return StreamingResponse(
+    response = StreamingResponse(
         event_generator(),
         media_type="text/event-stream",
         headers={
@@ -658,6 +712,21 @@ async def chat_stream(request: Request, chat_request: ChatRequest):
             "Connection": "keep-alive",
         }
     )
+
+    # Set guest chat cookie to track usage
+    if is_guest_chat:
+        guest_cookie = create_guest_chat_cookie(new_guest_chats_used)
+        response.set_cookie(
+            key="guest_chats_used",
+            value=guest_cookie,
+            httponly=True,
+            secure=settings.is_production,
+            samesite="lax",
+            max_age=86400 * 30,  # 30 days
+            path="/",
+        )
+
+    return response
 
 
 frontend_path = os.path.join(os.path.dirname(__file__), "..", "..", "frontend")
