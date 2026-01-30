@@ -132,6 +132,13 @@ class Settings(BaseSettings):
     rate_limit_per_minute: int = 30  # Requests per minute per IP
     rate_limit_chat_per_minute: int = 10  # Chat requests per minute per user
 
+    # Guest security settings
+    guest_ip_chat_limit: int = 3  # Max chats per IP per day (guards against cookie clearing)
+    guest_rate_limit_per_minute: int = 5  # Max requests per minute for guests
+    ip_block_threshold: int = 10  # Number of violations before IP is blocked
+    ip_block_duration: int = 3600  # Block duration in seconds (1 hour)
+    max_message_length: int = 10000  # Maximum characters in a chat message
+
     @property
     def db_url(self) -> str:
         """Get database URL for connection.
