@@ -1,0 +1,47 @@
+# 4th Day of Parshas Behaalosecho - To the Children, 13th Day of Sivan, 5740
+
+**Date:** 1980-06-26 (13 Sivan 5740)
+**Occasion:** Address to Children - Parshas Behaalosecho
+**Source:** Sichos In English, Volume 6
+
+---
+
+1. The children recited the twelve verses from the Torah and sayings of our sages.
+
+2. We have gathered together, continuing to celebrate the season of the giving of the Torah. The Torah is the most important element of every Jew�s life. It is �our life and the length of our days.� Now, seven days later; a full week has passed since the festival of Shavuos. Each of those days has a unique character of its own. Shabbos is different from Friday, Friday from Sunday, etc. By connecting all of these seven days with Torah, by studying it and carrying out its commandments, we ensure that we will continue to do so in all the weeks to come, in this year, and in all the years that follow.
+
+3. Our connection with Torah in all the seven days of the week since the holiday of Shavuos, reminds us again that the reason that we have the Torah today is that �our children are our guarantors.� When G-d originally gave us the Torah, the children were selected as our guarantors. Since then each year, G-d gives the Torah again with renewed life and illumination because the Jewish children, with the help of their parents and teachers, accept upon themselves the study of Torah and the fulfillment of Mitzvos as the Torah demands.
+
+Thus, every parent � and likewise every Jew � must be thankful to every Jewish child, for it is in his merit as guarantor, that the Torah has been given. Also, all Jewish children, both boys and girls, must be aware of their great merit and great responsibility (and because of that the great powers and great blessings they have been given by G-d). They must therefore fulfill their role in the best manner possible, intensifying the affinity to Torah of their parents and all the Jews around them.
+
+4. This knowledge that the fulfillment of Torah and Mitzvos of all the Jews, every day of the week, depends on their fulfillment of Torah and Mitzvos throughout the week (as they have been fulfilled in the week since the holiday of Shavuos) together with the thanks of the entire Jewish people for their Torah behavior, cannot fail to inspire the children to maintain their study of Torah and fulfillment of Mitzvos in the upcoming year. This is particularly true since the children derive strength from their efforts in the last seven days. This further encourages them to fulfill their role as guarantors, thus ensuring our share in the Torah, now, in the weeks to come, and the years to come, for all generations.
+
+5. Torah teaches us that we must remember the Torah each moment of every day of the week. Therefore, when we ask a Jew, young or old, what day it is, he will answer that it is the first, second, or third, etc., day of the portion of the Torah that is read on the following Shabbos. It is therefore important to mention that today is the fourth day of Parshas Beha�alosecho, thus emphasizing the connection with that Parshah.
+
+6. The significance of the entire Parshah is contained within its name, Beha�alosecho. Beha�alosecho refers to the command which G-d gave Moshe instructing Aharon to light the candles of the Menorah in the sanctuary. He was required to light them so that they would burn �continuously� and �the flame would go up by itself.�
+
+7. The lighting of the Menorah contains a lesson for every Jew in his daily life even if he is not a priest, even if he lives outside of Yerushalayim and even in the present time when the Temple is destroyed.
+
+Every Jew is a priest. The Torah calls the Jewish people �a Kingdom of priests.� Therefore, every Jew is called upon to light the candles of the sanctuary as Aharon did. The only difference between ourselves and Aharon is that he lit the candles in the sanctuary which was a place of holiness for the entire Jewish people as the Temple later was. It was therefore necessary to have a priest of Aharon�s stature (or one of his descendants) to represent the entire Jewish people. Nowadays, however since G-d�s presence rests within each Jewish home (as G-d declared �I will dwell within them� in the plural form, which is interpreted by our sages to mean �within every one of you�), it is therefore incumbent on each Jew to make the home in which he lives a sanctuary and a Temple. And just as Aharon lit the Menorah in the sanctuary of the entire Jewish people, each member of �the nation of priests� illuminates his own home.
+
+8. The lighting of the Menorah which each Jew must carry out in his house must resemble the manner in which Aharon lit the Menorah in the sanctuary. The light of each Jew�s Menorah must illuminate every corner of the house, burning �continually� the entire day and the entire night. This is done by lighting seven candles which refer to all the different types of behavior possible in a Jewish house (note Likkutei Torah Parshas Beha�alosecho). The lighting of these seven candles in one�s home every day, even in the Diaspora and even in the darkness of Golus hastens the coming of the redemption.
+
+9. The seven candles which are lit in the Temple and in every Jewish home are connected with the redemption from Golus. Isaiah the prophet, who prophesied about the coming of Mashiach �a shoot shall come forth from the stem of Yishai� (11:1), declared that �The L-rd will lift His hand over the river... smite it into seven streams� (11:15). This means that when the Jews will return to Israel, they will follow seven paths and all will gather together in Yerushalayim and behold the Temple. The preparation for the redemption will come through the lighting of the seven candles in every Jewish home.
+
+10. The children � through their study of Torah and performance of Mitzvos � guarantee the Torah for every Jew. They therefore have the Mitzvah of illuminating the home in which they live, spreading light in all its corners by fulfilling G-d�s Mitzvos as a part of the Kingdom of Priests. The children can bring light into the home throughout the entire day; when he eats, by making a Brocha; as soon as he awakens, by saying Modeh Ani; before he goes to sleep he says Shema Yisrael.
+
+By illuminating the household in all possible ways, the children fulfill the guarantee they gave at Mt. Sinai. Their behavior will influence their entire household, affecting their father, mother, brothers, and sisters and causing them in turn to illuminate their surroundings.
+
+11. Every one � and particularly the children � thus hastens the coming of the time when the Temple will be built and we will follow the [seven] paths that lead to it. We will see how the priests, with Aharon at their lead, kindle the Menorah in the sanctuary, the light of which will spread throughout the entire world. This process will begin when every Jewish child, from the youngest age, does what is expected of him to illuminate his home with Yiddishkeit and Mitzvos. That light will continue to increase, bringing the light of the redemption through Mashiach who will build the Temple.
+
+12. The above is also connected with the portion of Chumash that pertains to the present day. That portion relates how the Jews� journey in the desert was not made alone. Before them, leading the way, went �the cloud of G-d,� a cloud of light, which showed the way for them to follow. The cloud protected them from the difficulties and undesirable influences in the desert. It surrounded them from all six sides, guarding them, and leading them to Israel.
+
+13. From this we can learn the lesson, and be assured that even when the Jews pass through the �desert� of Golus, they need not be afraid. They must know that they are surrounded on all six sides by G-d�s cloud, which illuminates the way for them, protecting them from all the difficulties of the �desert� of Golus. All that is necessary is that the Jew, old or young, desire to follow the path shown by the cloud. If he does so, he will be protected from all the undesirable influences of the desert. Then, with every day, we will come closer to entering Israel, led by Mashiach.
+
+14. The above is also connected with the verse, �And on the day of your rejoicing, on your festivals... you shall sound the trumpets over your burnt-offerings� which is also found in today�s Torah reading (Bamidbar 10:10).
+
+From the holiday of Shavuos, a day of joy and a festival, we derive joy and a festive spirit for all the days to come. Filled with this inspiration we will �sound the trumpets,� playing a march, accepting G-d as King over us. We will certainly be victorious, overcoming all difficulties, including the difficulties that come from the Yetzer Horah. The word �Chatzotzrah� also denotes the Yetzer Horah. [We will �blow the trumpets� can also be interpreted to mean: �we will blow away the Yetzer Horah.�
+
+15. Then, in the near future we will merit that each one of us will see with �eternal joy� how G-d goes in front of every Jew, and leads the entire Jewish people, protecting them from the difficulties of the �desert� of Golus and bringing them into Eretz Yisrael, �the land which the eyes of G-d are always upon it, from the beginning of the year until the end of the year.�
+
+Through lighting candles in the time of Golus, we will merit to see the candles of Menorah in the Temple which will be built in the time of the true and complete redemption led by Mashiach, speedily in our days.
