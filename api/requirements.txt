@@ -120,7 +120,7 @@ urllib3==2.6.3
     # via requests
 uvicorn==0.40.0
     # via rebbe
-uvloop==0.22.1 ; platform_python_implementation != 'PyPy' and sys_platform != 'cygwin' and sys_platform != 'win32'
+uvloop==0.22.1 ; sys_platform != 'win32' and sys_platform != 'cygwin'
     # via uvicorn
 watchfiles==1.1.1
     # via uvicorn
