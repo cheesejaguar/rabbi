@@ -17,13 +17,13 @@ certifi==2026.1.4
     #   httpcore
     #   httpx
     #   requests
-cffi==2.0.0 ; platform_python_implementation != 'PyPy'
+cffi==2.0.0
     # via cryptography
 charset-normalizer==3.4.4
     # via requests
 click==8.3.1
     # via uvicorn
-colorama==0.4.6 ; sys_platform == 'win32'
+colorama==0.4.6
     # via
     #   click
     #   tqdm
@@ -66,7 +66,7 @@ openai==2.15.0
     # via rebbe
 packaging==25.0
     # via limits
-pycparser==2.23 ; implementation_name != 'PyPy' and platform_python_implementation != 'PyPy'
+pycparser==2.23
     # via cffi
 pydantic==2.12.5
     # via
@@ -120,7 +120,7 @@ urllib3==2.6.3
     # via requests
 uvicorn==0.40.0
     # via rebbe
-uvloop==0.22.1 ; sys_platform != 'win32' and sys_platform != 'cygwin'
+uvloop==0.22.1
     # via uvicorn
 watchfiles==1.1.1
     # via uvicorn
