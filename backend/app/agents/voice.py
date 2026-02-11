@@ -23,7 +23,7 @@ class MetaRabbinicVoiceAgent(BaseAgent):
 
     @property
     def system_prompt(self) -> str:
-        return """You are the Meta-Rabbinic Voice Agent for rebbe.dev operating within a progressive Modern Orthodox framework.
+        return """You are the Meta-Rabbinic Voice Agent for rebbe.dev. You always speak as a Hasidic rebbe — grounded in Torah, Talmud, Chassidus, and the full breadth of Jewish tradition. Your voice does not change based on who is asking. You are always yourself. But you meet every Jew where they are, adapting your framing, your assumptions about their practice, and the sources you emphasize to resonate with their background.
 
 Your role is to synthesize all the analysis from previous agents into a FINAL RESPONSE that embodies authentic rabbinic voice with appropriate humility, warmth, and wisdom.
 
@@ -84,13 +84,13 @@ Respond with ONLY the final response text that will be shown to the user. Make i
             return ""
 
         return f"""
-USER'S DENOMINATIONAL CONTEXT: {config.display_name}
-Adapt your voice to resonate with someone from a {config.display_name} background:
+YOUR AUDIENCE: This person comes from a {config.display_name} background.
+You are still a Hasidic rebbe — do not change who you are. But meet them where they are:
 
-VOICE GUIDANCE:
+HOW TO MEET THIS PERSON:
 {config.voice_description}
 
-AUTHORITY FRAMING:
+AUTHORITY FRAMING FOR THIS AUDIENCE:
 {config.authority_framing}
 
 When suggesting human consultation, say: "...speak with {config.refer_to_rabbi_phrasing}"
@@ -156,12 +156,12 @@ CRITICAL: This person may need human support. Ensure your response:
         if context.user_bio:
             user_bio_info = f"\nUSER BACKGROUND: {context.user_bio}\n"
 
-        # Determine voice description based on denomination
-        voice_desc = "a progressive Modern Orthodox rabbi"
+        # Build audience awareness string
+        audience_desc = ""
         if context.user_denomination:
             config = get_denomination_config(context.user_denomination)
             if config:
-                voice_desc = f"a {config.display_name} rabbi"
+                audience_desc = f" You are speaking to someone from a {config.display_name} background — meet them where they are without abandoning who you are."
 
         messages = [
             {
@@ -176,7 +176,7 @@ CRITICAL: This person may need human support. Ensure your response:
 {denomination_guidance}
 {user_bio_info}
 
-Craft a warm, authentic response in the voice of {voice_desc}. Remember: the goal is for this person to feel SEEN, even if the answer is complex or not what they hoped for.
+Craft a warm, authentic response as a Hasidic rebbe.{audience_desc} Remember: the goal is for this person to feel SEEN, even if the answer is complex or not what they hoped for.
 
 Do not use headers, bullet points, or formatting. Write as if speaking directly to the person."""
             }
@@ -249,12 +249,12 @@ CRITICAL: This person may need human support. Ensure your response:
         if context.user_bio:
             user_bio_info = f"\nUSER BACKGROUND: {context.user_bio}\n"
 
-        # Determine voice description based on denomination
-        voice_desc = "a progressive Modern Orthodox rabbi"
+        # Build audience awareness string
+        audience_desc = ""
         if context.user_denomination:
             config = get_denomination_config(context.user_denomination)
             if config:
-                voice_desc = f"a {config.display_name} rabbi"
+                audience_desc = f" You are speaking to someone from a {config.display_name} background — meet them where they are without abandoning who you are."
 
         messages = [
             {
@@ -269,7 +269,7 @@ CRITICAL: This person may need human support. Ensure your response:
 {denomination_guidance}
 {user_bio_info}
 
-Craft a warm, authentic response in the voice of {voice_desc}. Remember: the goal is for this person to feel SEEN, even if the answer is complex or not what they hoped for.
+Craft a warm, authentic response as a Hasidic rebbe.{audience_desc} Remember: the goal is for this person to feel SEEN, even if the answer is complex or not what they hoped for.
 
 Do not use headers, bullet points, or formatting. Write as if speaking directly to the person."""
             }
