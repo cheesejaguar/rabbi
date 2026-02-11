@@ -1,0 +1,52 @@
+# 4th Night of Sukkos, 5741
+
+**Date:** 1980-10-26 (18 Tishrei 5741)
+**Occasion:** 4th Night of Sukkos
+**Source:** Sichos In English, Volume 7
+
+---
+
+1. The command to always proceed higher in holy matters surely must apply concerning Simchas Bais HaShoeivah. Hence, there must be an additional element in tonight�s celebration over and above those of the previous nights. This, in turn, is connected with an additional lesson from the Torah, which is �the Torah of truth.�
+
+Here also is the place to explain in greater detail what was mentioned last night: namely, that on Shabbos water was brought for the water-offering. There was a Rabbinical decree that prevented great celebrations, i.e. playing flutes[48] and other musical instruments on Shabbos. However, in a spiritual sense, the source for the celebration remained, and hence our celebration, which is not necessarily connected with playing the flute, etc. can be held on Shabbos.
+
+This is a surprising new piece of information which, as we shall come to see, teaches us a new concept. In fact, it raises a question because it appears to run contrary to an explicit Mishnah, quoted as Halachah by the Rambam, which states that the drawing of the water from the well of Shiloach took place the day before Shabbos and not on the night of Shabbos itself.
+
+This question can be resolved if we ask another question. Since the water was drawn on Friday, why did the Rabbis introduce the restrictions mentioned above? Why didn�t the Jewish people �draw water with joy� in both the physical and spiritual senses on Friday as well?
+
+One possible answer is that the rejoicing of Simchas Bais HaShoeivah began with the rejoicing in the Temple itself. From the Temple, the people descended to the springs of Shiloach and then they returned to the Temple. Thus, the rejoicing could not be held in the Temple on Friday afternoon because at that time the Jews were still occupied with bringing the daily sacrifices, etc. (In fact, for that reason the Simchas Bais HaShoeivah was held at night after the priests had finished officiating at the offerings, the Levites chanting, and the Israelites attending the service.) However, this is a forced explanation.
+
+There is another question which presents itself. The Talmud explains that the Shofar was sounded as the water for the offering was being drawn; however, on Shabbos this expression of happiness was omitted. If in fact that water for the offering was obtained on Friday afternoon, why does the Talmud have to tell us that the Shofar was not sounded on Shabbos? Rashi in his commentary indeed explains that the reason why the Shofar was not sounded on Shabbos was because the water had already been drawn on Friday. However, that explanation does not suit the Rambam. He writes that �the Shofar was sounded at the drawing of the water and at the actual water offering. on Shabbos, the Shofar was not sounded at the drawing of the water, but it was sounded at the offering.� All the commentaries ask the same question: Why did the Rambam feel it necessary to state that the Shofar was not sounded on Shabbos for the drawing of water when in fact that event took place Friday afternoon?
+
+In order to answer this question, we are forced to view the problem from a different perspective and to examine the physical drawing of the water separately from the water offering. Certain commentaries explain that the drawing of water did take place on Shabbos. True, the water was drawn from the wells of Shiloach on Friday. However, at that time it was not drawn in a Kli Shorays (holy vessel) as on the other days, but rather in a glass container. Using a glass vessel was necessary because had the water been drawn originally in a Kli Shorays, it would have become Possul (unfit for use) the next morning (for water that remains from sunset to dawn[49] in a Kli Shorays becomes Possul). On Shabbos, after the problem had been avoided, the water was transferred to a Kli Shorays. That transfer constituted the �drawing of water,� the actual water offering. At the time of the transfer, one might suppose that the Shofar sounding would have been in place. Hence, the Rambam had to state that the Shofar, the symbol of happiness, was not used. Likewise, the original question of why the celebration was not held Friday afternoon is also answered. The �drawing of the water,� which took place only on Shabbos, was the cause for happiness; the physical drawing of the water was merely a preparatory step. This, in keeping with what was explained yesterday � that at present the reasons for which the Sages forbade the rejoicing no longer apply � brings us to the conclusion � a new concept � that our rejoicing now is relevant.
+
+2. Tonight, we come to an ever higher level of rejoicing. On the previous nights (which were festivals and the Sabbath) it was necessary to explain why in our present situation we must rejoice. However, tonight no such question exists. It is simply understood that just as in the time of the Temple the people rejoiced in honor of Simchas Bais HaShoeivah on this night, we must carry out similar celebrations. This is particularly true in our age. The darkness of Golus creates feelings opposite to joy. Hence, we must celebrate with increasing strength and power every opportunity we get to rejoice. This applies in a special sense to Simchas Bais HaShoeivah, which centers on the intensification of joy.
+
+There is also a unique characteristic connected with the present occasion. This is the fourth night of Sukkos. There is no debate over who is the Ushpizen � honored guest � on each of the first three nights of Sukkos: Avraham is the first, Yitzchok the second,[50] and Yaakov the third. However, in regard to the fourth night, two different Ushpizen are mentioned. In general, there are three opinions as to the order of the Ushpizen. There is the order printed in the Siddurim: Avraham, Yitzchok, Yaakov, Moshe, Aharon, Yosef, Dovid. There is another opinion in the additions to the Zohar: Avraham, Yitzchok, Yaakov, Yosef, Moshe, Aharon, and Dovid. Also, the Zohar in Parshas Pinchas[51] lists the order as Avraham, Yitzchok, Yaakov, Moshe, Aharon, Dovid, and Shlomo.[52] The commentaries on the Zohar explain the differences between the three opinions. However, in relation to the matter at hand, since �these and these are the words of the living G-d,� each day beginning with the fourth day is connected with two different Ushpizen.
+
+The aspect of Yosef is connected with the Nasi of our generation (the previous Rebbe), whose name was also Yosef. Both of them were characterized by the qualities mentioned in the Biblical verse (Mishlei 22: 9), �He that has a generous eye shall be blessed, for he gives of his bread to the poor.� Even though the previous Rebbe, being the Nasi, is related to us the entire year, today the qualities connected with him are intensified with more power and force because of the blessings promised and the potential granted through the influence of the Ushpizen Yosef. The fact that today he is the �honored guest� affects all those who are also called by that name.
+
+Today is also influenced by the qualities of Moshe. All Jews � men, women even young children � have always associated Moshe with the description, �Moshe Rabbeinu� � Moshe our teacher. The verse (Devarim 33: 9), �The Torah that Moshe commanded us is the inheritance of the congregation of Yaakov� brings out the same concept. In contrast, Yosef�s qualities are expressed in the verse (Tehillim 80:2), �Who leads Yosef like sheep� as the Midrash explains Yosef sustained the people, even acting according to the needs of the children. This quality has a continuous effect throughout the ages. Thus, Yosef�s influence is associated with material things. In relation to Torah (which is the source of all spiritual influence) it was Yehudah who was sent to Goshen to establish a Yeshiva. This quality is expressed by the Ushpizen of Moshe. However, this spiritual influence brings about material blessings, the aspect connected with the Ushpizen of Yosef. The connection of these two was expressed by the Rebbeim, including the previous Rebbe, who were the source of spiritual influence, the aspect of Moshe Rabbeinu. They taught Torah from Aleph-Beis to Torah�s mystical secrets and likewise sought the betterment of the good of all Jews, even children.[53]
+
+The above was not meant to be taken as an abstract lesson, but as an action directive. We must know that in addition to the other reasons for the intensification of happiness tonight, there is another quality which should cause increased joy. Today we begin for a third time (which in Jewish law constitutes a Chazakah � a surety) the reading of the portion �Zos HaBerachah.� The impact of the entire portion is included in the first verse, �This is the blessing with which Moshe blessed...� Thus, it too adds to our happiness.
+
+May it be G-d�s will that the above be brought down into action and that the rejoicing of Simchas Bais HaShoeivah this night exceed that of the previous nights.[54] May this bring about the revelation of the third Temple (Shmos 15:17): �the Sanctuary which Your hands, O L-rd, have established,� with the true and complete redemption led by Mashiach. He will �gather the men, women and children.�[55] May the joy of the festival[56] break down all barriers including the barriers of Golus and may we, speedily in our days, go to greet Mashiach.
+
+Notes:
+- (Back to text) The flute was the head and the leader of all the musical instruments.
+
+- (Back to text) According to some authorities, the time was the first rooster call, significantly earlier than dawn.
+
+- (Back to text) Similarly, the previous Rebbe taught there are Chassidishe Ushpizen: the Baal Shem Tov, the Maggid, the Alter Rebbe, etc.
+
+- (Back to text) This is the portion which deals with the festivals.
+
+- (Back to text) Hence, on the first days of Sukkos, Shlomo was also mentioned in connection with the Ushpizen.
+
+- (Back to text) The term �children� implies even someone who is an adult in years but a child in the knowledge of Judaism.
+
+- (Back to text) The proof of this increased joy will be its effect on the remaining days of Sukkos, Simchas Torah, and the entire year to come.
+
+- (Back to text) According to some opinions, Hakhel began on the fourth day of Sukkos.
+
+- (Back to text) Joy is a Halachic obligation throughout Sukkos, even on Chol HaMoed, according to the Alter Rebbe.

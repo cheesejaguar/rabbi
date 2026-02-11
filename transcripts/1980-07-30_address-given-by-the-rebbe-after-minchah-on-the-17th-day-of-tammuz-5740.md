@@ -1,0 +1,74 @@
+# Address Given By The Rebbe After Minchah On The 17th Day Of Tammuz, 5740
+
+**Date:** 1980-07-30 (17 Tammuz 5740)
+**Occasion:** Fast of 17th of Tammuz
+**Source:** Sichos In English, Volume 6
+
+---
+
+1. Whenever Jews gather together, and particularly when we connect our gathering with prayer � and especially the Minchah prayer which has unique significance, as our sages (Berachos 6b) declared, �One should always be careful about the Minchah prayers, for, Behold, Eliyahu[156] was answered only at the Minchah prayer � with Torah (the reading of the Torah), and with Tzedakah, we establish a threefold bond with the three services of Torah, Avodah, and Gemilus Chassodim. This threefold bond strengthens the manner in which �the world stands� and the way �the world exists.� It strengthens the personal world of each Jew, as well as the world at large.
+
+This is particularly true today, the seventeenth of Tammuz. This day is connected with the five undesirable events (Taanis 26a) that occurred on it in our history.[157] Not only must we strengthen the manner in which �the world stands� and �the world exists,� through our service today, we must also bring out �the higher quality of light from darkness,� and �the higher quality of wisdom from foolishness.�
+
+This concept is expressed by the Rambam. In his treatise on fasts (5:19) he writes in the future these days will be transformed into festivals, days of happiness and rejoicing.[158]
+
+Hence, we must meditate on the reasons these problems came to be, i.e. �our evil deeds,� in order to correct them through Teshuvah. And, we must do so to the point that they become fully corrected.[159]
+
+It is self-understood that each of the different fasts came about for its own unique reason. our remembrance of these days and our efforts to correct, through Teshuvah their deficiencies are related to the particular qualities of the day. The particular qualities of each fast day are intrinsically related to the events which took place on those days.
+
+In regard to the seventeenth of Tammuz, the Mishnah declares: �Five events occurred to our ancestors on the seventeenth of Tammuz.� The first of the events � and hence the most important � is the �destruction of the tablets.� We must meditate on the reasons that led to the destruction of the tablets and also on what must be done to rectify that act and bring it to a full measure of completion.
+
+On a simple level we see that the destruction of the tablets refers to a destruction of a Torah; and Torah on the level of the tablets, i.e., as it stands in a state of oneness. The Written Law refers to Torah as it is written down on parchment. The Oral Law refers to Torah as it is understood and comprehended by the human mind. In both cases, the Torah is a separate thing from that which contains it, the parchment or the thought processes. The tablets, on the other hand, represent a oneness in Torah. The letters of Torah and the tablets were unified � the letters were engraved in the tablets. This was not a joining of separate entities, it was a special, unique state of unity.
+
+This concept is reflected in our service of G-d. When a Jew studies Torah he should not see himself and the Torah as two separate entities. Rather, the letters of Torah must become engraved in his essence; being a part of him. The Talmud Yerushalmi (Shekalim 6:1) relates that the entire Torah in contained within the tablets. Every aspect of our existence must be connected to Torah in such a way that the Torah is engraved in us and it is impossible to differentiate between the Torah and the individual. The letters of the Torah have to become a very part of our body; our body is one with our soul which is a part of G-d � and as the Baal Shem Tov declared that �when one grasps one part of the essence, it is as if he has grasped it entirely.�
+
+From this we can derive a lesson in regard to the breaking of the tablets. In such a situation where we possess and fulfill every aspect of Torah except the aspect represented by the tablets, we have a serious problem. This fault is, by itself, damaging enough to require the institution of a public fast.
+
+A Jew�s body is G-d�s property and, in general, its needs may not be ignored. The Maggid teaches us that �a small hole in the body makes a large hole in the soul.� Thus emphasizing the importance of caring for the body.[160] However, when the tablets are broken, that is, when the unity of the Jewish people and the Torah is threatened, the body�s needs can be ignored. In such a situation it becomes a Mitzvah to fast, and through fasting to repair a spiritual deficiency.
+
+Torah teaches a number of different means to rectify the breaking of the tablets. According to our sages� statement that Ahavas Yisrael is �the entire Torah,� it follows that Ahavas Yisrael is essential to an understanding of the breaking of the tablets. In this context it is worthy to note that the breaking of the tablets came about because of Ahavas Yisrael. Moshe broke the tablets in order to minimize the punishment the Jewish people would receive for the sin of the Golden Calf and to make their atonement easier (note Rashi�s commentary on Shemos 34:1).
+
+From this we learn about the necessity of intensifying our efforts in the area of Ahavas Yisrael. Every act in that direction brings together �all as one.� This causes G-d to bless us, as our prayer declares �Bless us our Father, all as one.� That blessing will include within it the negation of all undesirable influences. Then we will draw down G-d�s unlimited, infinite blessings.[161]
+
+Among the five events which occurred on the seventeenth of Tammuz is the destruction of the city of Yerushalayim.[162] It is a day when gentiles (and, figuratively, a gentile lifestyle) broke through the wall that surrounded and defended Yerushalayim.
+
+This concept has a parallel in our lives. The Hebrew name of the city Jerusalem � Yerushalayim � is a composite of two Hebrew words, Yirah, and Shaleim, which together mean �complete fear.� This level of fear includes within it the totality of our service to G-d; it effects every aspect of our behavior.
+
+Complete fear, as all other aspects of Torah and Mitzvos, must be surrounded by a wall, as our sages said, �make a fence around the Torah.� In our personal lives this wall represents the practice of meditation, the acceptance of G-d�s yoke and the quality of self-annulment. When the wall around Yerushalayim is destroyed it is necessary to institute a fast. Through �losing fat and blood� we can correct the fault of lacking a wall. The fast is a Mitzvah; by fulfilling the Mitzvah we reestablish our connection with G-d and make ourselves one with Him.
+
+There is another lesson to learn from the destruction of the wall around Yerushalayim. A wall is intended to separate those inside the city from all the influences that exist on the outside. Hence, the wall of Yerushalayim separates those who have complete fear from those who lack this quality. There are gates and passageways in the wall so that no two Jews will be completely separated from each other.
+
+The above is true in normal times. However, in times such as these, the concept of �the city was destroyed,� and the wall of Yerushalayim being broken down, has a positive connotation as well. That connotation is that we must involve ourselves with other Jews, even those outside the wall around complete fear, over and beyond the call of duty � using the �doors and passageways.� We must show self-sacrifice, not considering any obstacles, and even put our own lives in danger in order to reach out to a Jew who lives outside Yerushalayim, and even one who lives outside the holiness of Israel in general.
+
+This lesson is connected to the Previous Rebbe�s behavior. (Today�s date has an intrinsic connection to him, � it is one of the days between his birthday, the 12th of Tammuz, and his Bris, the 19th of Tammuz.[163]) He showed an example, which paved the way for others to also sacrifice themselves for other Jews with Ahavas Yisrael.
+
+This lesson of Ahavas Yisrael is in turn the connection between the destruction of Yerushalayim�s wall and the Mesirus Nefesh of Moshe Rabbeinu in breaking the tablets. Knowing that �the tablets were the work of G-d and that the writing was the writing of G-d,� Moshe broke the tablets for the � benefit of the Jewish people. This behavior is seemingly deviant from a course prescribed by intellect, nevertheless, �his foolishness benefited him.� G-d agreed that this was the proper course of behavior as Rashi comments �it is to your credit that you broke them,� i.e., G-d gave His blessings for the success of this path of service.
+
+2. Another one of the aspects of the seventeenth of Tammuz is expressed in this statement in our Selichos prayers: �The foe unsheathed his sword against us to exterminate us, infants and sucklings to be prepared for slaughter.� This can be understood as a reference to the involvement of Jewish children in programs which are �outside� the sphere of Torah and Mitzvos. Torah is �our life and the length of our days,� and the principle, �And you shall live in them,� applies to Mitzvos. When a Jewish child is born he becomes a possessor of the Torah. It is his inheritance, as the Torah proclaims, �The Torah which Moshe commanded us is the inheritance of the congregation of Yaakov.� Hence, he becomes connected to Torah�s life. This connection is particularly strong when the child is at the age of �babes and sucklings.� We learn this from a Medrash (Bereishis Rabbah 65:20) which states that Bilaam instructed the nations of the world, i.e. enemies of the Jewish people, to �Go out and look at their houses of prayer and of study. If you will find the voices of children chirping (in Torah study), do not engage them (in war), for their father has promised them: �The voice is the voice of Yaakov.� When the voice of Yaakov is found in the houses of prayer then the hands of Esav will not be [able to effect the Jewish people].� However, if children are involved in an educational system outside of Torah �the babes and sucklings� are �prepared for slaughter.�
+
+From the above we learn of a means to correct the problem that brought about the fast. We must follow the path which the Previous Rebbe paved for us and involve ourselves in the education of babes and sucklings. The Posuk (Tehillim 8:3) tells us that �Out of the mouths of babes and sucklings You have established strength,... to destroy[164] the enemies, and those who seek revenge.� When we follow this path the gentile powers will begin to help the Jewish people in matters of Yiddishkeit; fighting and asking for the opportunity to help them out.
+
+The above is meant to be applied to actual deed, as our sages declared, �Deed is most essential.� Everyone must throw himself into the work of involving Jewish children in Torah education. The child must be brought into an environment where, from his earliest youth, even from the moment of birth, he is surrounded by �complete fear� of G-d. Speaking practically, we should utilize the summer months (or the winter months, for those on the opposite side of the equator) to fill children�s lives with Torah and Mitzvos, and to influence their parents through them, as the prophet Malachi 3:24 declares, �I will return the hearts of parents through the children.�
+
+As mentioned in the last Farbrengen, we must intensify our efforts in Mivtzah Chinuch � educating ourselves and every Jewish child whom we can reach in a Torah manner � and the other Mivtzoim : Mivtzah Ahavas Yisrael, Mivtzah Tefillin, Mivtzah Mezuzah, Mivtzah Tzedakah, Bayis Maley Seforim � Yavneh V�Chochamehah, Mivtzah Nairos Shabbos Kodesh, Mivtzah Kashrus, Mivtzah Taharas HaMishpachah. Through these efforts the question of �Mihu Yehudi� � �Who is a Jew?� � will be cleared up. �The word of our G-d will stand forever,� that is, it will be established that a Jew is only someone who was born to a Jewish mother or converted according to Halachah.[165] This will bring about Shleimus Haom (the complete state of the Jewish nation) and Shleimus HaTorah (the complete state of the Torah), and thus Shleimus HaOretz (the complete state of the land of Israel). Thus, we will establish a threefold bond which will not be broken, and with this bond we will go to greet Mashiach. Then the seventeenth of Tammuz will be transformed into a festival and day of rejoicing with the true and complete redemption.
+
+Notes:
+- (Back to text) Our sages declare that �Pinchas is Eliyahu.�
+
+- (Back to text) These events are undesirable not only from the standpoint of a Jew, but also from that of the world at large. The destruction of the Temple effected the entire spiritual order of the worlds, causing a descent throughout creation.
+
+- (Back to text) This concept is alluded to in the prayer recited in the Selichos of the seventeenth of Tammuz, which says: �May the seventeenth of Tammuz be transformed for us into happiness and rejoicing.�
+
+- (Back to text) The Hebrew word for full � Shleimus � has two meanings: 1)the fulfillment of a lack, and, 2) the attainment of a full measure of completion and perfection. Through Teshuvah we can reach a higher level of fulfillment than we previously had. This completion is connected with 2nd definition above, because it brings out �the higher level of light from darkness� and �the higher level of wisdom from foolishness� � referred to as foolishness, �for a man does not sin unless he is possessed by a spirit of folly.�
+
+- (Back to text) This is further emphasized by the Alter Rebbe�s statement in Tanya that the source of our physical existence is G-d�s essence.
+
+- (Back to text) Drawing down G-d�s infinite blessings into our finite world represents the fusion of two opposites and is possible only because of G-d�s �power to do wonders.�
+
+- (Back to text) [According to some opinions, Yerushalayim was destroyed on that date during both the Babylonian and the Roman conquests. According to other opinions the city was destroyed by the Babylonians on the ninth of Tammuz. The Babylonian destruction is also connected to the seventeenth of Tammuz, for all events of the same month are interrelated.]
+
+- (Back to text) This is particularly relevant this year as it marks the 100th anniversary of his birth. During this time the spiritual source of his soul shines more powerfully.
+
+- (Back to text) The Hebrew word for destroy � LeHashbis � has two meanings: 1) utter destruction, and, 2) transformation i.e., the destruction of the negative characteristics. When LeHashbis is a transformation, the previously negative influences become helpful assistants. This concept is expressed by the prophecy �and kings will become your foster-fathers, and their queens your nursemaids.�
+
+- (Back to text) A proper convert is on a very high level. The Rambam relates that a convert traces his legacy to G-d Himself.
