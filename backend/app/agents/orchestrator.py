@@ -1,5 +1,6 @@
 """Rabbi Orchestrator - Coordinates the multi-agent pipeline."""
 
+import logging
 from openai import OpenAI
 from typing import Optional
 from .base import AgentContext, LLMMetrics
@@ -7,6 +8,9 @@ from .pastoral import PastoralContextAgent
 from .halachic import HalachicReasoningAgent
 from .moral import MoralEthicalAgent
 from .voice import MetaRabbinicVoiceAgent
+from .rag import TextRetriever
+
+logger = logging.getLogger(__name__)
 
 
 class RabbiOrchestrator:
@@ -14,9 +18,11 @@ class RabbiOrchestrator:
     Orchestrates the multi-agent rebbe.dev pipeline.
 
     Flow:
-    User Input → Pastoral Context → Halachic Reasoning → Moral-Ethical → Meta-Rabbinic Voice → Final Response
+    User Input → Pastoral Context → Halachic Reasoning (with RAG) → Moral-Ethical → Meta-Rabbinic Voice → Final Response
 
     Each agent has the authority to modify, soften, or influence downstream output.
+    The Halachic Reasoning agent uses RAG to retrieve relevant source texts from
+    the Jewish texts library to ground its analysis in primary sources.
     """
 
     def __init__(
@@ -32,10 +38,30 @@ class RabbiOrchestrator:
         )
         self.model = model
 
+        # Initialize RAG retriever (loads pre-built index or builds from library)
+        self.retriever = TextRetriever()
+
         self.pastoral_agent = PastoralContextAgent(self.client, model)
-        self.halachic_agent = HalachicReasoningAgent(self.client, model)
+        self.halachic_agent = HalachicReasoningAgent(self.client, model, retriever=self.retriever)
         self.moral_agent = MoralEthicalAgent(self.client, model)
         self.voice_agent = MetaRabbinicVoiceAgent(self.client, model)
+
+    def ensure_rag(self) -> int:
+        """
+        Ensure the RAG index is loaded. Tries in order:
+          1. Already loaded → no-op
+          2. Pre-built index file → fast load from JSON
+          3. Library directory → build from scratch (slow, saves for next time)
+        Returns the number of chunks available.
+        """
+        try:
+            count = self.retriever.ensure_loaded()
+            if count > 0:
+                logger.info(f"RAG library ready: {count} chunks")
+            return count
+        except Exception as e:
+            logger.error(f"Failed to load RAG library: {e}")
+            return 0
 
     async def process_message(
         self,
@@ -139,6 +165,8 @@ Please re-analyze with special attention to:
             response["metadata"]["sources_cited"] = hl.sources_cited
             response["metadata"]["principles"] = hl.underlying_principles
 
+        response["metadata"]["rag_used"] = context.metadata.get("rag_used", False)
+
         return response
 
     async def process_message_stream(
@@ -198,6 +226,8 @@ Please re-analyze with special attention to:
             hl = context.halachic_landscape
             metadata["sources_cited"] = hl.sources_cited
             metadata["principles"] = hl.underlying_principles
+
+        metadata["rag_used"] = context.metadata.get("rag_used", False)
 
         # Yield metadata first
         yield {"type": "metadata", "data": metadata}
