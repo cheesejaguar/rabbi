@@ -97,12 +97,8 @@ async def lifespan(app: FastAPI):
             logger.info("Database schema initialized")
         except Exception as e:
             logger.warning(f"Could not initialize database: {e}")
-    # Startup: Index the Jewish texts library for RAG
-    chunk_count = orchestrator.index_library()
-    if chunk_count > 0:
-        logger.info(f"RAG library ready: {chunk_count} text chunks indexed")
-    else:
-        logger.warning("RAG library not indexed - text retrieval will be unavailable")
+    # Pre-warm RAG index (nice-to-have; halachic agent also loads lazily)
+    orchestrator.ensure_rag()
     yield
     # Shutdown: Close database pool
     await db.close_pool()

@@ -128,7 +128,9 @@ LENIENCY APPROACH: {config.leniency_bias}
 
         # RAG: Retrieve relevant source texts from the library
         retrieved_sources = ""
-        if self.retriever and self.retriever.is_indexed:
+        if self.retriever:
+            # Lazily ensure index is loaded (handles Vercel where lifespan doesn't fire)
+            self.retriever.ensure_loaded()
             retrieved_sources = self.retriever.search_formatted(
                 context.user_message, top_k=5
             )

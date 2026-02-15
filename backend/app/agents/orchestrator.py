@@ -30,7 +30,6 @@ class RabbiOrchestrator:
         api_key: Optional[str] = None,
         base_url: str = "https://openrouter.ai/api/v1",
         model: str = "anthropic/claude-sonnet-4-20250514",
-        library_path: Optional[str] = None,
     ):
         """Initialize the orchestrator with all agents."""
         self.client = OpenAI(
@@ -39,26 +38,29 @@ class RabbiOrchestrator:
         )
         self.model = model
 
-        # Initialize RAG retriever
-        self.retriever = TextRetriever(library_path=library_path)
+        # Initialize RAG retriever (loads pre-built index or builds from library)
+        self.retriever = TextRetriever()
 
         self.pastoral_agent = PastoralContextAgent(self.client, model)
         self.halachic_agent = HalachicReasoningAgent(self.client, model, retriever=self.retriever)
         self.moral_agent = MoralEthicalAgent(self.client, model)
         self.voice_agent = MetaRabbinicVoiceAgent(self.client, model)
 
-    def index_library(self) -> int:
+    def ensure_rag(self) -> int:
         """
-        Index the Jewish texts library for RAG retrieval.
-        Should be called at application startup.
-        Returns the number of chunks indexed.
+        Ensure the RAG index is loaded. Tries in order:
+          1. Already loaded → no-op
+          2. Pre-built index file → fast load from JSON
+          3. Library directory → build from scratch (slow, saves for next time)
+        Returns the number of chunks available.
         """
         try:
-            count = self.retriever.index()
-            logger.info(f"RAG library indexed: {count} chunks")
+            count = self.retriever.ensure_loaded()
+            if count > 0:
+                logger.info(f"RAG library ready: {count} chunks")
             return count
         except Exception as e:
-            logger.error(f"Failed to index RAG library: {e}")
+            logger.error(f"Failed to load RAG library: {e}")
             return 0
 
     async def process_message(
