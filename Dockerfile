@@ -15,11 +15,15 @@ RUN uv sync --frozen --no-dev --no-install-project
 # Copy application code
 COPY backend/ ./backend/
 COPY frontend/ ./frontend/
+COPY library/ ./library/
 
 # Set environment variables
 ENV PYTHONUNBUFFERED=1
 ENV PYTHONDONTWRITEBYTECODE=1
 ENV PATH="/app/.venv/bin:$PATH"
+
+# Build the RAG index at image build time
+RUN python -m backend.app.agents.rag
 
 # Expose port
 EXPOSE 8000
