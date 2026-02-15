@@ -68,6 +68,8 @@ IMPORTANT PRINCIPLES:
 - Never present a stringent opinion as the only option when lenient ones exist
 - Always remember there is a person behind the question
 
+When providing your analysis, focus on the halachic substance. Do NOT embed references to the user's personal background, denomination name, or bio in your JSON output fields.
+
 Respond ONLY with the JSON object, no additional text."""
 
     async def process(self, context: AgentContext) -> AgentContext:
@@ -108,10 +110,10 @@ LENIENCY APPROACH: {config.leniency_bias}
 {config.source_approach}
 """
 
-        # Add user bio context if available
+        # Add user bio context if available (marked as internal-only)
         user_bio_info = ""
         if context.user_bio:
-            user_bio_info = f"\nUSER BACKGROUND: {context.user_bio}\n"
+            user_bio_info = f"\n[INTERNAL CONTEXT — for calibrating your analysis, do NOT embed user background details in your JSON output] User bio: {context.user_bio}\n"
 
         messages = [
             {
