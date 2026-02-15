@@ -1,7 +1,8 @@
-"""Tests for rag.py - RAG retrieval system integration tests.
+"""Tests for rag.py - RAG retrieval system unit and integration tests.
 
 Tests cover:
   - TextChunk data model
+  - SearchResult data model
   - Helper functions (tokenize, frontmatter, splitting, cosine similarity)
   - TextRetriever indexing from markdown files
   - TF-IDF vectorization and search accuracy
@@ -9,6 +10,10 @@ Tests cover:
   - ensure_loaded() fallback chain
   - Category filtering
   - Search result formatting for LLM injection
+  - Malformed / error-path file handling
+  - Multi-part chunk splitting during indexing
+  - build_index_cli() command-line interface
+  - _vectorize_query() internal method
   - Integration with the real library (when available)
   - Halachic agent RAG integration
 """
@@ -21,7 +26,7 @@ import tempfile
 import textwrap
 
 import pytest
-from unittest.mock import patch
+from unittest.mock import patch, MagicMock
 
 from app.agents.rag import (
     TextChunk,
@@ -31,6 +36,7 @@ from app.agents.rag import (
     _parse_frontmatter,
     _split_long_text,
     _cosine_similarity,
+    build_index_cli,
     DEFAULT_INDEX_PATH,
     DEFAULT_LIBRARY_PATH,
 )
@@ -186,6 +192,34 @@ class TestTextChunk:
         chunk = TextChunk(text="text", title="t")
         assert chunk.language == "he"
 
+    def test_default_fields(self):
+        chunk = TextChunk(text="hello", title="T")
+        assert chunk.he_title == ""
+        assert chunk.category == ""
+        assert chunk.subcategory == ""
+        assert chunk.section == ""
+
+    def test_to_dict_contains_all_keys(self):
+        chunk = TextChunk(text="t", title="T")
+        d = chunk.to_dict()
+        assert set(d.keys()) == {"text", "title", "he_title", "category",
+                                  "subcategory", "section", "language"}
+
+
+class TestSearchResult:
+    """Test the SearchResult data model."""
+
+    def test_search_result_fields(self):
+        chunk = TextChunk(text="hello", title="T", category="C")
+        sr = SearchResult(chunk=chunk, score=0.75)
+        assert sr.chunk is chunk
+        assert sr.score == 0.75
+
+    def test_search_result_score_zero(self):
+        chunk = TextChunk(text="hello", title="T")
+        sr = SearchResult(chunk=chunk, score=0.0)
+        assert sr.score == 0.0
+
 
 # ---------------------------------------------------------------------------
 # Helper function tests
@@ -227,6 +261,25 @@ class TestTokenize:
     def test_only_stop_words(self):
         assert _tokenize("the is a an") == []
 
+    def test_numbers_preserved(self):
+        tokens = _tokenize("Chapter 39 melachot prohibited")
+        assert "39" in tokens
+        assert "melachot" in tokens
+
+    def test_punctuation_stripped(self):
+        tokens = _tokenize("Hello, world! This is: a test.")
+        assert "hello" in tokens
+        assert "world" in tokens
+        assert "test" in tokens
+        # Punctuation should not be in any token
+        for t in tokens:
+            assert "," not in t
+            assert "!" not in t
+
+    def test_case_insensitive(self):
+        tokens = _tokenize("TORAH Torah torah")
+        assert all(t == "torah" for t in tokens)
+
 
 class TestParseFrontmatter:
     """Test YAML frontmatter parsing."""
@@ -250,6 +303,23 @@ class TestParseFrontmatter:
         content = '---\ntitle: "Note: Important"\n---\n'
         meta = _parse_frontmatter(content)
         assert meta["title"] == "Note: Important"
+
+    def test_empty_value(self):
+        content = "---\ntitle:\n---\n"
+        meta = _parse_frontmatter(content)
+        assert meta["title"] == ""
+
+    def test_multiple_fields(self):
+        content = '---\ntitle: "A"\nhe_title: "B"\ncategory: C\nsubcategory: D\n---\n'
+        meta = _parse_frontmatter(content)
+        assert len(meta) == 4
+
+    def test_line_without_colon_skipped(self):
+        content = "---\ntitle: A\nmalformed line\ncategory: B\n---\n"
+        meta = _parse_frontmatter(content)
+        assert meta.get("title") == "A"
+        assert meta.get("category") == "B"
+        assert "malformed line" not in meta
 
 
 class TestSplitLongText:
@@ -275,6 +345,24 @@ class TestSplitLongText:
         result = _split_long_text(text, max_chars=3000)
         # Can't split within paragraph, so it stays as one chunk
         assert len(result) == 1
+
+    def test_empty_text(self):
+        result = _split_long_text("")
+        assert result == [""]
+
+    def test_exactly_at_limit(self):
+        text = "x" * 3000
+        result = _split_long_text(text, max_chars=3000)
+        assert result == [text]
+
+    def test_multiple_paragraphs_distribute_evenly(self):
+        paras = [f"paragraph{i} " * 20 for i in range(6)]
+        text = "\n\n".join(paras)
+        result = _split_long_text(text, max_chars=500)
+        assert len(result) >= 2
+        # Each chunk should be a valid join of paragraphs
+        for chunk in result:
+            assert len(chunk) > 0
 
 
 class TestCosineSimilarity:
@@ -378,6 +466,105 @@ class TestTextRetrieverIndexing:
         for vec in r._chunk_vectors:
             assert len(vec) > 0
 
+    def test_malformed_file_skipped_gracefully(self, tmp_path):
+        """Files that raise exceptions during parse are skipped (L127-128)."""
+        good_md = "---\ntitle: Good\ncategory: Test\n---\n\n## Section\n\n" + "valid content here " * 5
+        (tmp_path / "good.md").write_text(good_md, encoding="utf-8")
+
+        # Create a file that will cause _parse_file to fail:
+        # Write binary garbage that looks like .md but isn't valid UTF-8
+        bad_path = tmp_path / "bad.md"
+        bad_path.write_bytes(b"---\ntitle: Bad\n---\n\x80\x81\x82\xff\xfe")
+
+        r = TextRetriever()
+        count = r.index(str(tmp_path))
+        # Should index the good file and skip the bad one
+        assert count > 0
+        titles = {c.title for c in r.chunks}
+        assert "Good" in titles
+
+    def test_file_without_frontmatter_uses_filename(self, tmp_path):
+        """Files without frontmatter should derive title from filename."""
+        md = "## Section\n\n" + "content without frontmatter " * 5
+        (tmp_path / "My_Book.md").write_text(md, encoding="utf-8")
+
+        r = TextRetriever()
+        r.index(str(tmp_path))
+        if r.chunks:
+            assert r.chunks[0].title == "My Book"
+
+    def test_long_section_produces_multipart_labels(self, tmp_path):
+        """Long sections that split produce '(part N)' labels (L337)."""
+        # Create a section with enough text to force splitting
+        long_content = "\n\n".join(["paragraph " * 100 for _ in range(10)])
+        md = f"---\ntitle: Long\ncategory: Test\n---\n\n## BigSection\n\n{long_content}"
+        (tmp_path / "long.md").write_text(md, encoding="utf-8")
+
+        r = TextRetriever()
+        r.index(str(tmp_path))
+
+        # Find chunks from the BigSection
+        big_chunks = [c for c in r.chunks if "BigSection" in c.section]
+        assert len(big_chunks) > 1, "Section should split into multiple parts"
+        # Check that parts are labeled correctly
+        labels = [c.section for c in big_chunks]
+        assert "BigSection (part 1)" in labels
+        assert "BigSection (part 2)" in labels
+
+    def test_index_empty_directory(self, tmp_path):
+        """Indexing an empty directory returns 0 chunks."""
+        r = TextRetriever()
+        count = r.index(str(tmp_path))
+        assert count == 0
+        assert r.is_indexed is False
+
+    def test_index_only_readme(self, tmp_path):
+        """Directory with only README.md returns 0 chunks."""
+        (tmp_path / "README.md").write_text("# Readme")
+        r = TextRetriever()
+        count = r.index(str(tmp_path))
+        assert count == 0
+
+    def test_non_md_files_skipped(self, tmp_path):
+        """Non-.md files are ignored during indexing."""
+        (tmp_path / "data.json").write_text('{"key": "value"}')
+        (tmp_path / "notes.txt").write_text("Some notes")
+        md = "---\ntitle: Real\ncategory: Test\n---\n\n## S\n\n" + "x" * 50
+        (tmp_path / "real.md").write_text(md)
+
+        r = TextRetriever()
+        r.index(str(tmp_path))
+        titles = {c.title for c in r.chunks}
+        assert "Real" in titles
+        assert len(titles) == 1
+
+
+# ---------------------------------------------------------------------------
+# TextRetriever: _vectorize_query
+# ---------------------------------------------------------------------------
+
+class TestVectorizeQuery:
+    """Test the internal _vectorize_query method."""
+
+    def test_vectorize_known_terms(self, indexed_retriever):
+        """Query terms in the vocabulary produce non-zero vectors."""
+        vec = indexed_retriever._vectorize_query("Shabbat labor")
+        assert len(vec) > 0
+        assert all(isinstance(v, float) for v in vec.values())
+
+    def test_vectorize_unknown_terms(self, indexed_retriever):
+        """Query terms not in vocabulary produce empty vector."""
+        vec = indexed_retriever._vectorize_query("xylophone quasar")
+        assert vec == {}
+
+    def test_vectorize_empty_string(self, indexed_retriever):
+        vec = indexed_retriever._vectorize_query("")
+        assert vec == {}
+
+    def test_vectorize_stop_words_only(self, indexed_retriever):
+        vec = indexed_retriever._vectorize_query("the is a an")
+        assert vec == {}
+
 
 # ---------------------------------------------------------------------------
 # TextRetriever: search
@@ -469,6 +656,70 @@ class TestSearchFormatted:
         output = indexed_retriever.search_formatted("God", top_k=1)
         assert "[Source 1:" in output
         assert "[Source 2:" not in output
+
+    def test_formatted_includes_context_label(self, indexed_retriever):
+        output = indexed_retriever.search_formatted("Shabbat labor prohibited", top_k=1)
+        # Should include "Source N: <title> > <section> (<category>)"
+        assert "Talmud Shabbat" in output
+        assert "Daf 73a" in output or "Daf 73b" in output
+
+    def test_formatted_truncates_long_text(self):
+        """Chunks with text >1500 chars are truncated with '...'."""
+        r = TextRetriever()
+        r.chunks = [
+            TextChunk(text="x" * 2000, title="T", category="C", section="S"),
+        ]
+        r._idf = {"xx": 1.0}
+        r._chunk_vectors = [{"xx": 0.5}]
+        r._indexed = True
+
+        output = r.search_formatted("xx", top_k=1)
+        assert "..." in output
+
+    def test_formatted_category_filter(self, indexed_retriever):
+        output = indexed_retriever.search_formatted("Shabbat", top_k=5, category="Talmud")
+        assert output != ""
+        # All sources should be Talmud
+        assert "(Talmud)" in output
+
+
+# ---------------------------------------------------------------------------
+# build_index_cli
+# ---------------------------------------------------------------------------
+
+class TestBuildIndexCli:
+    """Test the build_index_cli() command-line entry point."""
+
+    def test_cli_success(self, mini_library, tmp_path):
+        """CLI builds and saves index successfully."""
+        output_path = str(tmp_path / "cli_index.json.gz")
+        with patch("sys.argv", ["rag", "--library", mini_library, "--output", output_path]):
+            build_index_cli()
+        assert os.path.isfile(output_path)
+
+        # Verify the saved index is loadable
+        r = TextRetriever()
+        count = r.load(output_path)
+        assert count > 0
+
+    def test_cli_empty_library_exits(self, tmp_path):
+        """CLI exits with error when no chunks are indexed."""
+        empty_lib = str(tmp_path / "empty_lib")
+        os.makedirs(empty_lib)
+        output_path = str(tmp_path / "output.json.gz")
+
+        with patch("sys.argv", ["rag", "--library", empty_lib, "--output", output_path]):
+            with pytest.raises(SystemExit) as exc_info:
+                build_index_cli()
+            assert exc_info.value.code == 1
+
+    def test_cli_nonexistent_library(self, tmp_path):
+        """CLI handles nonexistent library path."""
+        output_path = str(tmp_path / "output.json.gz")
+        with patch("sys.argv", ["rag", "--library", "/nonexistent", "--output", output_path]):
+            with pytest.raises(SystemExit) as exc_info:
+                build_index_cli()
+            assert exc_info.value.code == 1
 
 
 # ---------------------------------------------------------------------------
@@ -570,6 +821,18 @@ class TestSaveLoadRoundTrip:
                 assert abs(o.score - l.score) < 0.05, (
                     f"Score divergence for {query}: {o.score} vs {l.score}"
                 )
+
+    def test_save_returns_path(self, indexed_retriever, tmp_path):
+        path = str(tmp_path / "test_index.json.gz")
+        returned = indexed_retriever.save(path)
+        assert returned == path
+
+    def test_save_default_path(self, indexed_retriever):
+        """save() with no arg uses DEFAULT_INDEX_PATH."""
+        with patch("gzip.open", MagicMock()):
+            with patch("os.path.getsize", return_value=1024):
+                result = indexed_retriever.save()
+                assert result == DEFAULT_INDEX_PATH
 
     def test_load_legacy_format(self, tmp_path):
         """Test that load still supports legacy (v1 / dict-based) format."""
