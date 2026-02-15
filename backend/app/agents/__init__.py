@@ -5,6 +5,7 @@ from .halachic import HalachicReasoningAgent
 from .moral import MoralEthicalAgent
 from .voice import MetaRabbinicVoiceAgent
 from .orchestrator import RabbiOrchestrator
+from .rag import TextRetriever
 
 __all__ = [
     "BaseAgent",
@@ -15,4 +16,5 @@ __all__ = [
     "MoralEthicalAgent",
     "MetaRabbinicVoiceAgent",
     "RabbiOrchestrator",
+    "TextRetriever",
 ]

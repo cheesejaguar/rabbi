@@ -1,5 +1,6 @@
 """Rabbi Orchestrator - Coordinates the multi-agent pipeline."""
 
+import logging
 from openai import OpenAI
 from typing import Optional
 from .base import AgentContext, LLMMetrics
@@ -7,6 +8,9 @@ from .pastoral import PastoralContextAgent
 from .halachic import HalachicReasoningAgent
 from .moral import MoralEthicalAgent
 from .voice import MetaRabbinicVoiceAgent
+from .rag import TextRetriever
+
+logger = logging.getLogger(__name__)
 
 
 class RabbiOrchestrator:
@@ -14,9 +18,11 @@ class RabbiOrchestrator:
     Orchestrates the multi-agent rebbe.dev pipeline.
 
     Flow:
-    User Input → Pastoral Context → Halachic Reasoning → Moral-Ethical → Meta-Rabbinic Voice → Final Response
+    User Input → Pastoral Context → Halachic Reasoning (with RAG) → Moral-Ethical → Meta-Rabbinic Voice → Final Response
 
     Each agent has the authority to modify, soften, or influence downstream output.
+    The Halachic Reasoning agent uses RAG to retrieve relevant source texts from
+    the Jewish texts library to ground its analysis in primary sources.
     """
 
     def __init__(
@@ -24,6 +30,7 @@ class RabbiOrchestrator:
         api_key: Optional[str] = None,
         base_url: str = "https://openrouter.ai/api/v1",
         model: str = "anthropic/claude-sonnet-4-20250514",
+        library_path: Optional[str] = None,
     ):
         """Initialize the orchestrator with all agents."""
         self.client = OpenAI(
@@ -32,10 +39,27 @@ class RabbiOrchestrator:
         )
         self.model = model
 
+        # Initialize RAG retriever
+        self.retriever = TextRetriever(library_path=library_path)
+
         self.pastoral_agent = PastoralContextAgent(self.client, model)
-        self.halachic_agent = HalachicReasoningAgent(self.client, model)
+        self.halachic_agent = HalachicReasoningAgent(self.client, model, retriever=self.retriever)
         self.moral_agent = MoralEthicalAgent(self.client, model)
         self.voice_agent = MetaRabbinicVoiceAgent(self.client, model)
+
+    def index_library(self) -> int:
+        """
+        Index the Jewish texts library for RAG retrieval.
+        Should be called at application startup.
+        Returns the number of chunks indexed.
+        """
+        try:
+            count = self.retriever.index()
+            logger.info(f"RAG library indexed: {count} chunks")
+            return count
+        except Exception as e:
+            logger.error(f"Failed to index RAG library: {e}")
+            return 0
 
     async def process_message(
         self,

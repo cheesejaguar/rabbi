@@ -80,6 +80,13 @@ def rate_limit_exceeded_handler(request: Request, exc: RateLimitExceeded):
     )
 
 
+orchestrator = RabbiOrchestrator(
+    api_key=settings.llm_api_key or None,
+    base_url=settings.llm_base_url,
+    model=settings.llm_model,
+)
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Initialize and cleanup resources."""
@@ -90,6 +97,12 @@ async def lifespan(app: FastAPI):
             logger.info("Database schema initialized")
         except Exception as e:
             logger.warning(f"Could not initialize database: {e}")
+    # Startup: Index the Jewish texts library for RAG
+    chunk_count = orchestrator.index_library()
+    if chunk_count > 0:
+        logger.info(f"RAG library ready: {chunk_count} text chunks indexed")
+    else:
+        logger.warning("RAG library not indexed - text retrieval will be unavailable")
     yield
     # Shutdown: Close database pool
     await db.close_pool()
@@ -221,12 +234,6 @@ app.add_middleware(AuthMiddleware)
 app.include_router(auth_router)
 app.include_router(conversations_router)
 app.include_router(payments_router)
-
-orchestrator = RabbiOrchestrator(
-    api_key=settings.llm_api_key or None,
-    base_url=settings.llm_base_url,
-    model=settings.llm_model,
-)
 
 
 @app.get("/api/health", response_model=HealthResponse)

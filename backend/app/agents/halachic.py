@@ -1,13 +1,18 @@
 """Halachic Reasoning Agent - Engages halacha as a living, pluralistic legal system."""
 
 import json
+import logging
 import re
+from typing import Optional
 from .base import (
     BaseAgent,
     AgentContext,
     HalachicLandscape,
 )
 from .denominations import get_denomination_config
+from .rag import TextRetriever
+
+logger = logging.getLogger(__name__)
 
 
 class HalachicReasoningAgent(BaseAgent):
@@ -15,7 +20,15 @@ class HalachicReasoningAgent(BaseAgent):
     The Halachic Reasoning Agent engages with Jewish law as a living,
     pluralistic legal system. It presents ranges of opinion rather than
     single conclusions and explicitly labels different categories of law.
+
+    When a TextRetriever is available, the agent retrieves relevant source
+    texts from the library to ground its analysis in primary sources.
     """
+
+    def __init__(self, client, model: str = "anthropic/claude-sonnet-4-20250514",
+                 retriever: Optional[TextRetriever] = None):
+        super().__init__(client, model)
+        self.retriever = retriever
 
     @property
     def system_prompt(self) -> str:
@@ -113,10 +126,26 @@ LENIENCY APPROACH: {config.leniency_bias}
         if context.user_bio:
             user_bio_info = f"\nUSER BACKGROUND: {context.user_bio}\n"
 
+        # RAG: Retrieve relevant source texts from the library
+        retrieved_sources = ""
+        if self.retriever and self.retriever.is_indexed:
+            retrieved_sources = self.retriever.search_formatted(
+                context.user_message, top_k=5
+            )
+            if retrieved_sources:
+                retrieved_sources = f"""
+RELEVANT SOURCE TEXTS FROM LIBRARY:
+The following primary source texts were retrieved from the Jewish texts library and may be relevant to this question. Use them to ground your analysis in actual sources. Cite specific passages when applicable.
+
+{retrieved_sources}
+"""
+                logger.info("RAG: Retrieved %d chars of source text for halachic analysis",
+                            len(retrieved_sources))
+
         messages = [
             {
                 "role": "user",
-                "content": f"""{pastoral_info}{denomination_info}{user_bio_info}
+                "content": f"""{pastoral_info}{denomination_info}{user_bio_info}{retrieved_sources}
 USER'S QUESTION:
 {context.user_message}
 
