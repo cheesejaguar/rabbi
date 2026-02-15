@@ -8,11 +8,106 @@ from .base import (
     BaseAgent,
     AgentContext,
     HalachicLandscape,
+    PastoralMode,
 )
 from .denominations import get_denomination_config
 from .rag import TextRetriever
 
 logger = logging.getLogger(__name__)
+
+# Keywords/phrases that indicate the question would benefit from source texts.
+# Kept as sets/tuples for fast membership testing.
+_RAG_TRIGGER_KEYWORDS = {
+    # Halachic / legal terms
+    "halacha", "halachic", "halakha", "halakhic", "halachot",
+    "shulchan aruch", "shulchan arukh", "mishnah", "mishna",
+    "gemara", "talmud", "rambam", "maimonides", "rashi",
+    "tosafot", "tosefta", "midrash",
+    "torah", "tanakh", "tanach", "chumash", "bereishit", "shemot",
+    "vayikra", "bamidbar", "devarim",
+    "pasuk", "posek", "poskim", "psak", "teshuva", "teshuvot", "responsa",
+    # Practice terms
+    "shabbat", "shabbos", "kashrut", "kosher", "treif", "treyf",
+    "tefillin", "tzitzit", "mezuzah", "mikveh", "mikvah",
+    "daven", "davening", "tefillah", "bracha", "brachot", "berakhot",
+    "kiddush", "havdalah", "netilat", "niddah", "taharat",
+    "eruv", "sukkah", "lulav", "etrog", "shofar", "megillah",
+    "brit milah", "pidyon haben",
+    # Lifecycle / family law
+    "marriage", "divorce", "get", "ketubah", "kiddushin",
+    "mourning", "shiva", "avelut", "kaddish",
+    "conversion", "giyur", "beit din",
+    # Ethical / theological concepts
+    "mitzvah", "mitzvot", "aveirah", "teshuvah",
+    "pikuach nefesh", "kavod habriyot",
+    "mutar", "assur", "permitted", "forbidden", "obligated",
+    # Source request signals
+    "source", "sources", "what does the", "according to",
+    "cite", "citation", "reference",
+    "what do the rabbis say", "rabbinic", "chazal",
+}
+
+# Short messages that are clearly not text-related (greetings, thanks, etc.)
+_SKIP_PATTERNS = re.compile(
+    r"^(hi|hello|hey|shalom|thanks|thank you|toda|todah|bye|goodbye"
+    r"|good morning|good evening|good night|boker tov|laila tov"
+    r"|how are you|what is this|who are you|what can you do"
+    r"|ok|okay|sure|yes|no|got it|understood|i see)[.!?\s]*$",
+    re.IGNORECASE,
+)
+
+
+def _should_use_rag(user_message: str, pastoral_mode: Optional[PastoralMode] = None) -> bool:
+    """
+    Determine whether RAG retrieval should be used for this message.
+
+    RAG is used sparingly - only when the question would genuinely benefit
+    from grounding in primary source texts:
+      - User explicitly asks about texts or sources
+      - Question involves halachic concepts, practices, or Torah topics
+      - Pastoral mode is teaching or curiosity (knowledge-seeking)
+
+    RAG is skipped for:
+      - Crisis mode (focus on emotional support, not sources)
+      - Greetings, thanks, and casual conversation
+      - Messages with no halachic or textual substance
+    """
+    msg = user_message.strip()
+
+    # Very short or empty messages never need RAG
+    if len(msg) < 5:
+        return False
+
+    # Skip patterns: greetings, thanks, meta-questions about the bot
+    if _SKIP_PATTERNS.match(msg):
+        return False
+
+    # Crisis mode: focus on emotional support, not source texts
+    if pastoral_mode == PastoralMode.CRISIS:
+        return False
+
+    # Check if message contains any RAG trigger keywords
+    msg_lower = msg.lower()
+    for keyword in _RAG_TRIGGER_KEYWORDS:
+        if keyword in msg_lower:
+            return True
+
+    # For teaching/curiosity modes, also trigger RAG on question patterns
+    # about Jewish topics even without exact keyword matches
+    if pastoral_mode in (PastoralMode.TEACHING, PastoralMode.CURIOSITY):
+        # Questions about "is it", "can I", "should I", "am I allowed" suggest practice questions
+        practice_patterns = re.compile(
+            r"\b(is it|can i|should i|am i allowed|do i need to|do i have to"
+            r"|is there a|what is the law|what are the rules"
+            r"|pray|fasting|fast|sabbath|holiday|yom tov|pesach|passover"
+            r"|sukkot|chanukah|hanukkah|purim|rosh hashana|yom kippur"
+            r"|jewish|judaism|rabbi|rebbe|god|hashem|adonai)\b",
+            re.IGNORECASE,
+        )
+        if practice_patterns.search(msg):
+            return True
+
+    return False
 
 
 class HalachicReasoningAgent(BaseAgent):
@@ -126,9 +221,13 @@ LENIENCY APPROACH: {config.leniency_bias}
         if context.user_bio:
             user_bio_info = f"\nUSER BACKGROUND: {context.user_bio}\n"
 
-        # RAG: Retrieve relevant source texts from the library
+        # RAG: Retrieve relevant source texts only when the question warrants it
         retrieved_sources = ""
-        if self.retriever:
+        pastoral_mode = context.pastoral_context.mode if context.pastoral_context else None
+        use_rag = _should_use_rag(context.user_message, pastoral_mode)
+        context.metadata["rag_used"] = use_rag
+
+        if self.retriever and use_rag:
             # Lazily ensure index is loaded (handles Vercel where lifespan doesn't fire)
             self.retriever.ensure_loaded()
             retrieved_sources = self.retriever.search_formatted(
@@ -143,6 +242,8 @@ The following primary source texts were retrieved from the Jewish texts library 
 """
                 logger.info("RAG: Retrieved %d chars of source text for halachic analysis",
                             len(retrieved_sources))
+        elif not use_rag:
+            logger.info("RAG: Skipped retrieval (message does not warrant source texts)")
 
         messages = [
             {

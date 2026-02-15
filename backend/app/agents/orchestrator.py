@@ -165,6 +165,8 @@ Please re-analyze with special attention to:
             response["metadata"]["sources_cited"] = hl.sources_cited
             response["metadata"]["principles"] = hl.underlying_principles
 
+        response["metadata"]["rag_used"] = context.metadata.get("rag_used", False)
+
         return response
 
     async def process_message_stream(
@@ -224,6 +226,8 @@ Please re-analyze with special attention to:
             hl = context.halachic_landscape
             metadata["sources_cited"] = hl.sources_cited
             metadata["principles"] = hl.underlying_principles
+
+        metadata["rag_used"] = context.metadata.get("rag_used", False)
 
         # Yield metadata first
         yield {"type": "metadata", "data": metadata}
