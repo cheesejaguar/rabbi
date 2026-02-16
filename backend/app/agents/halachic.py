@@ -149,6 +149,13 @@ REASONING REQUIREMENTS:
 4. Note precedents for leniency when they exist
 5. Acknowledge non-negotiable boundaries honestly
 
+QUESTION TYPE AWARENESS:
+Not every question requires a full halachic landscape analysis. Check the pastoral context for the question_type field:
+- If question_type is "factual" or "historical": Provide a DIRECT, informative answer. Use "majority_view" for your direct factual answer, "minority_views" for alternative perspectives or additional context, "underlying_principles" for key themes, and "sources_cited" for references. Leave "precedents_for_leniency" and "non_negotiable_boundaries" as empty lists.
+- If question_type is "halachic": Use the full landscape analysis as described above.
+- If question_type is "personal": Focus on the aspects most relevant to the person's situation.
+Do NOT force a halachic framework onto questions that are asking for facts or history.
+
 Given the user's question and the pastoral context, provide a halachic landscape analysis.
 
 CRITICAL: Adjust your response based on the pastoral context:
@@ -189,13 +196,14 @@ Respond ONLY with the JSON object, no additional text."""
             pastoral_info = f"""
 PASTORAL CONTEXT (from Pastoral Agent - this guides your approach):
 - Mode: {pc.mode.value}
+- Question type: {pc.question_type}
 - Tone required: {pc.tone.value}
 - Authority level: {pc.authority_level.value}
 - Vulnerability detected: {pc.vulnerability_detected}
 - Emotional state: {pc.emotional_state}
 - Crisis indicators: {pc.crisis_indicators}
 
-CRITICAL: If vulnerability is detected, you MUST lead with compassion and emphasize paths of leniency.
+CRITICAL: If vulnerability is detected AND the question_type is "personal" or "halachic", lead with compassion and emphasize paths of leniency. If the question_type is "factual" or "historical", answer the question directly — the person asked for information, not counseling.
 """
 
         # Build denomination-specific guidance

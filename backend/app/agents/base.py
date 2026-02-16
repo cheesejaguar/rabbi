@@ -56,6 +56,7 @@ class PastoralContext:
     crisis_indicators: list[str] = field(default_factory=list)
     emotional_state: str = "neutral"
     requires_human_referral: bool = False
+    question_type: str = "personal"  # "factual", "historical", "halachic", or "personal"
 
 
 @dataclass
