@@ -64,7 +64,7 @@ Based on your analysis, output a JSON object with:
   "authority_level": "definitive" | "suggestive" | "exploratory",
   "vulnerability_detected": true | false,
   "crisis_indicators": ["list of any crisis signs detected"],
-  "emotional_state": "description of detected emotional state",
+  "emotional_state": "emotional tone detected in THIS MESSAGE ONLY (e.g., anxious, curious, grieving — do not paraphrase the user's bio or background)",
   "requires_human_referral": true | false,
   "reasoning": "brief explanation of your assessment"
 }
