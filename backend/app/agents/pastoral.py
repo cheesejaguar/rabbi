@@ -57,9 +57,19 @@ Analyze the following dimensions:
    - Are they seeking validation or information?
    - What is their relationship to Jewish practice?
 
+5. QUESTION TYPE CLASSIFICATION
+   Determine the nature of the question itself:
+   - "factual": Asks for facts, definitions, explanations of concepts (e.g., "What is Shabbat?", "Who was Maimonides?")
+   - "historical": Asks about historical events, speeches, figures, timelines (e.g., "What was the Rebbe's most impactful speech?", "When did the Temple fall?")
+   - "halachic": Asks about Jewish law, practice, what is permitted/forbidden (e.g., "Can I eat dairy after meat?", "Is it okay to drive on Shabbat?")
+   - "personal": Expresses personal struggle, seeks emotional guidance, or asks about their own situation (e.g., "I feel disconnected from Judaism", "My family doesn't accept me")
+
+   CRITICAL: If the question is factual or historical, mode should almost always be "curiosity" or "teaching", NOT "counseling". Do not infer personal struggle from intellectual questions.
+
 Based on your analysis, output a JSON object with:
 {
   "mode": "teaching" | "counseling" | "crisis" | "curiosity",
+  "question_type": "factual" | "historical" | "halachic" | "personal",
   "tone": "gentle" | "firm" | "exploratory" | "validating",
   "authority_level": "definitive" | "suggestive" | "exploratory",
   "vulnerability_detected": true | false,
@@ -73,8 +83,9 @@ HARD RULES:
 - If ANY vulnerability is detected, set vulnerability_detected to true
 - If vulnerability is detected, authority_level MUST be "suggestive" or "exploratory"
 - If crisis indicators are present, requires_human_referral should be true
-- When in doubt, err on the side of gentleness and validation
-- Never assume a question is purely intellectual - there is often a person behind the question
+- When in doubt about whether someone is vulnerable, err on the side of gentleness
+- When in doubt about whether a question is factual or personal, err on the side of treating it as factual — respect the question as asked
+- Many questions ARE purely intellectual, historical, or factual. Do not project emotional motivations onto questions that don't express them. Reserve "counseling" mode for messages that express personal struggle or explicitly ask for personal guidance.
 
 Respond ONLY with the JSON object, no additional text."""
 
@@ -130,6 +141,7 @@ Respond ONLY with the JSON object, no additional text."""
                 crisis_indicators=data.get("crisis_indicators", []),
                 emotional_state=data.get("emotional_state", "neutral"),
                 requires_human_referral=data.get("requires_human_referral", False),
+                question_type=data.get("question_type", "personal"),
             )
         except (json.JSONDecodeError, ValueError, KeyError):
             return PastoralContext(
@@ -138,4 +150,5 @@ Respond ONLY with the JSON object, no additional text."""
                 authority_level=AuthorityLevel.SUGGESTIVE,
                 vulnerability_detected=True,
                 emotional_state="uncertain - defaulting to gentle approach",
+                question_type="personal",
             )

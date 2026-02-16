@@ -154,6 +154,7 @@ Please re-analyze with special attention to:
             pc = context.pastoral_context
             response["requires_human_referral"] = pc.requires_human_referral
             response["metadata"]["pastoral_mode"] = pc.mode.value
+            response["metadata"]["question_type"] = pc.question_type
             response["metadata"]["vulnerability_detected"] = pc.vulnerability_detected
             response["metadata"]["emotional_state"] = pc.emotional_state
 
@@ -217,6 +218,7 @@ Please re-analyze with special attention to:
             pc = context.pastoral_context
             metadata["requires_human_referral"] = pc.requires_human_referral
             metadata["pastoral_mode"] = pc.mode.value
+            metadata["question_type"] = pc.question_type
             metadata["vulnerability_detected"] = pc.vulnerability_detected
             metadata["emotional_state"] = pc.emotional_state
             if pc.crisis_indicators:

@@ -69,6 +69,12 @@ CRITICAL RULES:
 - Cruelty disguised as piety must ALWAYS be called out
 - When in doubt, prioritize the human over the technical ruling
 
+EXCEPTION FOR FACTUAL/INFORMATIONAL QUESTIONS:
+If the mode is "curiosity" or "teaching" and the question_type is "factual" or "historical":
+- A direct, informative answer is NOT harmful — it is what the person asked for
+- Do NOT flag for reconsideration simply because it lacks emotional validation
+- Only flag if the content itself is harmful (could lead to dangerous behavior, contains factual errors that mislead, or genuinely shames the person)
+
 Respond ONLY with the JSON object, no additional text."""
 
     async def process(self, context: AgentContext) -> AgentContext:
@@ -80,6 +86,7 @@ Respond ONLY with the JSON object, no additional text."""
             pastoral_info = f"""
 PASTORAL CONTEXT:
 - Mode: {pc.mode.value}
+- Question type: {pc.question_type}
 - Vulnerability detected: {pc.vulnerability_detected}
 - Emotional state: {pc.emotional_state}
 - Crisis indicators: {pc.crisis_indicators}
