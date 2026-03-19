@@ -22,7 +22,7 @@ class TestSettings:
             assert settings.ai_gateway_base_url == "https://ai-gateway.vercel.sh/v1"
             assert settings.openrouter_api_key == ""
             assert settings.openrouter_base_url == "https://openrouter.ai/api/v1"
-            assert settings.llm_model == "anthropic/claude-sonnet-4-20250514"
+            assert settings.llm_model == "anthropic/claude-sonnet-4-6"
             # Secure defaults for CORS - localhost only
             assert settings.cors_origins == ["http://localhost:8613", "http://127.0.0.1:8613"]
             # Rate limiting defaults

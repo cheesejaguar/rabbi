@@ -175,7 +175,7 @@ class TestBaseAgent:
 
     def test_default_model(self, mock_anthropic_client):
         agent = ConcreteAgent(mock_anthropic_client)
-        assert agent.model == "anthropic/claude-sonnet-4-20250514"
+        assert agent.model == "anthropic/claude-sonnet-4-6"
 
     def test_system_prompt_property(self, mock_anthropic_client):
         agent = ConcreteAgent(mock_anthropic_client)
@@ -196,7 +196,7 @@ class TestBaseAgent:
         assert metrics.output_tokens == 50
         assert metrics.estimated_cost_usd > 0
         mock_anthropic_client.chat.completions.create.assert_called_once_with(
-            model="anthropic/claude-sonnet-4-20250514",
+            model="anthropic/claude-sonnet-4-6",
             max_tokens=2048,
             messages=[
                 {"role": "system", "content": "System prompt"},

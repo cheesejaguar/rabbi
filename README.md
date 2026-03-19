@@ -180,7 +180,7 @@ rabbi/
 |----------|----------|-------------|
 | `OPENROUTER_API_KEY` | Yes | OpenRouter API key for LLM access |
 | `OPENROUTER_BASE_URL` | No | OpenRouter API base URL (default: `https://openrouter.ai/api/v1`) |
-| `LLM_MODEL` | No | Model to use (default: `anthropic/claude-sonnet-4-20250514`) |
+| `LLM_MODEL` | No | Model to use (default: `anthropic/claude-sonnet-4-6`) |
 | `WORKOS_API_KEY` | No | WorkOS API key for SSO |
 | `WORKOS_CLIENT_ID` | No | WorkOS client ID |
 | `WORKOS_REDIRECT_URI` | No | OAuth callback URL |

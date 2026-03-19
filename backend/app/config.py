@@ -8,6 +8,9 @@ from pydantic import field_validator
 
 logger = logging.getLogger(__name__)
 
+# Single source of truth for the default LLM model
+DEFAULT_LLM_MODEL = "anthropic/claude-sonnet-4-6"
+
 
 class Settings(BaseSettings):
     """Application settings loaded from environment variables."""
@@ -36,7 +39,7 @@ class Settings(BaseSettings):
     openrouter_base_url: str = "https://openrouter.ai/api/v1"
 
     # LLM Model (works with both gateways)
-    llm_model: str = "anthropic/claude-sonnet-4-20250514"
+    llm_model: str = DEFAULT_LLM_MODEL
 
     # ElevenLabs TTS configuration
     elevenlabs_api_key: str = ""
@@ -168,9 +171,7 @@ class Settings(BaseSettings):
 
         return ""
 
-    class Config:
-        env_file = ".env"
-        env_file_encoding = "utf-8"
+    model_config = {"env_file": ".env", "env_file_encoding": "utf-8"}
 
 
 @lru_cache

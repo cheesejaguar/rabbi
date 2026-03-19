@@ -3,6 +3,7 @@
 import logging
 from openai import OpenAI
 from typing import Optional
+from ..config import DEFAULT_LLM_MODEL
 from .base import AgentContext, LLMMetrics
 from .pastoral import PastoralContextAgent
 from .halachic import HalachicReasoningAgent
@@ -29,7 +30,7 @@ class RabbiOrchestrator:
         self,
         api_key: Optional[str] = None,
         base_url: str = "https://openrouter.ai/api/v1",
-        model: str = "anthropic/claude-sonnet-4-20250514",
+        model: str = DEFAULT_LLM_MODEL,
     ):
         """Initialize the orchestrator with all agents."""
         self.client = OpenAI(
