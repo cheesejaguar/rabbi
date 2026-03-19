@@ -42,7 +42,7 @@ class TestRabbiOrchestrator:
                 api_key="test-key",
                 base_url="https://openrouter.ai/api/v1",
             )
-            assert orchestrator.model == "anthropic/claude-sonnet-4-20250514"
+            assert orchestrator.model == "anthropic/claude-sonnet-4-6"
 
     def test_initialization_with_custom_base_url(self):
         with patch('app.agents.orchestrator.OpenAI') as mock_openai:

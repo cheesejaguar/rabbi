@@ -6,7 +6,7 @@ services:
     env_file:
       - .env
     environment:
-      - LLM_MODEL=${LLM_MODEL:-anthropic/claude-sonnet-4-20250514}
+      - LLM_MODEL=${LLM_MODEL:-anthropic/claude-sonnet-4-6}
     volumes:
       - ./frontend:/app/frontend:ro
     restart: unless-stopped

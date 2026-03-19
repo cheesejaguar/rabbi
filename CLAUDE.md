@@ -25,7 +25,7 @@ The app runs at http://localhost:8000
 
 Copy `.env.example` to `.env` and set:
 - `OPENROUTER_API_KEY` or `AI_GATEWAY_API_KEY` (required for LLM)
-- `LLM_MODEL` (optional, defaults to anthropic/claude-sonnet-4-20250514)
+- `LLM_MODEL` (optional, defaults to anthropic/claude-sonnet-4-6)
 - `WORKOS_API_KEY` and `WORKOS_CLIENT_ID` (for authentication)
 - `STRIPE_SECRET_KEY`, `STRIPE_PUBLISHABLE_KEY`, `STRIPE_WEBHOOK_SECRET` (for payments)
 - `DATABASE_URL` (PostgreSQL connection string)

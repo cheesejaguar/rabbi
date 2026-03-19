@@ -6,11 +6,13 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any, Optional, AsyncGenerator
 from openai import OpenAI
+from ..config import DEFAULT_LLM_MODEL
 
 
-# Approximate token costs per 1M tokens (in USD) for Claude Sonnet 4
+# Approximate token costs per 1M tokens (in USD)
 TOKEN_COSTS = {
-    "anthropic/claude-sonnet-4-20250514": {"input": 3.00, "output": 15.00},
+    "anthropic/claude-sonnet-4-6": {"input": 3.00, "output": 15.00},
+    "anthropic/claude-sonnet-4-20250514": {"input": 3.00, "output": 15.00},  # legacy
     "anthropic/claude-3-5-sonnet-20241022": {"input": 3.00, "output": 15.00},
     "anthropic/claude-3-opus-20240229": {"input": 15.00, "output": 75.00},
     "default": {"input": 3.00, "output": 15.00},
@@ -106,7 +108,7 @@ class AgentContext:
 class BaseAgent(ABC):
     """Abstract base class for all rebbe.dev agents."""
 
-    def __init__(self, client: OpenAI, model: str = "anthropic/claude-sonnet-4-20250514"):
+    def __init__(self, client: OpenAI, model: str = DEFAULT_LLM_MODEL):
         self.client = client
         self.model = model
         self.name = self.__class__.__name__
