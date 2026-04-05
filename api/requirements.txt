@@ -81,6 +81,8 @@ pydantic-settings==2.12.0
     # via rebbe
 pyjwt==2.10.1
     # via workos
+pyluach==2.3.0
+    # via rebbe
 python-dotenv==1.2.1
     # via
     #   pydantic-settings
