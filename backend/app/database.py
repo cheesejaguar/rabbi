@@ -1,4 +1,22 @@
-"""Database connection and schema management for Vercel Postgres (Neon)."""
+"""Async PostgreSQL database layer for rebbe.dev.
+
+Provides connection pooling, schema auto-migration, and all CRUD operations
+for the application's data model. Key characteristics:
+
+- **asyncpg** for high-performance async Postgres access.
+- **Vercel / Neon Postgres compatible** -- automatically appends
+  ``sslmode=require`` when connecting to hosted databases.
+- **Connection pooling** via ``asyncpg.Pool`` (1-10 connections).
+- **Schema auto-migration** with PostgreSQL advisory locks so that
+  concurrent serverless cold-starts don't race on DDL.
+
+Typical usage::
+
+    from . import database as db
+    await db.init_schema()          # called once at startup
+    user = await db.upsert_user(...)
+    await db.close_pool()           # called at shutdown
+"""
 
 import asyncio
 import asyncpg
@@ -7,13 +25,32 @@ from contextlib import asynccontextmanager
 
 from .config import get_settings
 
-# Global connection pool with lock to prevent race conditions
+# Global connection pool -- lazily initialized on first use.
+# The asyncio.Lock prevents multiple concurrent callers from creating
+# duplicate pools during the first cold-start.
 _pool: Optional[asyncpg.Pool] = None
 _pool_lock = asyncio.Lock()
 
 
+# ---------------------------------------------------------------------------
+# Connection Management
+# ---------------------------------------------------------------------------
+
+
 async def get_pool() -> asyncpg.Pool:
-    """Get or create the database connection pool."""
+    """Return the global asyncpg connection pool, creating it if necessary.
+
+    Uses a double-checked locking pattern: a fast non-locked check followed
+    by an ``asyncio.Lock``-guarded initialization to prevent duplicate pools
+    when multiple serverless invocations cold-start simultaneously.
+
+    Returns:
+        The shared ``asyncpg.Pool`` instance.
+
+    Raises:
+        RuntimeError: If no database URL is configured (neither
+            ``POSTGRES_URL`` nor ``DATABASE_URL`` is set).
+    """
     global _pool
 
     # Fast path: pool already initialized
@@ -27,22 +64,26 @@ async def get_pool() -> asyncpg.Pool:
             if not settings.db_url:
                 raise RuntimeError("Database URL not configured. Set POSTGRES_URL or DATABASE_URL.")
 
-            # Parse the URL and add SSL requirement for Neon
+            # Neon/Vercel Postgres requires SSL; append if not already present
             db_url = settings.db_url
             if "sslmode" not in db_url:
                 db_url = f"{db_url}?sslmode=require" if "?" not in db_url else f"{db_url}&sslmode=require"
 
             _pool = await asyncpg.create_pool(
                 db_url,
-                min_size=1,
-                max_size=10,
+                min_size=1,   # Keep at least one warm connection
+                max_size=10,  # Upper bound for concurrent queries
                 command_timeout=60,
             )
         return _pool
 
 
 async def close_pool():
-    """Close the database connection pool."""
+    """Gracefully close all connections in the pool.
+
+    Safe to call multiple times. Typically invoked during application
+    shutdown via the FastAPI lifespan handler.
+    """
     global _pool
     async with _pool_lock:
         if _pool is not None:
@@ -52,26 +93,41 @@ async def close_pool():
 
 @asynccontextmanager
 async def get_connection():
-    """Get a database connection from the pool."""
+    """Acquire a single connection from the pool as an async context manager.
+
+    Yields:
+        An ``asyncpg.Connection`` that is automatically released back to the
+        pool when the ``async with`` block exits.
+    """
     pool = await get_pool()
     async with pool.acquire() as conn:
         yield conn
 
 
-# SQL Schema
+# ---------------------------------------------------------------------------
+# Schema Initialization
+# ---------------------------------------------------------------------------
+
+# The complete DDL for all application tables, indexes, triggers, and
+# safe column migrations. Executed once at startup via init_schema().
 SCHEMA_SQL = """
--- Users table (synced from WorkOS)
+-- =========================================================================
+-- USERS TABLE
+-- Core user record, synced from WorkOS on login. The 'id' is the WorkOS
+-- user ID (opaque string). New users start with 3 free credits.
+-- =========================================================================
 CREATE TABLE IF NOT EXISTS users (
-    id TEXT PRIMARY KEY,  -- WorkOS user ID
+    id TEXT PRIMARY KEY,                       -- WorkOS user ID
     email TEXT UNIQUE NOT NULL,
     first_name TEXT,
     last_name TEXT,
-    credits INTEGER DEFAULT 3,  -- Starting credits for new users
+    credits INTEGER DEFAULT 3,                 -- Chat credits remaining
     created_at TIMESTAMPTZ DEFAULT NOW(),
     updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 
--- Add credits column if it doesn't exist (for existing databases)
+-- Safe migration: add credits column for databases created before the
+-- credits system was introduced.
 DO $$
 BEGIN
     IF NOT EXISTS (SELECT 1 FROM information_schema.columns
@@ -80,32 +136,48 @@ BEGIN
     END IF;
 END $$;
 
--- Conversations table
+-- =========================================================================
+-- CONVERSATIONS TABLE
+-- Groups messages into named threads owned by a single user. Deleting a
+-- user cascades to delete all their conversations.
+-- =========================================================================
 CREATE TABLE IF NOT EXISTS conversations (
     id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
     user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-    title TEXT,
+    title TEXT,                                 -- Auto-generated from first message
     created_at TIMESTAMPTZ DEFAULT NOW(),
     updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 
--- Messages table
+-- =========================================================================
+-- MESSAGES TABLE
+-- Individual chat messages within a conversation. 'role' is constrained
+-- to 'user' or 'assistant'. Metadata stores pipeline metrics for
+-- assistant messages.
+-- =========================================================================
 CREATE TABLE IF NOT EXISTS messages (
     id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
     conversation_id TEXT NOT NULL REFERENCES conversations(id) ON DELETE CASCADE,
     role TEXT NOT NULL CHECK (role IN ('user', 'assistant')),
     content TEXT NOT NULL,
-    metadata JSONB DEFAULT '{}',
+    metadata JSONB DEFAULT '{}',               -- Pipeline timing, token counts, etc.
     created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
--- Indexes for common queries
+-- Index: list conversations by user, sorted by most-recently-active
 CREATE INDEX IF NOT EXISTS idx_conversations_user_id ON conversations(user_id);
+-- Index: sidebar "recent conversations" query
 CREATE INDEX IF NOT EXISTS idx_conversations_updated_at ON conversations(updated_at DESC);
+-- Index: load messages for a conversation
 CREATE INDEX IF NOT EXISTS idx_messages_conversation_id ON messages(conversation_id);
+-- Index: chronological message ordering
 CREATE INDEX IF NOT EXISTS idx_messages_created_at ON messages(created_at);
 
--- Function to update updated_at timestamp
+-- =========================================================================
+-- TRIGGER FUNCTIONS
+-- =========================================================================
+
+-- Generic trigger function: sets updated_at = NOW() before any UPDATE.
 CREATE OR REPLACE FUNCTION update_updated_at_column()
 RETURNS TRIGGER AS $$
 BEGIN
@@ -114,20 +186,22 @@ BEGIN
 END;
 $$ language 'plpgsql';
 
--- Triggers for updated_at
+-- Auto-update users.updated_at on every row update.
 DROP TRIGGER IF EXISTS update_users_updated_at ON users;
 CREATE TRIGGER update_users_updated_at
     BEFORE UPDATE ON users
     FOR EACH ROW
     EXECUTE FUNCTION update_updated_at_column();
 
+-- Auto-update conversations.updated_at on every row update.
 DROP TRIGGER IF EXISTS update_conversations_updated_at ON conversations;
 CREATE TRIGGER update_conversations_updated_at
     BEFORE UPDATE ON conversations
     FOR EACH ROW
     EXECUTE FUNCTION update_updated_at_column();
 
--- Function to update conversation updated_at when a message is added
+-- Trigger function: when a new message is inserted, "touch" the parent
+-- conversation so it floats to the top of the sidebar.
 CREATE OR REPLACE FUNCTION touch_conversation_on_message()
 RETURNS TRIGGER AS $$
 BEGIN
@@ -138,51 +212,64 @@ BEGIN
 END;
 $$ LANGUAGE 'plpgsql';
 
--- Trigger to update conversation updated_at on new messages
 DROP TRIGGER IF EXISTS touch_conversation_on_message_insert ON messages;
 CREATE TRIGGER touch_conversation_on_message_insert
     AFTER INSERT ON messages
     FOR EACH ROW
     EXECUTE FUNCTION touch_conversation_on_message();
 
--- Feedback table for thumbs up/down
+-- =========================================================================
+-- FEEDBACK TABLE
+-- Stores thumbs-up / thumbs-down ratings per message per user.
+-- UNIQUE(message_id, user_id) enables upsert semantics (toggle feedback).
+-- =========================================================================
 CREATE TABLE IF NOT EXISTS feedback (
     id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
     message_id TEXT NOT NULL REFERENCES messages(id) ON DELETE CASCADE,
     user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     feedback_type TEXT NOT NULL CHECK (feedback_type IN ('thumbs_up', 'thumbs_down')),
     created_at TIMESTAMPTZ DEFAULT NOW(),
-    UNIQUE(message_id, user_id)
+    UNIQUE(message_id, user_id)                -- One rating per user per message
 );
 
 CREATE INDEX IF NOT EXISTS idx_feedback_message_id ON feedback(message_id);
 CREATE INDEX IF NOT EXISTS idx_feedback_user_id ON feedback(user_id);
 
--- Errors table for tracking failures and API errors
+-- =========================================================================
+-- ERRORS TABLE
+-- Centralized error log for LLM failures, TTS errors, auth issues, etc.
+-- Nullable FK to users/conversations (errors can occur before auth).
+-- =========================================================================
 CREATE TABLE IF NOT EXISTS errors (
     id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
     user_id TEXT REFERENCES users(id) ON DELETE SET NULL,
     conversation_id TEXT REFERENCES conversations(id) ON DELETE SET NULL,
-    error_type TEXT NOT NULL,  -- 'llm_error', 'tts_error', 'auth_error', 'validation_error', etc.
+    error_type TEXT NOT NULL,                  -- e.g. 'llm_error', 'tts_error', 'auth_error'
     error_message TEXT NOT NULL,
     stack_trace TEXT,
-    request_context JSONB DEFAULT '{}',  -- Request details for debugging
+    request_context JSONB DEFAULT '{}',        -- Truncated request details for debugging
     created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
 CREATE INDEX IF NOT EXISTS idx_errors_user_id ON errors(user_id);
+-- Index: aggregate errors by type for monitoring dashboards
 CREATE INDEX IF NOT EXISTS idx_errors_error_type ON errors(error_type);
+-- Index: recent-first error browsing
 CREATE INDEX IF NOT EXISTS idx_errors_created_at ON errors(created_at DESC);
 
--- TTS events table for tracking speak button usage
+-- =========================================================================
+-- TTS EVENTS TABLE
+-- Tracks text-to-speech lifecycle events (start, stop, complete, error)
+-- for usage analytics and billing.
+-- =========================================================================
 CREATE TABLE IF NOT EXISTS tts_events (
     id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
     user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     message_id TEXT REFERENCES messages(id) ON DELETE SET NULL,
     event_type TEXT NOT NULL CHECK (event_type IN ('start', 'stop', 'complete', 'error')),
-    text_length INTEGER,  -- Character count of text being spoken
-    duration_ms INTEGER,  -- Audio duration if completed
-    error_message TEXT,   -- Error details if event_type is 'error'
+    text_length INTEGER,                       -- Character count of text being spoken
+    duration_ms INTEGER,                       -- Audio duration if completed
+    error_message TEXT,                        -- Error details if event_type is 'error'
     created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
@@ -190,14 +277,17 @@ CREATE INDEX IF NOT EXISTS idx_tts_events_user_id ON tts_events(user_id);
 CREATE INDEX IF NOT EXISTS idx_tts_events_message_id ON tts_events(message_id);
 CREATE INDEX IF NOT EXISTS idx_tts_events_created_at ON tts_events(created_at DESC);
 
--- Analytics events table for flexible event tracking
--- Tracks sessions, page views, referrers, device info, etc.
+-- =========================================================================
+-- ANALYTICS EVENTS TABLE
+-- Flexible event-sourcing table for client-side analytics: page views,
+-- session starts/ends, clicks, referrer tracking, device classification.
+-- =========================================================================
 CREATE TABLE IF NOT EXISTS analytics_events (
     id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
     user_id TEXT REFERENCES users(id) ON DELETE SET NULL,
-    session_id TEXT NOT NULL,  -- Client-generated session identifier
-    event_type TEXT NOT NULL,  -- 'page_view', 'session_start', 'session_end', 'click', etc.
-    event_data JSONB DEFAULT '{}',  -- Flexible data for different event types
+    session_id TEXT NOT NULL,                  -- Client-generated session identifier
+    event_type TEXT NOT NULL,                  -- 'page_view', 'session_start', 'session_end', etc.
+    event_data JSONB DEFAULT '{}',             -- Flexible payload per event type
     page_path TEXT,
     referrer TEXT,
     user_agent TEXT,
@@ -205,11 +295,20 @@ CREATE TABLE IF NOT EXISTS analytics_events (
 );
 
 CREATE INDEX IF NOT EXISTS idx_analytics_events_user_id ON analytics_events(user_id);
+-- Index: group events by client session
 CREATE INDEX IF NOT EXISTS idx_analytics_events_session_id ON analytics_events(session_id);
+-- Index: aggregate by event type
 CREATE INDEX IF NOT EXISTS idx_analytics_events_event_type ON analytics_events(event_type);
+-- Index: recent-first event browsing
 CREATE INDEX IF NOT EXISTS idx_analytics_events_created_at ON analytics_events(created_at DESC);
 
--- Add stripe_customer_id column to users if it doesn't exist
+-- =========================================================================
+-- SAFE COLUMN MIGRATIONS (users table additions)
+-- Each block is idempotent -- safe to re-run on every deploy.
+-- =========================================================================
+
+-- stripe_customer_id: links the user to their Stripe Customer object
+-- for payment processing and credit purchases.
 DO $$
 BEGIN
     IF NOT EXISTS (SELECT 1 FROM information_schema.columns
@@ -218,7 +317,8 @@ BEGIN
     END IF;
 END $$;
 
--- Add denomination column to users if it doesn't exist
+-- denomination: the user's self-identified Jewish denomination
+-- (e.g. 'modern_orthodox', 'conservative', 'just_jewish').
 DO $$
 BEGIN
     IF NOT EXISTS (SELECT 1 FROM information_schema.columns
@@ -227,7 +327,8 @@ BEGIN
     END IF;
 END $$;
 
--- Add bio column to users if it doesn't exist
+-- bio: free-text field for the user to describe themselves (max 200 chars
+-- enforced at the API layer via Pydantic validation).
 DO $$
 BEGIN
     IF NOT EXISTS (SELECT 1 FROM information_schema.columns
@@ -236,31 +337,61 @@ BEGIN
     END IF;
 END $$;
 
--- Purchases table for tracking credit purchases
+-- =========================================================================
+-- PURCHASES TABLE
+-- Records every credit purchase. The lifecycle is:
+--   pending -> completed (credits added) | failed | refunded
+-- Idempotency: complete_purchase() checks status before adding credits.
+-- =========================================================================
 CREATE TABLE IF NOT EXISTS purchases (
     id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
     user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-    stripe_payment_intent_id TEXT UNIQUE NOT NULL,
+    stripe_payment_intent_id TEXT UNIQUE NOT NULL,  -- Unique per Stripe payment
     stripe_customer_id TEXT,
-    amount_cents INTEGER NOT NULL,
-    credits_purchased INTEGER NOT NULL,
-    package_id TEXT NOT NULL,
+    amount_cents INTEGER NOT NULL,                   -- Price in US cents
+    credits_purchased INTEGER NOT NULL,              -- Number of credits bought
+    package_id TEXT NOT NULL,                         -- References a package slug
     status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'completed', 'failed', 'refunded')),
     created_at TIMESTAMPTZ DEFAULT NOW(),
-    completed_at TIMESTAMPTZ
+    completed_at TIMESTAMPTZ                         -- Set when status -> 'completed'
 );
 
 CREATE INDEX IF NOT EXISTS idx_purchases_user_id ON purchases(user_id);
+-- Index: webhook lookup by Stripe PaymentIntent ID
 CREATE INDEX IF NOT EXISTS idx_purchases_stripe_payment_intent_id ON purchases(stripe_payment_intent_id);
 CREATE INDEX IF NOT EXISTS idx_purchases_status ON purchases(status);
+
+-- =========================================================================
+-- D'VAR TORAH CACHE TABLE
+-- Caches AI-generated weekly Torah commentaries keyed by (parsha, year).
+-- The 'generating' flag implements optimistic locking so only one
+-- serverless instance generates a given entry.
+-- =========================================================================
+CREATE TABLE IF NOT EXISTS dvar_torah (
+    id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
+    parsha_name TEXT NOT NULL,
+    parsha_name_hebrew TEXT,
+    hebrew_year INTEGER NOT NULL,
+    content TEXT NOT NULL DEFAULT '',               -- The generated commentary
+    generating BOOLEAN DEFAULT FALSE,              -- TRUE while generation in progress
+    metadata JSONB DEFAULT '{}',
+    created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- Unique constraint: one cached entry per parsha per Hebrew year
+CREATE UNIQUE INDEX IF NOT EXISTS idx_dvar_torah_parsha_year ON dvar_torah(parsha_name, hebrew_year);
 """
 
 
 async def init_schema():
-    """Initialize the database schema.
+    """Execute the full DDL schema against the database.
 
-    Uses PostgreSQL advisory locks to prevent concurrent schema initialization
-    from multiple serverless function instances.
+    Uses a PostgreSQL advisory lock (ID 1) in non-blocking mode so that
+    if multiple serverless instances cold-start simultaneously, only one
+    performs the migration while the others skip gracefully.
+
+    This function is idempotent -- all DDL uses ``IF NOT EXISTS`` and
+    safe ``DO $$ ... $$`` blocks for column additions.
     """
     async with get_connection() as conn:
         # Try to acquire advisory lock (non-blocking)
@@ -276,9 +407,26 @@ async def init_schema():
             await conn.execute("SELECT pg_advisory_unlock(1)")
 
 
-# User operations
+# ---------------------------------------------------------------------------
+# User Management
+# ---------------------------------------------------------------------------
+
+
 async def upsert_user(user_id: str, email: str, first_name: str = None, last_name: str = None) -> dict:
-    """Create or update a user from WorkOS data."""
+    """Create a new user or update an existing one from WorkOS authentication data.
+
+    New users receive 3 starting credits. On conflict (same ``id``), the
+    email, name fields, and ``updated_at`` timestamp are refreshed.
+
+    Args:
+        user_id: The WorkOS user ID (used as primary key).
+        email: The user's email address.
+        first_name: Optional first name.
+        last_name: Optional last name.
+
+    Returns:
+        A dict of the full user row including ``credits`` and timestamps.
+    """
     async with get_connection() as conn:
         row = await conn.fetchrow(
             """
@@ -297,7 +445,14 @@ async def upsert_user(user_id: str, email: str, first_name: str = None, last_nam
 
 
 async def get_user(user_id: str) -> Optional[dict]:
-    """Get a user by ID."""
+    """Fetch a user record by their WorkOS ID.
+
+    Args:
+        user_id: The WorkOS user ID.
+
+    Returns:
+        A dict of the user row, or ``None`` if not found.
+    """
     async with get_connection() as conn:
         row = await conn.fetchrow(
             "SELECT id, email, first_name, last_name, credits, created_at, updated_at FROM users WHERE id = $1",
@@ -307,7 +462,14 @@ async def get_user(user_id: str) -> Optional[dict]:
 
 
 async def get_user_credits(user_id: str) -> Optional[int]:
-    """Get a user's remaining credits."""
+    """Return the number of chat credits remaining for a user.
+
+    Args:
+        user_id: The WorkOS user ID.
+
+    Returns:
+        The integer credit balance, or ``None`` if the user does not exist.
+    """
     async with get_connection() as conn:
         row = await conn.fetchrow(
             "SELECT credits FROM users WHERE id = $1",
@@ -317,7 +479,19 @@ async def get_user_credits(user_id: str) -> Optional[int]:
 
 
 async def consume_credit(user_id: str) -> bool:
-    """Consume one credit from user. Returns True if successful, False if no credits."""
+    """Atomically decrement one credit from the user's balance.
+
+    The UPDATE uses a ``WHERE credits > 0`` guard so that the operation
+    is a no-op (returns ``False``) when the balance is already zero,
+    avoiding negative balances without a separate SELECT.
+
+    Args:
+        user_id: The WorkOS user ID.
+
+    Returns:
+        ``True`` if a credit was consumed, ``False`` if the balance was
+        already zero or the user does not exist.
+    """
     async with get_connection() as conn:
         result = await conn.fetchrow(
             """
@@ -332,7 +506,16 @@ async def consume_credit(user_id: str) -> bool:
 
 
 async def add_credits(user_id: str, amount: int) -> Optional[int]:
-    """Add credits to a user's account. Returns new balance."""
+    """Add credits to a user's account after a successful purchase.
+
+    Args:
+        user_id: The WorkOS user ID.
+        amount: Number of credits to add (must be positive).
+
+    Returns:
+        The new credit balance after the addition, or ``None`` if the
+        user does not exist.
+    """
     async with get_connection() as conn:
         row = await conn.fetchrow(
             """
@@ -346,9 +529,21 @@ async def add_credits(user_id: str, amount: int) -> Optional[int]:
         return row['credits'] if row else None
 
 
-# Stripe customer operations
+# ---------------------------------------------------------------------------
+# Credit & Purchase Management
+# ---------------------------------------------------------------------------
+
+
 async def get_stripe_customer_id(user_id: str) -> Optional[str]:
-    """Get the Stripe customer ID for a user."""
+    """Look up the Stripe Customer ID associated with a user.
+
+    Args:
+        user_id: The WorkOS user ID.
+
+    Returns:
+        The Stripe Customer ID string, or ``None`` if not set or user
+        does not exist.
+    """
     async with get_connection() as conn:
         row = await conn.fetchrow(
             "SELECT stripe_customer_id FROM users WHERE id = $1",
@@ -358,7 +553,17 @@ async def get_stripe_customer_id(user_id: str) -> Optional[str]:
 
 
 async def set_stripe_customer_id(user_id: str, stripe_customer_id: str) -> bool:
-    """Set the Stripe customer ID for a user."""
+    """Persist the Stripe Customer ID on the user record.
+
+    Called once when a Stripe Customer is first created for a user.
+
+    Args:
+        user_id: The WorkOS user ID.
+        stripe_customer_id: The Stripe ``cus_`` prefixed identifier.
+
+    Returns:
+        ``True`` if the update affected exactly one row.
+    """
     async with get_connection() as conn:
         result = await conn.execute(
             """
@@ -371,9 +576,16 @@ async def set_stripe_customer_id(user_id: str, stripe_customer_id: str) -> bool:
         return result == "UPDATE 1"
 
 
-# User profile operations
 async def get_user_profile(user_id: str) -> Optional[dict]:
-    """Get a user's profile (denomination and bio)."""
+    """Fetch a user's profile fields (denomination and bio).
+
+    Args:
+        user_id: The WorkOS user ID.
+
+    Returns:
+        A dict with ``denomination`` (str) and ``bio`` (str), or ``None``
+        if the user does not exist.
+    """
     async with get_connection() as conn:
         row = await conn.fetchrow(
             "SELECT denomination, bio FROM users WHERE id = $1",
@@ -388,7 +600,20 @@ async def get_user_profile(user_id: str) -> Optional[dict]:
 
 
 async def update_user_profile(user_id: str, denomination: str = None, bio: str = None) -> bool:
-    """Update a user's profile (denomination and/or bio). Returns True if successful."""
+    """Partially update a user's profile fields.
+
+    Only the provided (non-``None``) fields are updated. Builds a dynamic
+    SQL ``SET`` clause to avoid overwriting fields that weren't submitted.
+
+    Args:
+        user_id: The WorkOS user ID.
+        denomination: New denomination value, or ``None`` to leave unchanged.
+        bio: New bio text, or ``None`` to leave unchanged.
+
+    Returns:
+        ``True`` if the update affected exactly one row, ``False`` otherwise
+        (e.g., no fields provided or user not found).
+    """
     async with get_connection() as conn:
         # Build dynamic update query based on what's provided
         updates = []
@@ -417,7 +642,6 @@ async def update_user_profile(user_id: str, denomination: str = None, bio: str =
         return result == "UPDATE 1"
 
 
-# Purchase operations
 async def create_purchase(
     user_id: str,
     stripe_payment_intent_id: str,
@@ -426,7 +650,23 @@ async def create_purchase(
     credits_purchased: int,
     package_id: str
 ) -> dict:
-    """Create a pending purchase record."""
+    """Insert a new purchase record with ``status='pending'``.
+
+    Called when a Stripe PaymentIntent is created, before the payment
+    is confirmed. The record transitions to ``completed`` or ``failed``
+    when the Stripe webhook fires.
+
+    Args:
+        user_id: The WorkOS user ID making the purchase.
+        stripe_payment_intent_id: The Stripe PaymentIntent ID (unique).
+        stripe_customer_id: The Stripe Customer ID.
+        amount_cents: Purchase price in US cents.
+        credits_purchased: Number of credits in the selected package.
+        package_id: Identifier for the credit package (e.g., ``"10_credits"``).
+
+    Returns:
+        A dict of the newly created purchase row.
+    """
     async with get_connection() as conn:
         row = await conn.fetchrow(
             """
@@ -440,7 +680,14 @@ async def create_purchase(
 
 
 async def get_purchase_by_intent_id(stripe_payment_intent_id: str) -> Optional[dict]:
-    """Get a purchase by Stripe payment intent ID."""
+    """Look up a purchase record by its Stripe PaymentIntent ID.
+
+    Args:
+        stripe_payment_intent_id: The Stripe ``pi_`` prefixed identifier.
+
+    Returns:
+        A dict of the purchase row, or ``None`` if not found.
+    """
     async with get_connection() as conn:
         row = await conn.fetchrow(
             """
@@ -454,7 +701,21 @@ async def get_purchase_by_intent_id(stripe_payment_intent_id: str) -> Optional[d
 
 
 async def complete_purchase(stripe_payment_intent_id: str) -> Optional[dict]:
-    """Mark a purchase as completed and add credits to the user. Returns the updated purchase."""
+    """Finalize a purchase: add credits to the user and mark it completed.
+
+    Runs inside a database transaction to ensure atomicity -- either both
+    the credit addition and the status update succeed, or neither does.
+
+    Idempotent: if the purchase is already ``completed``, returns it
+    without adding credits again (safe for webhook retries).
+
+    Args:
+        stripe_payment_intent_id: The Stripe PaymentIntent ID to complete.
+
+    Returns:
+        A dict of the updated purchase row, or ``None`` if the
+        PaymentIntent was not found.
+    """
     async with get_connection() as conn:
         async with conn.transaction():
             # Get the purchase details
@@ -501,7 +762,14 @@ async def complete_purchase(stripe_payment_intent_id: str) -> Optional[dict]:
 
 
 async def fail_purchase(stripe_payment_intent_id: str) -> Optional[dict]:
-    """Mark a purchase as failed."""
+    """Transition a purchase to ``failed`` status.
+
+    Args:
+        stripe_payment_intent_id: The Stripe PaymentIntent ID.
+
+    Returns:
+        A dict with the purchase summary, or ``None`` if not found.
+    """
     async with get_connection() as conn:
         row = await conn.fetchrow(
             """
@@ -516,7 +784,15 @@ async def fail_purchase(stripe_payment_intent_id: str) -> Optional[dict]:
 
 
 async def get_user_purchases(user_id: str, limit: int = 50) -> list[dict]:
-    """Get purchase history for a user."""
+    """Retrieve a user's purchase history, most recent first.
+
+    Args:
+        user_id: The WorkOS user ID.
+        limit: Maximum number of records to return (default 50).
+
+    Returns:
+        A list of purchase dicts ordered by ``created_at DESC``.
+    """
     async with get_connection() as conn:
         rows = await conn.fetch(
             """
@@ -531,9 +807,22 @@ async def get_user_purchases(user_id: str, limit: int = 50) -> list[dict]:
         return [dict(row) for row in rows]
 
 
-# Conversation operations
+# ---------------------------------------------------------------------------
+# Conversation Management
+# ---------------------------------------------------------------------------
+
+
 async def create_conversation(user_id: str, title: str = None) -> dict:
-    """Create a new conversation."""
+    """Create a new conversation thread for a user.
+
+    Args:
+        user_id: The WorkOS user ID who owns the conversation.
+        title: Optional title (auto-generated later from the first message
+            if not provided).
+
+    Returns:
+        A dict of the newly created conversation row.
+    """
     async with get_connection() as conn:
         row = await conn.fetchrow(
             """
@@ -547,7 +836,16 @@ async def create_conversation(user_id: str, title: str = None) -> dict:
 
 
 async def get_conversation(conversation_id: str, user_id: str) -> Optional[dict]:
-    """Get a conversation by ID (only if owned by user)."""
+    """Fetch a conversation by ID, scoped to the owning user.
+
+    Args:
+        conversation_id: The conversation UUID.
+        user_id: The WorkOS user ID (ownership check).
+
+    Returns:
+        A dict of the conversation row, or ``None`` if not found or
+        not owned by the given user.
+    """
     async with get_connection() as conn:
         row = await conn.fetchrow(
             """
@@ -561,7 +859,19 @@ async def get_conversation(conversation_id: str, user_id: str) -> Optional[dict]
 
 
 async def list_conversations(user_id: str, limit: int = 50, offset: int = 0) -> list[dict]:
-    """List conversations for a user, most recent first."""
+    """List conversations for a user, ordered by most recently active.
+
+    Includes the first message content as a preview snippet.
+
+    Args:
+        user_id: The WorkOS user ID.
+        limit: Maximum conversations to return.
+        offset: Pagination offset.
+
+    Returns:
+        A list of conversation dicts with an additional ``first_message``
+        field containing the opening message content.
+    """
     async with get_connection() as conn:
         rows = await conn.fetch(
             """
@@ -578,7 +888,16 @@ async def list_conversations(user_id: str, limit: int = 50, offset: int = 0) -> 
 
 
 async def update_conversation(conversation_id: str, user_id: str, title: str) -> Optional[dict]:
-    """Update a conversation's title."""
+    """Update a conversation's title (ownership-scoped).
+
+    Args:
+        conversation_id: The conversation UUID.
+        user_id: The WorkOS user ID (ownership check).
+        title: The new title string.
+
+    Returns:
+        A dict of the updated conversation row, or ``None`` if not found.
+    """
     async with get_connection() as conn:
         row = await conn.fetchrow(
             """
@@ -593,7 +912,15 @@ async def update_conversation(conversation_id: str, user_id: str, title: str) ->
 
 
 async def delete_conversation(conversation_id: str, user_id: str) -> bool:
-    """Delete a conversation (cascade deletes messages)."""
+    """Delete a conversation and all its messages (via CASCADE).
+
+    Args:
+        conversation_id: The conversation UUID.
+        user_id: The WorkOS user ID (ownership check).
+
+    Returns:
+        ``True`` if a row was deleted, ``False`` if not found.
+    """
     async with get_connection() as conn:
         result = await conn.execute(
             "DELETE FROM conversations WHERE id = $1 AND user_id = $2",
@@ -602,9 +929,28 @@ async def delete_conversation(conversation_id: str, user_id: str) -> bool:
         return result == "DELETE 1"
 
 
-# Message operations
+# ---------------------------------------------------------------------------
+# Message Management
+# ---------------------------------------------------------------------------
+
+
 async def add_message(conversation_id: str, role: str, content: str, metadata: dict = None) -> dict:
-    """Add a message to a conversation."""
+    """Insert a new message into a conversation.
+
+    Metadata is serialized to JSON for storage in the JSONB column.
+    A trigger automatically updates the parent conversation's
+    ``updated_at`` timestamp.
+
+    Args:
+        conversation_id: The parent conversation UUID.
+        role: Either ``"user"`` or ``"assistant"``.
+        content: The message text.
+        metadata: Optional dict of pipeline metrics or other data.
+
+    Returns:
+        A dict of the newly created message row with ``metadata``
+        deserialized back to a Python dict.
+    """
     import json
     async with get_connection() as conn:
         row = await conn.fetchrow(
@@ -623,7 +969,16 @@ async def add_message(conversation_id: str, role: str, content: str, metadata: d
 
 
 async def get_messages(conversation_id: str, limit: int = 100) -> list[dict]:
-    """Get messages for a conversation, oldest first."""
+    """Retrieve messages for a conversation in chronological order.
+
+    Args:
+        conversation_id: The conversation UUID.
+        limit: Maximum number of messages to return (default 100).
+
+    Returns:
+        A list of message dicts ordered by ``created_at ASC``, with
+        ``metadata`` deserialized from JSON.
+    """
     import json
     async with get_connection() as conn:
         rows = await conn.fetch(
@@ -646,7 +1001,17 @@ async def get_messages(conversation_id: str, limit: int = 100) -> list[dict]:
 
 
 async def generate_conversation_title(conversation_id: str) -> Optional[str]:
-    """Generate a title from the first user message (truncated)."""
+    """Derive a conversation title from the first user message.
+
+    Takes the first line of the first user message, truncated to 50
+    characters, with an ellipsis appended if any content was omitted.
+
+    Args:
+        conversation_id: The conversation UUID.
+
+    Returns:
+        A title string, or ``None`` if no user messages exist yet.
+    """
     async with get_connection() as conn:
         row = await conn.fetchrow(
             """
@@ -669,9 +1034,25 @@ async def generate_conversation_title(conversation_id: str) -> Optional[str]:
         return None
 
 
-# Feedback operations
+# ---------------------------------------------------------------------------
+# Feedback
+# ---------------------------------------------------------------------------
+
+
 async def upsert_feedback(message_id: str, user_id: str, feedback_type: str) -> dict:
-    """Create or update feedback for a message."""
+    """Create or update a user's feedback rating for a message.
+
+    Uses ``ON CONFLICT (message_id, user_id) DO UPDATE`` for upsert
+    semantics -- submitting a new rating replaces the previous one.
+
+    Args:
+        message_id: The message UUID being rated.
+        user_id: The WorkOS user ID providing the rating.
+        feedback_type: Either ``"thumbs_up"`` or ``"thumbs_down"``.
+
+    Returns:
+        A dict of the upserted feedback row.
+    """
     async with get_connection() as conn:
         row = await conn.fetchrow(
             """
@@ -688,7 +1069,15 @@ async def upsert_feedback(message_id: str, user_id: str, feedback_type: str) -> 
 
 
 async def delete_feedback(message_id: str, user_id: str) -> bool:
-    """Remove feedback for a message."""
+    """Remove a user's feedback rating for a message.
+
+    Args:
+        message_id: The message UUID.
+        user_id: The WorkOS user ID.
+
+    Returns:
+        ``True`` if a feedback row was deleted, ``False`` if none existed.
+    """
     async with get_connection() as conn:
         result = await conn.execute(
             "DELETE FROM feedback WHERE message_id = $1 AND user_id = $2",
@@ -698,7 +1087,15 @@ async def delete_feedback(message_id: str, user_id: str) -> bool:
 
 
 async def get_message_feedback(message_id: str, user_id: str) -> Optional[dict]:
-    """Get feedback for a specific message by user."""
+    """Retrieve the feedback a specific user gave for a specific message.
+
+    Args:
+        message_id: The message UUID.
+        user_id: The WorkOS user ID.
+
+    Returns:
+        A dict of the feedback row, or ``None`` if no feedback exists.
+    """
     async with get_connection() as conn:
         row = await conn.fetchrow(
             """
@@ -711,7 +1108,11 @@ async def get_message_feedback(message_id: str, user_id: str) -> Optional[dict]:
         return dict(row) if row else None
 
 
-# Error logging operations
+# ---------------------------------------------------------------------------
+# Error Logging
+# ---------------------------------------------------------------------------
+
+
 async def log_error(
     error_type: str,
     error_message: str,
@@ -720,7 +1121,20 @@ async def log_error(
     stack_trace: str = None,
     request_context: dict = None
 ) -> dict:
-    """Log an error to the database."""
+    """Persist an application error to the errors table for monitoring.
+
+    Args:
+        error_type: Category string (e.g., ``"llm_error"``, ``"tts_error"``).
+        error_message: Human-readable error description.
+        user_id: Optional WorkOS user ID if the error is user-scoped.
+        conversation_id: Optional conversation UUID for context.
+        stack_trace: Optional Python traceback string.
+        request_context: Optional dict of request details (truncated
+            to avoid storing sensitive data).
+
+    Returns:
+        A dict of the newly created error row.
+    """
     import json
     async with get_connection() as conn:
         row = await conn.fetchrow(
@@ -736,7 +1150,15 @@ async def log_error(
 
 
 async def get_error_stats(days: int = 7) -> list[dict]:
-    """Get error statistics for the last N days."""
+    """Aggregate error counts by type and day for the last N days.
+
+    Args:
+        days: Look-back window in days (clamped to 1-365).
+
+    Returns:
+        A list of dicts with ``error_type``, ``count``, and ``day`` fields,
+        ordered by day descending then count descending.
+    """
     # Validate days parameter
     days = max(1, min(days, 365))
     async with get_connection() as conn:
@@ -754,7 +1176,11 @@ async def get_error_stats(days: int = 7) -> list[dict]:
         return [dict(row) for row in rows]
 
 
-# TTS event operations
+# ---------------------------------------------------------------------------
+# TTS Events
+# ---------------------------------------------------------------------------
+
+
 async def log_tts_event(
     user_id: str,
     event_type: str,
@@ -763,7 +1189,19 @@ async def log_tts_event(
     duration_ms: int = None,
     error_message: str = None
 ) -> dict:
-    """Log a TTS event (start, stop, complete, error)."""
+    """Record a text-to-speech lifecycle event.
+
+    Args:
+        user_id: The WorkOS user ID.
+        event_type: One of ``"start"``, ``"stop"``, ``"complete"``, ``"error"``.
+        message_id: Optional message UUID being spoken.
+        text_length: Character count of the text being spoken.
+        duration_ms: Audio playback duration (for ``"complete"`` events).
+        error_message: Error description (for ``"error"`` events).
+
+    Returns:
+        A dict of the newly created TTS event row.
+    """
     async with get_connection() as conn:
         row = await conn.fetchrow(
             """
@@ -777,7 +1215,16 @@ async def log_tts_event(
 
 
 async def get_tts_stats(days: int = 7) -> dict:
-    """Get TTS usage statistics for the last N days."""
+    """Compute aggregate TTS usage statistics for the last N days.
+
+    Args:
+        days: Look-back window in days (clamped to 1-365).
+
+    Returns:
+        A dict with keys: ``total_starts``, ``total_completes``,
+        ``total_stops``, ``total_errors``, ``avg_duration_ms``,
+        ``total_chars_spoken``.
+    """
     # Validate days parameter
     days = max(1, min(days, 365))
     async with get_connection() as conn:
@@ -798,7 +1245,11 @@ async def get_tts_stats(days: int = 7) -> dict:
         return dict(row) if row else {}
 
 
-# Analytics event operations
+# ---------------------------------------------------------------------------
+# Analytics
+# ---------------------------------------------------------------------------
+
+
 async def log_analytics_event(
     session_id: str,
     event_type: str,
@@ -808,7 +1259,20 @@ async def log_analytics_event(
     referrer: str = None,
     user_agent: str = None
 ) -> dict:
-    """Log an analytics event."""
+    """Insert a client-side analytics event into the database.
+
+    Args:
+        session_id: Client-generated session identifier.
+        event_type: Event category (e.g., ``"page_view"``, ``"session_start"``).
+        user_id: Optional WorkOS user ID (``None`` for anonymous visitors).
+        event_data: Flexible JSON payload for the event type.
+        page_path: The URL path the event occurred on.
+        referrer: The HTTP referrer URL.
+        user_agent: The client's User-Agent header.
+
+    Returns:
+        A dict of the newly created analytics event row.
+    """
     import json
     async with get_connection() as conn:
         row = await conn.fetchrow(
@@ -824,7 +1288,15 @@ async def log_analytics_event(
 
 
 async def get_session_stats(days: int = 7) -> dict:
-    """Get session statistics for the last N days."""
+    """Compute aggregate session statistics for the last N days.
+
+    Args:
+        days: Look-back window in days (clamped to 1-365).
+
+    Returns:
+        A dict with ``unique_sessions``, ``total_page_views``, and
+        ``unique_users``.
+    """
     # Validate days parameter
     days = max(1, min(days, 365))
     async with get_connection() as conn:
@@ -843,7 +1315,15 @@ async def get_session_stats(days: int = 7) -> dict:
 
 
 async def get_referrer_stats(days: int = 7) -> list[dict]:
-    """Get referrer statistics for the last N days."""
+    """Rank traffic sources by unique sessions for the last N days.
+
+    Args:
+        days: Look-back window in days (clamped to 1-365).
+
+    Returns:
+        A list of dicts with ``referrer`` and ``sessions`` fields, top 20,
+        ordered by session count descending.
+    """
     # Validate days parameter
     days = max(1, min(days, 365))
     async with get_connection() as conn:
@@ -865,7 +1345,16 @@ async def get_referrer_stats(days: int = 7) -> list[dict]:
 
 
 async def get_device_stats(days: int = 7) -> list[dict]:
-    """Get device/browser statistics for the last N days."""
+    """Classify sessions by device type (mobile, tablet, desktop).
+
+    Device classification is based on simple User-Agent substring matching.
+
+    Args:
+        days: Look-back window in days (clamped to 1-365).
+
+    Returns:
+        A list of dicts with ``device_type`` and ``sessions`` fields.
+    """
     # Validate days parameter
     days = max(1, min(days, 365))
     async with get_connection() as conn:
@@ -887,3 +1376,109 @@ async def get_device_stats(days: int = 7) -> list[dict]:
             days
         )
         return [dict(row) for row in rows]
+
+
+# ---------------------------------------------------------------------------
+# D'var Torah Cache
+# ---------------------------------------------------------------------------
+
+
+async def get_dvar_torah(parsha_name: str, hebrew_year: int) -> Optional[dict]:
+    """Retrieve a cached d'var Torah by parsha name and Hebrew year.
+
+    Args:
+        parsha_name: English transliterated parsha name.
+        hebrew_year: The Hebrew calendar year (e.g., 5786).
+
+    Returns:
+        A dict of the cached entry including ``content`` and ``generating``
+        flag, or ``None`` if no entry exists for this parsha/year.
+    """
+    async with get_connection() as conn:
+        row = await conn.fetchrow(
+            """
+            SELECT id, parsha_name, parsha_name_hebrew, hebrew_year, content, generating, metadata, created_at
+            FROM dvar_torah
+            WHERE parsha_name = $1 AND hebrew_year = $2
+            """,
+            parsha_name, hebrew_year
+        )
+        return dict(row) if row else None
+
+
+async def claim_dvar_torah_generation(parsha_name: str, parsha_name_hebrew: str, hebrew_year: int) -> Optional[str]:
+    """Atomically claim a d'var Torah generation slot using INSERT ... ON CONFLICT DO NOTHING.
+
+    This implements optimistic locking: the first caller to insert wins
+    and receives the new row's ID; subsequent callers for the same
+    (parsha, year) get ``None`` and should wait for the winner to finish.
+
+    Args:
+        parsha_name: English transliterated parsha name.
+        parsha_name_hebrew: Hebrew parsha name.
+        hebrew_year: The Hebrew calendar year.
+
+    Returns:
+        The UUID of the newly created row if this caller claimed the
+        generation slot, or ``None`` if another instance already claimed it.
+    """
+    async with get_connection() as conn:
+        try:
+            row = await conn.fetchrow(
+                """
+                INSERT INTO dvar_torah (parsha_name, parsha_name_hebrew, hebrew_year, generating)
+                VALUES ($1, $2, $3, TRUE)
+                ON CONFLICT (parsha_name, hebrew_year) DO NOTHING
+                RETURNING id
+                """,
+                parsha_name, parsha_name_hebrew, hebrew_year
+            )
+            return row['id'] if row else None
+        except Exception:
+            return None
+
+
+async def complete_dvar_torah_generation(row_id: str, content: str, metadata: dict = None) -> bool:
+    """Save the generated d'var Torah content and clear the generating flag.
+
+    Args:
+        row_id: The UUID returned by ``claim_dvar_torah_generation``.
+        content: The full generated commentary text.
+        metadata: Optional dict of generation metadata (model, tokens, etc.).
+
+    Returns:
+        ``True`` if the row was updated, ``False`` if the row_id was
+        not found.
+    """
+    import json
+    async with get_connection() as conn:
+        result = await conn.execute(
+            """
+            UPDATE dvar_torah
+            SET content = $2, generating = FALSE, metadata = $3
+            WHERE id = $1
+            """,
+            row_id, content, json.dumps(metadata or {})
+        )
+        return result == "UPDATE 1"
+
+
+async def fail_dvar_torah_generation(row_id: str) -> bool:
+    """Clean up a failed d'var Torah generation by deleting the placeholder row.
+
+    Only deletes rows still in the ``generating=TRUE`` state to avoid
+    accidentally removing a successfully completed entry.
+
+    Args:
+        row_id: The UUID returned by ``claim_dvar_torah_generation``.
+
+    Returns:
+        ``True`` if the placeholder row was deleted, ``False`` if not
+        found or already completed.
+    """
+    async with get_connection() as conn:
+        result = await conn.execute(
+            "DELETE FROM dvar_torah WHERE id = $1 AND generating = TRUE",
+            row_id
+        )
+        return result == "DELETE 1"

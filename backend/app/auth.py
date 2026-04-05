@@ -1,4 +1,27 @@
-"""WorkOS SSO Authentication module."""
+"""WorkOS SSO authentication, session management, and guest chat tracking.
+
+This module provides three authentication-related capabilities:
+
+1. **WorkOS SSO integration**: Initiates and handles the AuthKit-based
+   single sign-on flow (login, callback, logout).
+2. **Session management via signed cookies**: Uses ``itsdangerous``
+   ``URLSafeTimedSerializer`` to create and verify tamper-proof,
+   time-limited session tokens stored in HTTP-only cookies.
+3. **Guest chat tracking via signed cookies**: Tracks how many free chats
+   an unauthenticated visitor has used, using a separate signed cookie that
+   prevents client-side tampering.
+
+Cookie signing approach:
+    All cookies that carry trust-sensitive data (session identity, guest chat
+    count) are signed with ``itsdangerous.URLSafeTimedSerializer`` using the
+    application's ``session_secret_key``. This ensures that:
+
+    * The server can detect any client-side modification (``BadSignature``).
+    * Cookies automatically expire after a configurable ``max_age``
+      (``SignatureExpired``).
+    * No server-side session store is required -- all state lives in the
+      cryptographically signed cookie value.
+"""
 
 import logging
 from fastapi import APIRouter, Request, HTTPException, Depends
@@ -25,7 +48,12 @@ _workos_client: Optional[WorkOSClient] = None
 
 
 def get_workos_client() -> WorkOSClient:
-    """Get or create the WorkOS client (lazy initialization for testing)."""
+    """Get or create the WorkOS client (lazy initialization for testing).
+
+    Returns:
+        The singleton ``WorkOSClient`` instance configured with the
+        application's WorkOS API key and client ID.
+    """
     global _workos_client
     if _workos_client is None:
         _workos_client = WorkOSClient(
@@ -35,12 +63,20 @@ def get_workos_client() -> WorkOSClient:
     return _workos_client
 
 
-# Session serializer
+# Session serializer -- lazy-initialized so that the secret key can be
+# configured at runtime (e.g., during tests).
 _serializer: Optional[URLSafeTimedSerializer] = None
 
 
 def get_serializer() -> URLSafeTimedSerializer:
-    """Get or create the session serializer."""
+    """Get or create the ``itsdangerous`` session serializer.
+
+    The serializer uses the application's ``session_secret_key`` to
+    HMAC-sign cookie payloads, making them tamper-proof.
+
+    Returns:
+        The singleton ``URLSafeTimedSerializer`` instance.
+    """
     global _serializer
     if _serializer is None:
         _serializer = URLSafeTimedSerializer(settings.session_secret_key)
@@ -48,13 +84,37 @@ def get_serializer() -> URLSafeTimedSerializer:
 
 
 def create_session_token(user_data: dict) -> str:
-    """Create a signed session token."""
+    """Create a cryptographically signed session token.
+
+    The token embeds the provided user data as a JSON payload, signed
+    with the application's secret key. It can later be verified and
+    decoded by ``verify_session_token``.
+
+    Args:
+        user_data: A dictionary of user profile fields to embed in the
+            token (e.g., ``{"id": ..., "email": ...}``).
+
+    Returns:
+        A URL-safe, signed token string suitable for storing in a cookie.
+    """
     serializer = get_serializer()
     return serializer.dumps(user_data)
 
 
 def verify_session_token(token: str, max_age: int = 86400) -> Optional[dict]:
-    """Verify and decode a session token. Default max_age is 24 hours."""
+    """Verify and decode a signed session token.
+
+    Args:
+        token: The signed token string (typically from a session cookie).
+        max_age: Maximum acceptable age of the token in seconds.
+            Defaults to 86 400 (24 hours). Tokens older than this are
+            treated as expired.
+
+    Returns:
+        The decoded user data dictionary if the token is valid and not
+        expired, or ``None`` if the signature is invalid or the token
+        has expired.
+    """
     serializer = get_serializer()
     try:
         return serializer.loads(token, max_age=max_age)
@@ -63,25 +123,58 @@ def verify_session_token(token: str, max_age: int = 86400) -> Optional[dict]:
 
 
 def get_current_user(request: Request) -> Optional[dict]:
-    """Get the current user from session cookie."""
+    """Extract the authenticated user from the request's session cookie.
+
+    Args:
+        request: The incoming FastAPI ``Request`` object.
+
+    Returns:
+        The user data dictionary if a valid session cookie is present,
+        or ``None`` if the user is not authenticated.
+    """
     token = request.cookies.get("session")
     if not token:
         return None
     return verify_session_token(token)
 
 
+# ---------------------------------------------------------------------------
 # Guest chat tracking
+# ---------------------------------------------------------------------------
+
+# Maximum free chats allowed for unauthenticated visitors.
 GUEST_FREE_CHAT_LIMIT = 1
+
+# Number of free credits granted to newly registered users upon first login.
 LOGGED_IN_FREE_CREDITS = 3
 
 
 def get_guest_chats_used(request: Request) -> int:
-    """Get the number of chats used by a guest from signed cookie."""
+    """Get the number of chats used by a guest from a signed cookie.
+
+    The guest chat count is stored in a signed cookie named
+    ``guest_chats_used``. Because the cookie is signed with
+    ``itsdangerous``, any client-side tampering (e.g., manually editing
+    the cookie value to reset the count) will cause signature
+    verification to fail, and the count will safely default to ``0``.
+
+    The cookie has a ``max_age`` of 30 days (``86400 * 30`` seconds),
+    after which it expires and the guest effectively gets a fresh
+    allowance.
+
+    Args:
+        request: The incoming FastAPI ``Request`` object.
+
+    Returns:
+        The number of guest chats used, or ``0`` if the cookie is
+        absent, expired, or tampered with.
+    """
     token = request.cookies.get("guest_chats_used")
     if not token:
         return 0
     try:
         serializer = get_serializer()
+        # 30-day expiry for guest chat tracking cookie
         data = serializer.loads(token, max_age=86400 * 30)  # 30 days
         return data.get("count", 0)
     except (BadSignature, SignatureExpired):
@@ -89,23 +182,62 @@ def get_guest_chats_used(request: Request) -> int:
 
 
 def create_guest_chat_cookie(count: int) -> str:
-    """Create a signed cookie for guest chat tracking."""
+    """Create a signed cookie value for guest chat tracking.
+
+    Args:
+        count: The updated number of guest chats used.
+
+    Returns:
+        A URL-safe, signed token string embedding the chat count.
+    """
     serializer = get_serializer()
     return serializer.dumps({"count": count})
 
 
 def require_auth(request: Request) -> dict:
-    """Dependency that requires authentication."""
+    """FastAPI dependency that enforces authentication.
+
+    Extracts the user from the session cookie and raises an HTTP 401
+    if no valid session is found. Use as a ``Depends(...)`` parameter
+    in route handlers that require a logged-in user.
+
+    Args:
+        request: The incoming FastAPI ``Request`` object.
+
+    Returns:
+        The authenticated user data dictionary.
+
+    Raises:
+        HTTPException: 401 if the user is not authenticated.
+    """
     user = get_current_user(request)
     if not user:
         raise HTTPException(status_code=401, detail="Not authenticated")
     return user
 
 
+# ---------------------------------------------------------------------------
+# SSO Routes
+# ---------------------------------------------------------------------------
+
+
 @router.get("/login")
 @limiter.limit("10/minute")
 async def login(request: Request):
-    """Initiate SSO login flow."""
+    """Initiate the WorkOS AuthKit SSO login flow.
+
+    Generates a CSRF ``state`` token, stores it in a short-lived cookie,
+    and redirects the user to the WorkOS-hosted authorization page.
+
+    Args:
+        request: The incoming FastAPI ``Request`` object.
+
+    Returns:
+        A ``RedirectResponse`` (HTTP 302) to the WorkOS authorization URL.
+
+    Raises:
+        HTTPException: 500 if WorkOS credentials are not configured.
+    """
     if not settings.workos_api_key or not settings.workos_client_id:
         raise HTTPException(
             status_code=500,
@@ -139,26 +271,58 @@ async def login(request: Request):
 
 @router.get("/callback")
 async def callback(request: Request, code: str = None, state: str = None, error: str = None):
-    """Handle SSO callback from WorkOS."""
+    """Handle the SSO callback from WorkOS after user authentication.
+
+    This endpoint completes the OAuth 2.0 authorization code flow:
+
+    1. **CSRF verification**: Compares the ``state`` query parameter against
+       the value stored in the ``oauth_state`` cookie to prevent cross-site
+       request forgery.
+    2. **Authorization code exchange**: Sends the ``code`` to the WorkOS
+       User Management API to exchange it for user profile information.
+    3. **User profile extraction**: Extracts ``id``, ``email``,
+       ``first_name``, and ``last_name`` from the WorkOS user object.
+    4. **Session cookie creation**: Signs the user profile data into a
+       session token using ``itsdangerous`` and sets it as an HTTP-only
+       cookie with a 24-hour expiry.
+
+    Args:
+        request: The incoming FastAPI ``Request`` object.
+        code: The authorization code returned by WorkOS.
+        state: The CSRF state token returned by WorkOS.
+        error: An error string if the authentication failed upstream.
+
+    Returns:
+        A ``RedirectResponse`` (HTTP 302) to the application root with the
+        session cookie set.
+
+    Raises:
+        HTTPException: 400 if the authentication failed, the code is
+            missing, the state is invalid, or the code exchange fails.
+    """
     if error:
         raise HTTPException(status_code=400, detail=f"Authentication error: {error}")
 
     if not code:
         raise HTTPException(status_code=400, detail="No authorization code provided")
 
-    # Verify state for CSRF protection
+    # Verify state for CSRF protection -- compare the state parameter from
+    # the callback URL against the value stored in the oauth_state cookie.
     stored_state = request.cookies.get("oauth_state")
     if not stored_state or stored_state != state:
         raise HTTPException(status_code=400, detail="Invalid state parameter")
 
     try:
-        # Exchange code for user info using User Management API
+        # Exchange the authorization code with WorkOS for user information.
+        # This is the server-to-server leg of the OAuth flow.
         auth_response = get_workos_client().user_management.authenticate_with_code(
             code=code,
         )
+        # Extract the user profile from the authentication response.
         user = auth_response.user
 
-        # Create session data (only store user info, not tokens)
+        # Build session data -- only store user profile fields, not tokens,
+        # to minimize the cookie size and avoid leaking credentials.
         user_data = {
             "id": user.id,
             "email": user.email,
@@ -166,7 +330,7 @@ async def callback(request: Request, code: str = None, state: str = None, error:
             "last_name": user.last_name,
         }
 
-        # Create session token
+        # Create a signed session token embedding the user data.
         session_token = create_session_token(user_data)
 
         # Redirect to app with session cookie
@@ -180,7 +344,7 @@ async def callback(request: Request, code: str = None, state: str = None, error:
             max_age=86400,  # 24 hours
             path="/",  # Explicit path for consistent cookie handling
         )
-        # Clear the oauth state cookie
+        # Clear the oauth state cookie -- it is single-use.
         response.delete_cookie("oauth_state", path="/")
         return response
 
@@ -190,7 +354,11 @@ async def callback(request: Request, code: str = None, state: str = None, error:
 
 @router.get("/logout")
 async def logout():
-    """Log out the current user."""
+    """Log out the current user by clearing the session cookie.
+
+    Returns:
+        A ``RedirectResponse`` (HTTP 302) to the logged-out landing page.
+    """
     response = RedirectResponse(url="/auth/logged-out", status_code=302)
     response.delete_cookie("session", path="/")
     return response
@@ -198,7 +366,11 @@ async def logout():
 
 @router.get("/logged-out")
 async def logged_out():
-    """Show login page."""
+    """Render a minimal login/landing page after logout.
+
+    Returns:
+        An ``HTMLResponse`` containing a styled sign-in page.
+    """
     html = """
     <!DOCTYPE html>
     <html>
@@ -260,13 +432,32 @@ async def logged_out():
 
 @router.get("/me")
 async def get_me(user: dict = Depends(require_auth)):
-    """Get current user info."""
+    """Return the authenticated user's profile information.
+
+    Args:
+        user: The authenticated user dict, injected by the
+            ``require_auth`` dependency.
+
+    Returns:
+        A JSON response containing the user profile fields.
+    """
     return JSONResponse(content=user)
 
 
 @router.get("/check")
 async def check_auth(request: Request):
-    """Check if user is authenticated (for frontend)."""
+    """Check whether the current request is authenticated.
+
+    Used by the frontend to determine login state on page load.
+
+    Args:
+        request: The incoming FastAPI ``Request`` object.
+
+    Returns:
+        A JSON response with ``{"authenticated": true, "user": {...}}``
+        (HTTP 200) if logged in, or ``{"authenticated": false}``
+        (HTTP 401) otherwise.
+    """
     user = get_current_user(request)
     if user:
         return JSONResponse(content={"authenticated": True, "user": user})

@@ -1,4 +1,27 @@
-"""Payments API router for Stripe integration."""
+"""Stripe payment integration for credit purchases.
+
+Uses the Stripe PaymentIntents API with the embedded Payment Element via
+CustomerSessions. This allows the frontend to render a Stripe-hosted payment
+form without handling raw card data.
+
+Fulfillment strategy (dual path):
+    * **Production (webhook-based)**: The ``/webhook`` endpoint receives
+      ``payment_intent.succeeded`` events from Stripe, verifies the
+      webhook signature, and idempotently adds credits to the user's
+      account. This is the canonical fulfillment path because webhooks
+      are guaranteed delivery by Stripe and are not dependent on the
+      user's browser session.
+    * **Development (verify-and-fulfill)**: The ``/verify-and-fulfill``
+      endpoint lets the frontend poll for payment completion and trigger
+      credit fulfillment directly. This exists because Stripe webhooks
+      require a publicly reachable URL, which is unavailable during local
+      development. This endpoint is **disabled in production** for
+      security.
+
+Both paths call ``db.complete_purchase()``, which is idempotent -- calling
+it multiple times for the same ``payment_intent_id`` safely no-ops after
+the first successful fulfillment.
+"""
 
 import logging
 import stripe
@@ -18,7 +41,11 @@ if settings.stripe_secret_key:
 
 router = APIRouter(prefix="/api/payments", tags=["payments"])
 
-# Credit packages available for purchase
+# Credit packages available for purchase.
+# Each key is a package identifier used in API requests; the value describes
+# the number of credits granted and the price in USD cents.
+#   - "credits_10": 10 chat credits for $1.00
+#   - "credits_25": 25 chat credits for $2.00 (better per-credit value)
 CREDIT_PACKAGES = {
     "credits_10": {"credits": 10, "price_cents": 100, "display_price": "$1.00"},
     "credits_25": {"credits": 25, "price_cents": 200, "display_price": "$2.00"},
@@ -26,24 +53,65 @@ CREDIT_PACKAGES = {
 
 
 class CreateIntentRequest(BaseModel):
-    """Request body for creating a payment intent."""
+    """Request body for creating a payment intent.
+
+    Attributes:
+        package_id: The identifier of the credit package to purchase
+            (must be a key in ``CREDIT_PACKAGES``).
+    """
     package_id: str
 
 
 class VerifyPaymentRequest(BaseModel):
-    """Request body for verifying a payment."""
+    """Request body for verifying a payment.
+
+    Attributes:
+        payment_intent_id: The Stripe PaymentIntent ID to verify
+            (e.g., ``"pi_..."``).
+    """
     payment_intent_id: str
 
 
 @router.get("/packages")
 async def get_packages():
-    """Return available credit packages."""
+    """Return the catalog of available credit packages.
+
+    Returns:
+        A JSON object with a ``packages`` key mapping package IDs to
+        their credit count, price, and display price.
+    """
     return {"packages": CREDIT_PACKAGES}
 
 
 @router.post("/create-intent")
 async def create_payment_intent(request: Request, body: CreateIntentRequest):
-    """Create a Stripe PaymentIntent and CustomerSession for the embedded form."""
+    """Create a Stripe PaymentIntent and CustomerSession for the embedded form.
+
+    This endpoint:
+
+    1. Validates the requested package ID.
+    2. Retrieves or creates a Stripe Customer for the authenticated user.
+    3. Creates a ``PaymentIntent`` with the package amount, attaching
+       metadata (``user_id``, ``package_id``, ``credits``) for webhook
+       fulfillment.
+    4. Creates a ``CustomerSession`` to authorize the frontend's embedded
+       Payment Element.
+    5. Records a pending purchase row in the database.
+
+    Args:
+        request: The incoming FastAPI ``Request`` object.
+        body: The request body containing the ``package_id``.
+
+    Returns:
+        A JSON object with ``client_secret``,
+        ``customer_session_client_secret``, and ``publishable_key`` for
+        initializing the Stripe embedded Payment Element.
+
+    Raises:
+        HTTPException: 401 if not authenticated, 400 if the package is
+            invalid, 503 if Stripe is not configured, or 500 on Stripe
+            API errors.
+    """
     user = get_current_user(request)
     if not user:
         raise HTTPException(status_code=401, detail="Not authenticated")
@@ -75,13 +143,16 @@ async def create_payment_intent(request: Request, body: CreateIntentRequest):
             payment_method_types=["card", "amazon_pay"],
         )
 
-        # Create CustomerSession for embedded form
+        # Create CustomerSession for the embedded Payment Element --
+        # this authorizes the frontend to render Stripe's payment form
+        # on behalf of this customer.
         customer_session = stripe.CustomerSession.create(
             customer=stripe_customer_id,
             components={"payment_element": {"enabled": True}},
         )
 
-        # Record pending purchase
+        # Record pending purchase in the database so that webhook
+        # fulfillment can look it up by payment_intent_id later.
         await db.create_purchase(
             user_id=user["id"],
             stripe_payment_intent_id=payment_intent.id,
@@ -109,10 +180,31 @@ async def create_payment_intent(request: Request, body: CreateIntentRequest):
 async def verify_and_fulfill(request: Request, body: VerifyPaymentRequest):
     """Verify payment with Stripe and fulfill if successful.
 
-    This endpoint provides immediate feedback after payment completion,
-    complementing webhooks which may be delayed or unavailable in some environments.
+    **Development-only fulfillment path.** This endpoint provides immediate
+    feedback after payment completion, complementing webhooks which may be
+    delayed or unavailable in local development environments (where Stripe
+    cannot reach a webhook URL).
 
-    DISABLED in production - use webhooks for production fulfillment.
+    DISABLED in production -- use webhooks for production fulfillment.
+
+    The flow:
+    1. Retrieve the ``PaymentIntent`` from Stripe by ID.
+    2. Verify that the payment belongs to the requesting user (via metadata).
+    3. If the payment status is ``"succeeded"``, call
+       ``db.complete_purchase()`` which is idempotent.
+
+    Args:
+        request: The incoming FastAPI ``Request`` object.
+        body: The request body containing the ``payment_intent_id``.
+
+    Returns:
+        A JSON object with ``success``, ``credits_added`` (on success),
+        and a ``message`` describing the outcome.
+
+    Raises:
+        HTTPException: 404 in production, 401 if not authenticated,
+            403 if the payment does not belong to the user, 503 if
+            Stripe is not configured, or 500 on Stripe API errors.
     """
     # Only allow in non-production environments for security
     if settings.is_production:
@@ -170,7 +262,39 @@ async def verify_and_fulfill(request: Request, body: VerifyPaymentRequest):
 
 @router.post("/webhook")
 async def stripe_webhook(request: Request):
-    """Handle Stripe webhook events."""
+    """Handle incoming Stripe webhook events.
+
+    This is the **production fulfillment path**. Stripe sends webhook
+    events to this endpoint when payment states change. The flow:
+
+    1. **Signature verification**: The raw request body and the
+       ``Stripe-Signature`` header are passed to
+       ``stripe.Webhook.construct_event()`` along with the webhook
+       secret. This cryptographically verifies that the event originated
+       from Stripe and has not been tampered with.
+    2. **Event dispatch**: Based on ``event["type"]``:
+       - ``payment_intent.succeeded``: Triggers idempotent credit
+         fulfillment via ``handle_payment_succeeded()``.
+       - ``payment_intent.payment_failed``: Marks the purchase as
+         failed via ``handle_payment_failed()``.
+       - All other event types are logged and acknowledged.
+    3. **Idempotent fulfillment**: ``db.complete_purchase()`` uses a
+       database-level status check to ensure credits are only added once,
+       even if the webhook is delivered multiple times (Stripe retries on
+       non-2xx responses).
+
+    Args:
+        request: The incoming FastAPI ``Request`` object (raw body is
+            read for signature verification).
+
+    Returns:
+        ``{"status": "ok"}`` on successful processing.
+
+    Raises:
+        HTTPException: 503 if the webhook secret is not configured,
+            400 if the signature is missing or invalid, or 400 if the
+            payload cannot be parsed.
+    """
     if not settings.stripe_webhook_secret:
         raise HTTPException(status_code=503, detail="Webhook not configured")
 
@@ -181,6 +305,9 @@ async def stripe_webhook(request: Request):
         raise HTTPException(status_code=400, detail="Missing signature")
 
     try:
+        # Verify the webhook signature to ensure the event is authentic.
+        # This uses the raw payload bytes and the Stripe-Signature header
+        # against the configured webhook secret.
         event = stripe.Webhook.construct_event(
             payload, sig_header, settings.stripe_webhook_secret
         )
@@ -191,7 +318,7 @@ async def stripe_webhook(request: Request):
         logger.error("Invalid webhook signature")
         raise HTTPException(status_code=400, detail="Invalid signature")
 
-    # Handle the event
+    # Handle the event based on its type
     event_type = event["type"]
     event_data = event["data"]["object"]
 
@@ -206,7 +333,20 @@ async def stripe_webhook(request: Request):
 
 
 async def get_or_create_stripe_customer(user: dict) -> str:
-    """Get existing or create new Stripe customer for user."""
+    """Retrieve an existing Stripe Customer or create a new one.
+
+    Checks the database for a previously stored ``stripe_customer_id``
+    for this user. If none exists, creates a new Stripe Customer and
+    persists the mapping.
+
+    Args:
+        user: The authenticated user dictionary containing at least
+            ``"id"`` and optionally ``"email"``, ``"first_name"``,
+            ``"last_name"``.
+
+    Returns:
+        The Stripe Customer ID string (e.g., ``"cus_..."``).
+    """
     # Check if user already has a Stripe customer ID
     existing_customer_id = await db.get_stripe_customer_id(user["id"])
     if existing_customer_id:
@@ -233,7 +373,17 @@ async def get_or_create_stripe_customer(user: dict) -> str:
 
 
 async def handle_payment_succeeded(payment_intent: dict):
-    """Process successful payment - add credits to user."""
+    """Process a successful payment and add credits to the user's account.
+
+    Called by the webhook handler when a ``payment_intent.succeeded``
+    event is received. Delegates to ``db.complete_purchase()`` which
+    handles idempotency -- if the purchase was already fulfilled (e.g.,
+    via the ``verify-and-fulfill`` endpoint), this is a safe no-op.
+
+    Args:
+        payment_intent: The Stripe PaymentIntent object (as a dict)
+            from the webhook event data.
+    """
     payment_intent_id = payment_intent["id"]
 
     logger.info(f"Processing successful payment: {payment_intent_id}")
@@ -253,7 +403,15 @@ async def handle_payment_succeeded(payment_intent: dict):
 
 
 async def handle_payment_failed(payment_intent: dict):
-    """Process failed payment."""
+    """Process a failed payment by updating the purchase record.
+
+    Called by the webhook handler when a
+    ``payment_intent.payment_failed`` event is received.
+
+    Args:
+        payment_intent: The Stripe PaymentIntent object (as a dict)
+            from the webhook event data.
+    """
     payment_intent_id = payment_intent["id"]
 
     logger.info(f"Processing failed payment: {payment_intent_id}")

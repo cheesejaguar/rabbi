@@ -1,4 +1,18 @@
-"""Rabbi Orchestrator - Coordinates the multi-agent pipeline."""
+"""Rabbi Orchestrator -- coordinates the four-agent pipeline.
+
+This module contains the ``RabbiOrchestrator`` which is the main entry
+point for processing user messages.  It:
+
+1. Creates a shared ``AgentContext`` for the request.
+2. Runs the four agents sequentially:
+   **Pastoral -> Halachic -> Moral -> Voice**.
+3. Manages the *moral reconsideration loop*: if the MoralEthicalAgent
+   flags that the response could cause harm, the orchestrator re-runs the
+   HalachicReasoningAgent with adjusted context emphasising compassion,
+   dignity, and lenient opinions.
+4. Builds both streaming and non-streaming response payloads including
+   the final text, pastoral metadata, and cumulative cost/token metrics.
+"""
 
 import logging
 from openai import OpenAI
@@ -14,15 +28,22 @@ logger = logging.getLogger(__name__)
 
 
 class RabbiOrchestrator:
-    """
-    Orchestrates the multi-agent rebbe.dev pipeline.
+    """Orchestrates the multi-agent rebbe.dev pipeline.
 
-    Flow:
-    User Input → Pastoral Context → Halachic Reasoning (with RAG) → Moral-Ethical → Meta-Rabbinic Voice → Final Response
+    Pipeline execution order::
 
-    Each agent has the authority to modify, soften, or influence downstream output.
-    The Halachic Reasoning agent uses RAG to retrieve relevant source texts from
-    the Jewish texts library to ground its analysis in primary sources.
+        User Input
+          -> PastoralContextAgent   (emotional analysis)
+          -> HalachicReasoningAgent (legal landscape, with RAG source retrieval)
+          -> MoralEthicalAgent      (harm prevention check)
+             [if reconsideration needed -> re-run HalachicReasoningAgent]
+          -> MetaRabbinicVoiceAgent  (craft final response)
+          -> Final Response
+
+    Each agent has the authority to modify, soften, or influence
+    downstream output via the shared ``AgentContext``.  The Halachic
+    Reasoning agent uses RAG to retrieve relevant source texts from the
+    Jewish texts library to ground its analysis in primary sources.
     """
 
     def __init__(
@@ -31,7 +52,15 @@ class RabbiOrchestrator:
         base_url: str = "https://openrouter.ai/api/v1",
         model: str = "anthropic/claude-sonnet-4-20250514",
     ):
-        """Initialize the orchestrator with all agents."""
+        """Initialise the orchestrator and instantiate all pipeline agents.
+
+        Args:
+            api_key: API key for the OpenRouter (or compatible) LLM
+                provider.
+            base_url: Base URL for the OpenAI-compatible API endpoint.
+            model: Model identifier string (e.g.
+                ``"anthropic/claude-sonnet-4-20250514"``).
+        """
         self.client = OpenAI(
             api_key=api_key,
             base_url=base_url,
@@ -41,6 +70,7 @@ class RabbiOrchestrator:
         # Initialize RAG retriever (loads pre-built index or builds from library)
         self.retriever = TextRetriever()
 
+        # Instantiate each agent in pipeline order
         self.pastoral_agent = PastoralContextAgent(self.client, model)
         self.halachic_agent = HalachicReasoningAgent(self.client, model, retriever=self.retriever)
         self.moral_agent = MoralEthicalAgent(self.client, model)
@@ -93,23 +123,40 @@ class RabbiOrchestrator:
             user_bio=user_bio,
         )
 
+        # Stage 1: Pastoral -- determine HOW to respond
         context = await self.pastoral_agent.process(context)
 
+        # Stage 2: Halachic -- determine WHAT the tradition says
         context = await self.halachic_agent.process(context)
 
+        # Stage 3: Moral -- check for potential harm
         context = await self.moral_agent.process(context)
 
+        # Reconsideration loop: if the moral agent flagged harm, re-run
+        # halachic reasoning with adjusted context emphasising compassion
         if context.moral_assessment and context.moral_assessment.requires_reconsideration:
             context = await self._reconsider_response(context)
 
+        # Stage 4: Voice -- craft the final user-facing response
         context = await self.voice_agent.process(context)
 
         return self._build_response(context)
 
     async def _reconsider_response(self, context: AgentContext) -> AgentContext:
-        """
-        When the moral agent flags concerns, re-run halachic reasoning
-        with additional guidance.
+        """Re-run halachic reasoning after a moral concern is flagged.
+
+        When the MoralEthicalAgent sets ``requires_reconsideration=True``,
+        the original user message is wrapped with the ethical concerns and
+        explicit guidance to lead with compassion and leniency.  The
+        HalachicReasoningAgent is then invoked again with this enriched
+        context.
+
+        Args:
+            context: The pipeline context containing the moral assessment
+                with its ethical concerns.
+
+        Returns:
+            The updated context with refreshed halachic analysis.
         """
         if context.moral_assessment:
             concerns = context.moral_assessment.ethical_concerns
@@ -133,7 +180,34 @@ Please re-analyze with special attention to:
         return context
 
     def _build_response(self, context: AgentContext) -> dict:
-        """Build the final response dictionary."""
+        """Build the final response dictionary from completed pipeline context.
+
+        Args:
+            context: The fully-processed pipeline context.
+
+        Returns:
+            A dict with the following top-level keys:
+
+            - ``response`` (str): The final response text for the user.
+            - ``requires_human_referral`` (bool): Whether the user should
+              be directed to a human rabbi or counselor.
+            - ``metadata`` (dict): Pipeline metadata containing:
+                - ``pastoral_mode`` (str | None): The pastoral mode used.
+                - ``vulnerability_detected`` (bool): Whether vulnerability
+                  was detected.
+                - ``emotional_state`` (str): Detected emotional state.
+                - ``crisis_indicators`` (list[str]): Any crisis signs.
+                - ``moral_reconsideration`` (bool): Whether a
+                  reconsideration loop was triggered.
+                - ``sources_cited`` (list[str]): Halachic sources cited.
+                - ``principles`` (list[str]): Underlying halachic
+                  principles.
+                - ``total_input_tokens`` (int): Cumulative input tokens.
+                - ``total_output_tokens`` (int): Cumulative output tokens.
+                - ``total_latency_ms`` (int): Cumulative latency in ms.
+                - ``estimated_cost_usd`` (float): Estimated total cost.
+                - ``agent_metrics`` (dict): Per-agent breakdowns.
+        """
         response = {
             "response": context.final_response,
             "requires_human_referral": False,
@@ -177,11 +251,28 @@ Please re-analyze with special attention to:
         user_denomination: Optional[str] = None,
         user_bio: Optional[str] = None,
     ):
-        """
-        Process a user message through the agent pipeline with streaming final response.
+        """Process a user message with a streaming final response.
+
+        The first three agents (pastoral, halachic, moral) run
+        non-streaming.  The voice agent streams its output token by token.
+        Three event types are yielded:
+
+        1. ``{"type": "metadata", "data": {...}}`` -- pipeline metadata
+           emitted *before* the first token so the frontend can display
+           context (e.g. crisis indicators) immediately.
+        2. ``{"type": "token", "data": "..."}`` -- individual text chunks
+           from the voice agent's streaming response.
+        3. ``{"type": "metrics", "data": {...}}`` -- final cumulative
+           metrics emitted after the stream completes.
+
+        Args:
+            user_message: The user's question or message.
+            conversation_history: Previous messages in the conversation.
+            user_denomination: User's Jewish denomination for personalisation.
+            user_bio: User's bio for additional context.
 
         Yields:
-            dict events: Either {"type": "metadata", "data": {...}} or {"type": "token", "data": "..."}
+            dict: Event objects as described above.
         """
         context = AgentContext(
             user_message=user_message,
@@ -190,11 +281,12 @@ Please re-analyze with special attention to:
             user_bio=user_bio,
         )
 
-        # Run non-streaming agents first (pastoral, halachic, moral)
+        # Stage 1-3: Run non-streaming agents (pastoral, halachic, moral)
         context = await self.pastoral_agent.process(context)
         context = await self.halachic_agent.process(context)
         context = await self.moral_agent.process(context)
 
+        # Reconsideration loop if moral agent flagged concerns
         if context.moral_assessment and context.moral_assessment.requires_reconsideration:
             context = await self._reconsider_response(context)
 
@@ -231,13 +323,13 @@ Please re-analyze with special attention to:
 
         metadata["rag_used"] = context.metadata.get("rag_used", False)
 
-        # Yield metadata first
+        # Yield metadata first so the frontend has context before tokens arrive
         yield {"type": "metadata", "data": metadata}
 
-        # Stream the voice agent response
+        # Stage 4: Stream the voice agent response token-by-token
         for item in self.voice_agent.process_stream(context):
             if isinstance(item, LLMMetrics):
-                # Final metrics from voice agent - emit complete metrics
+                # End-of-stream sentinel -- emit complete cumulative metrics
                 yield {
                     "type": "metrics",
                     "data": {

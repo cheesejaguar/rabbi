@@ -1,4 +1,31 @@
-"""Moral-Ethical Agent - Ensures halachic reasoning aligns with moral seriousness."""
+"""Moral-Ethical Agent -- ensures halachic reasoning aligns with moral seriousness.
+
+This is the **third** agent in the pipeline and acts as an *ethical
+guardrail*.  It reviews the halachic analysis produced by the second agent
+and evaluates whether the proposed response could cause shame, exclusion,
+or other moral harm to the questioner.
+
+If harm is detected, the agent sets ``requires_reconsideration=True`` on
+its ``MoralAssessment``.  The orchestrator then triggers a *reconsideration
+loop*, re-running the HalachicReasoningAgent with additional guidance to
+prioritise compassion and leniency.
+
+Design axiom: *"A technically correct answer that causes moral or emotional
+harm is a SYSTEM FAILURE."*
+
+Expected LLM JSON output schema::
+
+    {
+      "increases_holiness":       bool,
+      "potential_harm":           list[str],
+      "dignity_preserved":        bool,
+      "requires_reconsideration": bool,
+      "ethical_concerns":         list[str],
+      "suggested_modifications":  list[str],
+      "moral_framing":            str,
+      "reasoning":                str
+    }
+"""
 
 import json
 import re
@@ -10,12 +37,24 @@ from .base import (
 
 
 class MoralEthicalAgent(BaseAgent):
-    """
-    The Moral-Ethical Agent ensures that halachic reasoning aligns with
-    moral seriousness. It acts as a check on responses that might be
-    technically correct but morally harmful.
+    """Third pipeline agent -- the ethical conscience of the system.
 
-    Primary question: "Does this response increase holiness WITHOUT increasing harm?"
+    Reviews the halachic analysis for potential moral harm and acts as a
+    check on responses that might be technically correct but morally
+    harmful.
+
+    Primary question: *"Does this response increase holiness WITHOUT
+    increasing harm?"*
+
+    The ``requires_reconsideration`` flag on the output ``MoralAssessment``
+    is the trigger for the orchestrator's reconsideration loop.  It is set
+    to True when:
+      - The response could shame or humiliate the questioner.
+      - The response increases feelings of exclusion.
+      - Religion is weaponised against the questioner.
+      - Genuine suffering is dismissed.
+      - Vulnerability was detected upstream but the response is not
+        sufficiently gentle.
     """
 
     @property
@@ -78,8 +117,27 @@ If the mode is "curiosity" or "teaching" and the question_type is "factual" or "
 Respond ONLY with the JSON object, no additional text."""
 
     async def process(self, context: AgentContext) -> AgentContext:
-        """Evaluate the moral and ethical dimensions of the proposed response."""
+        """Evaluate the moral and ethical dimensions of the proposed response.
 
+        Sends the original user question, pastoral context, halachic
+        analysis, and the current draft response to the LLM for ethical
+        review.  The resulting ``MoralAssessment`` is stored on
+        ``context.moral_assessment``.
+
+        If ``requires_reconsideration`` is True on the returned assessment,
+        the orchestrator will re-run halachic reasoning with guidance to
+        prioritise compassion and dignity.
+
+        Args:
+            context: The shared pipeline context.  Reads
+                ``user_message``, ``pastoral_context``,
+                ``halachic_landscape``, and ``intermediate_response``.
+
+        Returns:
+            The same context with ``moral_assessment`` populated.
+        """
+
+        # Build pastoral context summary for the moral evaluation prompt
         pastoral_info = ""
         if context.pastoral_context:
             pc = context.pastoral_context
@@ -128,7 +186,21 @@ Evaluate this for moral and ethical concerns. Does it increase holiness without 
         return context
 
     def _parse_response(self, response: str) -> MoralAssessment:
-        """Parse the Claude response into a MoralAssessment object."""
+        """Parse the LLM's JSON response into a ``MoralAssessment``.
+
+        If the LLM includes ``suggested_modifications``, they are appended
+        to ``ethical_concerns`` so all actionable guidance is in one list.
+
+        On parse failure, returns a *permissive* default (no
+        reconsideration) since a parsing error should not block the
+        pipeline.
+
+        Args:
+            response: Raw text output from the LLM.
+
+        Returns:
+            A populated ``MoralAssessment`` instance.
+        """
         try:
             json_match = re.search(r'\{[\s\S]*\}', response)
             if json_match:

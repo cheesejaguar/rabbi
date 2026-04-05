@@ -1,4 +1,25 @@
-"""Pastoral Context Agent - Determines HOW to answer before WHAT to answer."""
+"""Pastoral Context Agent -- determines HOW to answer before WHAT to answer.
+
+This is the **first** agent in the pipeline.  It analyses the user's message
+for emotional state, vulnerability, and crisis indicators, then produces a
+``PastoralContext`` that constrains every downstream agent.  Crucially, when
+vulnerability is detected the resulting context prohibits halachic maximalism
+in the HalachicReasoningAgent and requires a gentle, validating tone from the
+MetaRabbinicVoiceAgent.
+
+Expected LLM JSON output schema::
+
+    {
+      "mode":                   "teaching" | "counseling" | "crisis" | "curiosity",
+      "tone":                   "gentle" | "firm" | "exploratory" | "validating",
+      "authority_level":        "definitive" | "suggestive" | "exploratory",
+      "vulnerability_detected": bool,
+      "crisis_indicators":      list[str],
+      "emotional_state":        str,
+      "requires_human_referral": bool,
+      "reasoning":              str
+    }
+"""
 
 import json
 import re
@@ -13,13 +34,13 @@ from .base import (
 
 
 class PastoralContextAgent(BaseAgent):
-    """
-    The Pastoral Context Agent has the highest priority in the system.
-    It determines the emotional and situational context before any
-    halachic or moral reasoning takes place.
+    """First pipeline agent -- highest priority in the system.
 
-    Key responsibility: If vulnerability is detected, halachic maximalism is prohibited.
-    "A psak that breaks a person is not Torah."
+    Determines the emotional and situational context before any halachic or
+    moral reasoning takes place.
+
+    Key responsibility: if vulnerability is detected, halachic maximalism is
+    prohibited downstream.  *"A psak that breaks a person is not Torah."*
     """
 
     @property
@@ -90,7 +111,25 @@ HARD RULES:
 Respond ONLY with the JSON object, no additional text."""
 
     async def process(self, context: AgentContext) -> AgentContext:
-        """Analyze the user's message to determine pastoral context."""
+        """Analyse the user's message to determine pastoral context.
+
+        Sends the user message (with optional denomination/bio and recent
+        conversation history) to the LLM, then parses the JSON response
+        into a ``PastoralContext`` stored on ``context.pastoral_context``.
+
+        The resulting ``PastoralContext`` propagates to every downstream
+        agent.  In particular, ``vulnerability_detected=True`` forces the
+        HalachicReasoningAgent to suppress maximalism and lead with
+        compassion.
+
+        Args:
+            context: The shared pipeline context.  Only ``user_message``,
+                ``conversation_history``, ``user_denomination``, and
+                ``user_bio`` are read.
+
+        Returns:
+            The same context with ``pastoral_context`` populated.
+        """
 
         # Build user background context from profile
         user_background = ""
@@ -125,7 +164,19 @@ Respond ONLY with the JSON object, no additional text."""
         return context
 
     def _parse_response(self, response: str) -> PastoralContext:
-        """Parse the Claude response into a PastoralContext object."""
+        """Parse the LLM's JSON response into a ``PastoralContext``.
+
+        Attempts to extract a JSON object from the response text (the LLM
+        sometimes wraps it in markdown fences).  On any parse failure,
+        returns a *safe default* context with vulnerability set to True and
+        a gentle tone -- erring on the side of caution.
+
+        Args:
+            response: Raw text output from the LLM.
+
+        Returns:
+            A populated ``PastoralContext`` instance.
+        """
         try:
             json_match = re.search(r'\{[\s\S]*\}', response)
             if json_match:

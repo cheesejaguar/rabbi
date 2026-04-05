@@ -1,11 +1,21 @@
 <!DOCTYPE html>
+<!--
+  rebbe.dev - Torah Wisdom Chatbot
+  Single-page application with four main screens:
+  1. Welcome Screen - Initial greeting with d'var Torah and suggestion chips
+  2. Chat Screen - Streaming conversation with the AI rabbi
+  3. Settings Screen - User profile, credits, and denomination preferences
+  4. D'var Torah Screen - Full weekly Torah commentary view
+  Plus: Sidebar navigation, Purchase modal (Stripe), User menu dropdown
+-->
 <html lang="en">
 <head>
+    <!-- ========== Charset & Viewport ========== -->
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <meta name="theme-color" content="#1a1a1a">
 
-    <!-- Favicons -->
+    <!-- ========== Favicons & Apple Web App ========== -->
     <link rel="icon" type="image/x-icon" href="/static/favicon.ico">
     <link rel="icon" type="image/png" sizes="32x32" href="/static/favicon-32x32.png">
     <link rel="icon" type="image/png" sizes="16x16" href="/static/favicon-16x16.png">
@@ -14,10 +24,10 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <title>rebbe.dev</title>
 
-    <!-- SEO -->
+    <!-- ========== SEO Meta ========== -->
     <meta name="description" content="AI-powered guidance rooted in Jewish wisdom. Ask questions about Torah, Shabbat, prayer, and life - get thoughtful, compassionate responses.">
 
-    <!-- Open Graph -->
+    <!-- ========== Open Graph (Facebook, LinkedIn, etc.) ========== -->
     <meta property="og:type" content="website">
     <meta property="og:url" content="https://rebbe.dev">
     <meta property="og:site_name" content="rebbe.dev">
@@ -25,29 +35,41 @@
     <meta property="og:description" content="AI-powered guidance rooted in Jewish wisdom. Ask questions about Torah, Shabbat, prayer, and life - get thoughtful, compassionate responses.">
     <meta property="og:image" content="https://rebbe.dev/static/og-image.png">
 
-    <!-- Twitter Card -->
+    <!-- ========== Twitter Card ========== -->
     <meta name="twitter:card" content="summary_large_image">
     <meta name="twitter:title" content="rebbe.dev - AI Rabbi for Modern Life">
     <meta name="twitter:description" content="AI-powered guidance rooted in Jewish wisdom. Ask questions about Torah, Shabbat, prayer, and life.">
     <meta name="twitter:image" content="https://rebbe.dev/static/og-image.png">
+
+    <!-- ========== External Resources (Fonts & Styles) ========== -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="/static/styles.css?v=24">
+    <link rel="stylesheet" href="/static/styles.css?v=25">
 </head>
 <body>
     <div class="app-container">
-        <!-- Sidebar -->
+
+        <!-- ================================================================
+             SIDEBAR - Left-hand navigation drawer
+             Contains: New Chat button, conversation history list, user profile.
+             Toggled via toggleSidebar() in app.js. On mobile, an overlay
+             (#sidebarOverlay) covers the main content when the sidebar is open.
+             ================================================================ -->
         <aside class="sidebar" id="sidebar">
             <div class="sidebar-header">
+                <!-- New Chat button - resets conversation via startNewChat() in app.js -->
                 <button class="new-chat-btn" id="newChatBtn">
+                    <!-- Plus icon - starts a new conversation -->
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                         <line x1="12" y1="5" x2="12" y2="19"></line>
                         <line x1="5" y1="12" x2="19" y2="12"></line>
                     </svg>
                     New chat
                 </button>
+                <!-- aria-label provides accessible name for this icon-only button -->
                 <button class="sidebar-toggle" id="sidebarToggle" aria-label="Toggle sidebar">
+                    <!-- Sidebar panel icon - toggles sidebar visibility -->
                     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                         <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
                         <line x1="9" y1="3" x2="9" y2="21"></line>
@@ -55,22 +77,26 @@
                 </button>
             </div>
 
+            <!-- Conversation history list - populated by loadConversations() in app.js -->
             <div class="sidebar-content">
                 <div class="conversations-section">
                     <h3 class="section-title">Recent</h3>
                     <div class="conversations-list" id="conversationsList">
-                        <!-- Conversations will be loaded here -->
+                        <!-- Conversations will be loaded here dynamically -->
                     </div>
                 </div>
             </div>
 
+            <!-- Sidebar footer - user profile and dropdown menu -->
             <div class="sidebar-footer">
                 <div class="user-profile" id="userProfile">
                     <div class="user-avatar" id="sidebarUserAvatar">?</div>
                     <div class="user-details">
                         <span class="user-name" id="sidebarUserName">User</span>
                     </div>
+                    <!-- aria-label not present; toggle is labeled by visible "User" text -->
                     <button class="user-menu-toggle" id="sidebarUserMenuToggle">
+                        <!-- Vertical ellipsis (three dots) icon - opens user dropdown menu -->
                         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                             <circle cx="12" cy="12" r="1"></circle>
                             <circle cx="12" cy="5" r="1"></circle>
@@ -78,8 +104,11 @@
                         </svg>
                     </button>
                 </div>
+
+                <!-- User dropdown menu - Settings and Logout actions -->
                 <div class="user-dropdown hidden" id="sidebarDropdown">
                     <button class="dropdown-item" id="settingsBtn">
+                        <!-- Settings gear icon -->
                         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                             <circle cx="12" cy="12" r="3"/>
                             <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/>
@@ -88,6 +117,7 @@
                     </button>
                     <div class="dropdown-divider"></div>
                     <a href="/auth/logout" class="dropdown-item dropdown-item-danger">
+                        <!-- Logout door-arrow icon -->
                         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                             <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/>
                             <polyline points="16 17 21 12 16 7"/>
@@ -99,11 +129,23 @@
             </div>
         </aside>
 
-        <!-- Main Content -->
+        <!-- ================================================================
+             MAIN CONTENT AREA
+             Contains all four application screens (only one visible at a time):
+             - Welcome Screen, Chat Screen, Settings Screen, D'var Torah Screen
+             Screen visibility is managed by showScreen() in app.js.
+             ================================================================ -->
         <main class="main-content" id="mainContent">
-            <!-- Welcome Screen -->
+
+            <!-- ============================================================
+                 WELCOME SCREEN - Initial landing view
+                 Shows greeting text, weekly d'var Torah card, message input,
+                 and suggestion chips. Driven by fetchGreeting() in app.js.
+                 ============================================================ -->
             <div class="welcome-screen" id="welcomeScreen">
+                <!-- aria-label provides accessible name for this icon-only button -->
                 <button class="menu-btn welcome-menu-btn" id="welcomeMenuBtn" aria-label="Toggle menu">
+                    <!-- Hamburger menu icon - opens sidebar on mobile -->
                     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                         <line x1="3" y1="12" x2="21" y2="12"></line>
                         <line x1="3" y1="6" x2="21" y2="6"></line>
@@ -112,12 +154,34 @@
                 </button>
                 <div class="welcome-content">
                     <h1 class="greeting">
+                        <!-- Star of David logo - brand identity icon -->
                         <svg class="greeting-icon" width="32" height="32" viewBox="0 0 600 700" fill="none" stroke="currentColor" stroke-width="40" stroke-linecap="round" stroke-linejoin="round">
                             <path d="M 47.631413,492.11477 552.36859,492.11491 300,54.999953 Z M 300,637.81981 552.36851,200.70493 47.631403,200.70481 Z"/>
                         </svg>
                         <span class="greeting-text" id="greetingText">Shalom, how can I help?</span>
                     </h1>
 
+                    <!-- D'var Torah Card - Weekly Torah portion preview
+                         Populated by fetchGreeting() when the API returns dvar_torah data.
+                         Expand button navigates to the full D'var Torah screen. -->
+                    <div class="dvar-torah-section hidden" id="dvarTorahSection">
+                        <div class="dvar-torah-card">
+                            <div class="dvar-torah-header">
+                                <span class="dvar-torah-label">This Week's Torah Portion</span>
+                                <span class="dvar-torah-parsha" id="dvarTorahParsha"></span>
+                            </div>
+                            <div class="dvar-torah-preview" id="dvarTorahPreview"></div>
+                            <button class="dvar-torah-expand-btn" id="dvarTorahExpandBtn">
+                                <!-- Open book icon - navigates to full d'var Torah view -->
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                    <path d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253"/>
+                                </svg>
+                                Read the full d'var Torah
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Primary message input - sends first message via sendMessage() in app.js -->
                     <div class="input-container">
                         <textarea
                             id="messageInput"
@@ -125,7 +189,9 @@
                             rows="1"
                         ></textarea>
                         <div class="input-actions">
+                            <!-- aria-label provides accessible name for this icon-only button -->
                             <button class="send-btn" id="sendBtn" aria-label="Send message">
+                                <!-- Upward arrow icon - submits the message -->
                                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                                     <path d="M12 19V5M5 12l7-7 7 7"/>
                                 </svg>
@@ -133,14 +199,19 @@
                         </div>
                     </div>
 
+                    <!-- Suggestion chips - pre-filled prompts for common topics.
+                         Each chip's data-prompt attribute is sent as the user message
+                         when clicked, handled by click listeners in app.js. -->
                     <div class="suggestions">
                         <button class="suggestion-chip" data-prompt="What does the Torah say about kindness?">
+                            <!-- Open book icon - Torah topic -->
                             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                                 <path d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253"/>
                             </svg>
                             Torah
                         </button>
                         <button class="suggestion-chip" data-prompt="How do I observe Shabbat in a meaningful way?">
+                            <!-- Sun icon - Shabbat topic -->
                             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                                 <circle cx="12" cy="12" r="5"/>
                                 <path d="M12 1v2m0 18v2M4.22 4.22l1.42 1.42m12.72 12.72l1.42 1.42M1 12h2m18 0h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/>
@@ -148,12 +219,14 @@
                             Shabbat
                         </button>
                         <button class="suggestion-chip" data-prompt="What prayers should I say when I'm going through a difficult time?">
+                            <!-- Heart icon - Prayer topic -->
                             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                                 <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/>
                             </svg>
                             Prayer
                         </button>
                         <button class="suggestion-chip" data-prompt="I'm struggling with something in my life and could use guidance.">
+                            <!-- Speech bubble icon - Guidance/counseling topic -->
                             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                                 <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
                             </svg>
@@ -162,15 +235,23 @@
                     </div>
                 </div>
 
+                <!-- Halachic disclaimer - always visible at the bottom of the welcome screen -->
                 <p class="disclaimer">
                     This is guidance, not binding psak. A rabbi who knows you personally may counsel differently.
                 </p>
             </div>
 
-            <!-- Chat Screen -->
+            <!-- ============================================================
+                 CHAT SCREEN - Active conversation view
+                 Displays streaming messages from the AI rabbi. Messages are
+                 appended to #chatMessages by appendMessage() and streamed
+                 via streamResponse() in app.js.
+                 ============================================================ -->
             <div class="chat-screen hidden" id="chatScreen">
                 <header class="chat-header">
+                    <!-- aria-label provides accessible name for this icon-only button -->
                     <button class="menu-btn" id="menuBtn" aria-label="Toggle menu">
+                        <!-- Hamburger menu icon - opens sidebar on mobile -->
                         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                             <line x1="3" y1="12" x2="21" y2="12"></line>
                             <line x1="3" y1="6" x2="21" y2="6"></line>
@@ -182,10 +263,12 @@
                 </header>
 
                 <main class="chat-messages" id="chatMessages">
-                    <!-- Messages will be inserted here -->
+                    <!-- Messages will be inserted here dynamically by app.js -->
                 </main>
 
-                <!-- Human Referral Notice -->
+                <!-- Human Referral Notice - shown when the AI detects the user
+                     may benefit from speaking with a human rabbi or counselor.
+                     Visibility toggled by the moral/pastoral pipeline agents. -->
                 <div class="referral-notice hidden" id="referralNotice">
                     <span class="referral-icon">&#x1F56F;</span>
                     <p>This seems like something where speaking with a human rabbi or counselor could be really valuable.</p>
@@ -198,7 +281,9 @@
                             placeholder="Ask a follow-up..."
                             rows="1"
                         ></textarea>
+                        <!-- aria-label provides accessible name for this icon-only button -->
                         <button class="send-btn" id="chatSendBtn" aria-label="Send message">
+                            <!-- Upward arrow icon - submits the follow-up message -->
                             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                                 <path d="M12 19V5M5 12l7-7 7 7"/>
                             </svg>
@@ -207,10 +292,17 @@
                 </footer>
             </div>
 
-            <!-- Settings Screen -->
+            <!-- ============================================================
+                 SETTINGS SCREEN - User profile and account management
+                 Sections: Account (credits + buy button), Profile (name,
+                 email, denomination, bio). Shown via showScreen('settings')
+                 and populated by loadSettings() in app.js.
+                 ============================================================ -->
             <div class="settings-screen hidden" id="settingsScreen">
                 <header class="settings-header">
+                    <!-- aria-label provides accessible name for this icon-only button -->
                     <button class="back-btn" id="settingsBackBtn" aria-label="Go back">
+                        <!-- Left arrow icon - returns to previous screen -->
                         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                             <path d="M19 12H5M12 19l-7-7 7-7"/>
                         </svg>
@@ -220,11 +312,13 @@
                 </header>
 
                 <div class="settings-content">
+                    <!-- Account section - credits balance and purchase button -->
                     <div class="settings-section">
                         <h2 class="settings-section-title">Account</h2>
                         <div class="settings-card">
                             <div class="settings-row">
                                 <div class="settings-row-icon">
+                                    <!-- Clock icon - represents credit/usage tracking -->
                                     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                                         <circle cx="12" cy="12" r="10"/>
                                         <path d="M12 6v6l4 2"/>
@@ -238,7 +332,9 @@
                             <div class="settings-row-description">
                                 Each chat message uses 1 credit. Credits help us manage API costs.
                             </div>
+                            <!-- Opens the Purchase Credits modal (#purchaseModal) -->
                             <button class="buy-credits-btn" id="buyCreditsBtn">
+                                <!-- Plus icon - add/buy credits -->
                                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                                     <line x1="12" y1="5" x2="12" y2="19"></line>
                                     <line x1="5" y1="12" x2="19" y2="12"></line>
@@ -248,11 +344,13 @@
                         </div>
                     </div>
 
+                    <!-- Profile section - user details and preferences -->
                     <div class="settings-section">
                         <h2 class="settings-section-title">Profile</h2>
                         <div class="settings-card">
                             <div class="settings-row">
                                 <div class="settings-row-icon">
+                                    <!-- Person icon - user name field -->
                                     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                                         <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/>
                                         <circle cx="12" cy="7" r="4"/>
@@ -266,6 +364,7 @@
                             <div class="settings-divider"></div>
                             <div class="settings-row">
                                 <div class="settings-row-icon">
+                                    <!-- Envelope icon - user email field -->
                                     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                                         <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/>
                                         <polyline points="22,6 12,13 2,6"/>
@@ -279,12 +378,18 @@
                             <div class="settings-divider"></div>
                             <div class="settings-row">
                                 <div class="settings-row-icon">
+                                    <!-- Star icon - denomination preference -->
                                     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                                         <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/>
                                     </svg>
                                 </div>
                                 <div class="settings-row-content">
                                     <span class="settings-row-label">Denomination</span>
+                                    <!-- Denomination select - these option values map to backend
+                                         DenominationConfig entries defined in
+                                         backend/app/agents/denominations.py. Each value configures
+                                         halachic authority levels, source preferences, and
+                                         tone adjustments for the multi-agent pipeline. -->
                                     <select class="settings-select" id="denominationSelect">
                                         <option value="">Select...</option>
                                         <option value="reconstructionist">Reconstructionist</option>
@@ -310,6 +415,7 @@
                             <div class="settings-divider"></div>
                             <div class="settings-row settings-row-bio">
                                 <div class="settings-row-icon">
+                                    <!-- Document icon - bio/about field -->
                                     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                                         <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
                                         <polyline points="14 2 14 8 20 8"/>
@@ -328,7 +434,9 @@
                             <div class="settings-row-description">
                                 Your bio provides context to help personalize responses.
                             </div>
+                            <!-- Saves denomination and bio via saveProfile() in app.js -->
                             <button class="save-profile-btn" id="saveProfileBtn">
+                                <!-- Floppy disk / save icon -->
                                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                                     <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/>
                                     <polyline points="17 21 17 13 7 13 7 21"/>
@@ -341,7 +449,30 @@
                 </div>
             </div>
 
-            <!-- Loading Indicator -->
+            <!-- ============================================================
+                 D'VAR TORAH FULL SCREEN - Weekly Torah commentary
+                 Displays the complete d'var Torah text with markdown rendering.
+                 Content loaded into #dvarTorahScreenContent by showDvarTorah()
+                 in app.js. Back button returns to the welcome screen.
+                 ============================================================ -->
+            <div class="dvar-torah-screen hidden" id="dvarTorahScreen">
+                <header class="dvar-torah-screen-header">
+                    <!-- aria-label provides accessible name for this icon-only button -->
+                    <button class="back-btn" id="dvarTorahBackBtn" aria-label="Go back">
+                        <!-- Left arrow icon - returns to welcome screen -->
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M19 12H5M12 19l-7-7 7-7"/>
+                        </svg>
+                    </button>
+                    <h1 class="dvar-torah-screen-title" id="dvarTorahScreenTitle">D'var Torah</h1>
+                    <div class="header-spacer"></div>
+                </header>
+                <div class="dvar-torah-screen-content" id="dvarTorahScreenContent">
+                    <!-- Full d'var Torah text rendered here -->
+                </div>
+            </div>
+
+            <!-- Loading indicator - three animated dots shown during API requests -->
             <div class="loading-indicator hidden" id="loadingIndicator">
                 <div class="loading-dots">
                     <span></span>
@@ -352,15 +483,26 @@
         </main>
     </div>
 
-    <!-- Mobile overlay for sidebar -->
+    <!-- Mobile overlay - semi-transparent backdrop behind sidebar on small screens.
+         Clicking it closes the sidebar. Managed by toggleSidebar() in app.js. -->
     <div class="sidebar-overlay hidden" id="sidebarOverlay"></div>
 
-    <!-- Purchase Credits Modal -->
+    <!-- ====================================================================
+         PURCHASE CREDITS MODAL
+         Stripe-powered payment dialog for buying chat credits.
+         Accessibility: role="dialog" and aria-modal="true" trap focus within
+         the modal for screen readers. aria-labelledby points to the modal
+         title element for accessible naming.
+         Payment flow managed by initPayment() and submitPayment() in app.js.
+         ==================================================================== -->
     <div class="modal-overlay hidden" id="purchaseModal" role="dialog" aria-modal="true" aria-labelledby="purchaseModalTitle">
         <div class="modal-content">
             <div class="modal-header">
+                <!-- aria-labelledby on the modal references this heading for screen readers -->
                 <h2 id="purchaseModalTitle">Purchase Credits</h2>
+                <!-- aria-label provides accessible name for this icon-only button -->
                 <button class="modal-close" id="closePurchaseModal" aria-label="Close">
+                    <!-- X / close icon - dismisses the purchase modal -->
                     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                         <line x1="18" y1="6" x2="6" y2="18"></line>
                         <line x1="6" y1="6" x2="18" y2="18"></line>
@@ -368,6 +510,9 @@
                 </button>
             </div>
 
+            <!-- Package selection - credit bundles with pricing.
+                 data-package values correspond to backend package IDs
+                 in backend/app/payments.py. -->
             <div class="package-selection" id="packageSelection">
                 <button class="package-card selected" data-package="credits_10">
                     <span class="package-credits">10 credits</span>
@@ -380,6 +525,9 @@
                 </button>
             </div>
 
+            <!-- Stripe Payment Element container - Stripe.js injects the
+                 payment form (card, Apple Pay, etc.) into this div.
+                 Initialized by initPayment() in app.js. -->
             <div id="paymentElementContainer">
                 <div class="payment-loading">Loading payment form...</div>
             </div>
@@ -389,6 +537,7 @@
                     Pay Now
                 </button>
                 <p class="payment-secure">
+                    <!-- Lock icon - visual trust indicator for secure payments -->
                     <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                         <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
                         <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
@@ -397,8 +546,11 @@
                 </p>
             </div>
 
+            <!-- Payment status feedback - success/error states shown after
+                 Stripe confirms or rejects the payment. -->
             <div class="payment-status hidden" id="paymentStatus">
                 <div class="payment-success hidden" id="paymentSuccess">
+                    <!-- Checkmark circle icon - payment succeeded -->
                     <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                         <circle cx="12" cy="12" r="10"/>
                         <path d="M9 12l2 2 4-4"/>
@@ -412,6 +564,11 @@
         </div>
     </div>
 
-    <script src="/static/app.js?v=24"></script>
+    <!-- Main application script - handles all UI interactions, screen
+         navigation, chat streaming, and payment flow. Stripe.js
+         (https://js.stripe.com/v3/) is loaded dynamically by app.js
+         when the purchase modal opens (PCI compliance requires loading
+         from Stripe's CDN for card tokenization). -->
+    <script src="/static/app.js?v=25"></script>
 </body>
 </html>

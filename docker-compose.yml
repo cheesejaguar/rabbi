@@ -1,12 +1,24 @@
+# Docker Compose configuration for local development of rebbe.dev
+# Usage: docker compose up --build
+
 services:
   rebbe:
     build: .
     ports:
+      # Map host port 8613 to container port 8000 (where uvicorn listens).
+      # Access the app at http://localhost:8613
       - "8613:8000"
+    # Load environment variables (API keys, DB URL, etc.) from the .env file
     env_file:
       - .env
+    # Environment variable overrides — these take precedence over .env values.
+    # LLM_MODEL defaults to Claude Sonnet if not set in the host environment.
     environment:
       - LLM_MODEL=${LLM_MODEL:-anthropic/claude-sonnet-4-20250514}
     volumes:
+      # Bind-mount the frontend directory read-only (:ro) so that HTML/CSS/JS
+      # changes are reflected immediately without rebuilding the image.
       - ./frontend:/app/frontend:ro
+    # Automatically restart the container unless it was explicitly stopped.
+    # Handles transient failures without manual intervention.
     restart: unless-stopped
