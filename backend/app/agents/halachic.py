@@ -1,4 +1,27 @@
-"""Halachic Reasoning Agent - Engages halacha as a living, pluralistic legal system."""
+"""Halachic Reasoning Agent -- engages halacha as a living, pluralistic legal system.
+
+This is the **second** agent in the pipeline.  It receives the
+``PastoralContext`` from the first agent and uses it to calibrate the depth,
+tone, and emphasis of its halachic analysis.  When vulnerability is detected,
+the agent *must* lead with compassion and emphasise lenient opinions.
+
+The agent also incorporates denomination-specific guidance (via
+``denominations.get_denomination_config``) so that sources, framing, and
+leniency bias are tailored to the user's Jewish movement.
+
+Expected LLM JSON output schema::
+
+    {
+      "majority_view":              str,
+      "minority_views":             list[str],
+      "underlying_principles":      list[str],
+      "precedents_for_leniency":    list[str],
+      "non_negotiable_boundaries":  list[str],
+      "sources_cited":              list[str],
+      "summary_for_user":           str,
+      "reasoning":                  str
+    }
+"""
 
 import json
 import logging
@@ -111,13 +134,21 @@ def _should_use_rag(user_message: str, pastoral_mode: Optional[PastoralMode] = N
 
 
 class HalachicReasoningAgent(BaseAgent):
-    """
-    The Halachic Reasoning Agent engages with Jewish law as a living,
-    pluralistic legal system. It presents ranges of opinion rather than
-    single conclusions and explicitly labels different categories of law.
+    """Second pipeline agent -- provides the halachic landscape.
+
+    Engages with Jewish law as a living, pluralistic legal system.  Presents
+    ranges of opinion rather than single conclusions and explicitly labels
+    different categories of law (de'oraita vs. derabbanan, minhag vs. strict
+    law, majority vs. minority positions).
 
     When a TextRetriever is available, the agent retrieves relevant source
     texts from the library to ground its analysis in primary sources.
+
+    The pastoral context modifies this agent's output:
+      - **Vulnerability detected**: lead with compassion, emphasise leniency.
+      - **Crisis mode**: focus on immediate practical guidance and referral.
+      - **Teaching mode**: provide comprehensive analysis.
+      - **Curiosity mode**: engage intellectually while remaining warm.
     """
 
     def __init__(self, client, model: str = "anthropic/claude-sonnet-4-20250514",
@@ -188,8 +219,26 @@ When providing your analysis, focus on the halachic substance. Do NOT embed refe
 Respond ONLY with the JSON object, no additional text."""
 
     async def process(self, context: AgentContext) -> AgentContext:
-        """Analyze the halachic dimensions of the user's question."""
+        """Analyse the halachic dimensions of the user's question.
 
+        Constructs a prompt that includes the upstream pastoral context,
+        denomination-specific guidance, and user bio, then sends it to the
+        LLM.  The parsed ``HalachicLandscape`` is stored on
+        ``context.halachic_landscape``, and the majority view (or
+        user-facing summary) is also written to
+        ``context.intermediate_response`` for the moral agent to evaluate.
+
+        Args:
+            context: The shared pipeline context.  Reads
+                ``pastoral_context``, ``user_denomination``, ``user_bio``,
+                and ``user_message``.
+
+        Returns:
+            The same context with ``halachic_landscape`` and
+            ``intermediate_response`` populated.
+        """
+
+        # Build pastoral context string to guide the halachic analysis
         pastoral_info = ""
         if context.pastoral_context:
             pc = context.pastoral_context
@@ -278,7 +327,21 @@ Provide a halachic landscape analysis for this question, adjusted appropriately 
         return context
 
     def _parse_response(self, response: str) -> HalachicLandscape:
-        """Parse the Claude response into a HalachicLandscape object."""
+        """Parse the LLM's JSON response into a ``HalachicLandscape``.
+
+        If the LLM returns a ``summary_for_user`` key, it overrides the
+        ``majority_view`` field so the downstream voice agent receives the
+        more accessible wording.
+
+        On parse failure, returns a safe fallback that recommends human
+        rabbinic consultation.
+
+        Args:
+            response: Raw text output from the LLM.
+
+        Returns:
+            A populated ``HalachicLandscape`` instance.
+        """
         try:
             json_match = re.search(r'\{[\s\S]*\}', response)
             if json_match:

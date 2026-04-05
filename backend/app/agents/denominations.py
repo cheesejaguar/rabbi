@@ -1,4 +1,27 @@
-"""Denomination configurations for tailoring agent responses to different Jewish movements."""
+"""Denomination configurations for tailoring agent responses to different Jewish movements.
+
+Defines ``DenominationConfig`` dataclass and a registry of 14 supported
+denominations:
+
+1.  Reconstructionist
+2.  Jewish Renewal
+3.  Humanistic
+4.  Reform
+5.  Conservative
+6.  Orthodox
+7.  Modern Orthodox
+8.  Haredi
+9.  Hasidic
+10. Litvish / Yeshivish
+11. Open Orthodox
+12. Just Jewish (unaffiliated)
+13. Secular / Cultural
+14. Not Jewish
+
+Each configuration controls how the HalachicReasoningAgent selects and
+frames sources and how the MetaRabbinicVoiceAgent adapts its tone and
+referral language.
+"""
 
 from dataclasses import dataclass
 from typing import Optional
@@ -6,7 +29,32 @@ from typing import Optional
 
 @dataclass
 class DenominationConfig:
-    """Configuration for denomination-specific behavior in the agent pipeline."""
+    """Configuration for denomination-specific behaviour in the agent pipeline.
+
+    Attributes:
+        name: Internal key used in the ``DENOMINATIONS`` registry (e.g.
+            ``"reform"``, ``"orthodox"``).
+        display_name: Human-readable label shown in prompts and UI (e.g.
+            ``"Modern Orthodox"``).
+        primary_sources: List of source traditions the halachic agent
+            should emphasise for this denomination.
+        source_approach: Prose guidance describing how to use traditional
+            sources for this denomination.
+        halachic_stance: Prose description of how this denomination
+            relates to halacha (binding, evolving, optional, etc.).
+        leniency_bias: One of ``"high"``, ``"moderate"``, or ``"low"``.
+            Guides how aggressively the halachic agent should surface
+            lenient opinions.
+        voice_description: Guidance for the voice agent on *how* to meet
+            a person from this background (tone, assumptions, framing).
+        authority_framing: Template phrases the voice agent should use
+            when presenting halachic conclusions (e.g. "The halacha is..."
+            vs. "Jewish tradition offers...").
+        refer_to_rabbi_phrasing: How to phrase the recommendation to
+            consult a human authority (e.g. "your Modern Orthodox rabbi
+            or posek").
+    """
+
     name: str
     display_name: str
     primary_sources: list[str]
@@ -18,8 +66,13 @@ class DenominationConfig:
     refer_to_rabbi_phrasing: str
 
 
-# All denomination configurations
+# ---------------------------------------------------------------------------
+# Denomination Registry
+# ---------------------------------------------------------------------------
+
+# All denomination configurations, keyed by internal name.
 DENOMINATIONS: dict[str, DenominationConfig] = {
+    # Reconstructionist -- Judaism as an evolving religious civilization (Kaplan)
     "reconstructionist": DenominationConfig(
         name="reconstructionist",
         display_name="Reconstructionist",
@@ -54,6 +107,7 @@ Present options for creating meaningful Jewish life rather than obligations.
         refer_to_rabbi_phrasing="a Reconstructionist rabbi or your community"
     ),
 
+    # Jewish Renewal -- mystical, contemplative, cross-denominational spirituality
     "renewal": DenominationConfig(
         name="renewal",
         display_name="Jewish Renewal",
@@ -89,6 +143,7 @@ Focus on meaning, connection, and transformation.
         refer_to_rabbi_phrasing="a Jewish Renewal rabbi or spiritual guide"
     ),
 
+    # Humanistic -- secular Jewish identity, ethics without supernatural belief
     "humanistic": DenominationConfig(
         name="humanistic",
         display_name="Humanistic",
@@ -124,6 +179,7 @@ Never frame as religious obligation.
         refer_to_rabbi_phrasing="a Humanistic rabbi or Jewish cultural leader"
     ),
 
+    # Reform -- individual autonomy, prophetic tradition, halacha as guide
     "reform": DenominationConfig(
         name="reform",
         display_name="Reform",
@@ -161,6 +217,7 @@ to make their own informed decision.
         refer_to_rabbi_phrasing="a Reform rabbi who knows your situation"
     ),
 
+    # Conservative -- halacha as binding but evolving, CJLS-guided process
     "conservative": DenominationConfig(
         name="conservative",
         display_name="Conservative",
@@ -197,6 +254,7 @@ Acknowledge when multiple valid positions exist within the movement.
         refer_to_rabbi_phrasing="a Conservative rabbi or your local mara d'atra"
     ),
 
+    # Orthodox -- fully binding halacha, Shulchan Aruch and classical poskim
     "orthodox": DenominationConfig(
         name="orthodox",
         display_name="Orthodox",
@@ -233,6 +291,7 @@ Present requirements clearly while maintaining warmth.
         refer_to_rabbi_phrasing="your local Orthodox rabbi or posek"
     ),
 
+    # Modern Orthodox -- full observance engaged with modernity (Torah u'Madda)
     "modern_orthodox": DenominationConfig(
         name="modern_orthodox",
         display_name="Modern Orthodox",
@@ -271,6 +330,7 @@ Present the range of legitimate Orthodox positions when relevant.
         refer_to_rabbi_phrasing="your Modern Orthodox rabbi or posek"
     ),
 
+    # Haredi -- strict halachic commitment, deference to Gedolim and Da'as Torah
     "haredi": DenominationConfig(
         name="haredi",
         display_name="Haredi",
@@ -309,6 +369,7 @@ Acknowledge difficulty with empathy but maintain clarity about requirements.
         refer_to_rabbi_phrasing="your Rav or a recognized posek"
     ),
 
+    # Hasidic -- binding halacha enriched by Chassidic spirituality and minhagim
     "hasidic": DenominationConfig(
         name="hasidic",
         display_name="Hasidic",
@@ -353,6 +414,7 @@ means is..."
         refer_to_rabbi_phrasing="your rebbe or mashpia"
     ),
 
+    # Litvish/Yeshivish -- rigorous Talmudic analysis, precision in halacha
     "litvish": DenominationConfig(
         name="litvish",
         display_name="Litvish/Yeshivish",
@@ -390,6 +452,7 @@ Present conclusions with intellectual clarity.
         refer_to_rabbi_phrasing="your Rav or rosh yeshiva"
     ),
 
+    # Open Orthodox -- full halachic commitment, actively addressing modern challenges
     "open_orthodox": DenominationConfig(
         name="open_orthodox",
         display_name="Open Orthodox",
@@ -426,6 +489,7 @@ and the range of legitimate Orthodox positions.
         refer_to_rabbi_phrasing="an Orthodox rabbi familiar with your situation"
     ),
 
+    # Just Jewish -- unaffiliated, no assumed denomination or observance level
     "just_jewish": DenominationConfig(
         name="just_jewish",
         display_name="Just Jewish",
@@ -462,6 +526,7 @@ present multiple perspectives.
         refer_to_rabbi_phrasing="a rabbi from whichever tradition resonates with you"
     ),
 
+    # Secular/Cultural -- Jewish identity through culture and ethics, not religion
     "secular": DenominationConfig(
         name="secular",
         display_name="Secular/Cultural",
@@ -497,6 +562,7 @@ Frame as: "Jewish tradition has historically taught..." or
         refer_to_rabbi_phrasing="a Jewish educator or cultural guide"
     ),
 
+    # Not Jewish -- non-Jewish visitor curious about Jewish wisdom and ethics
     "not_jewish": DenominationConfig(
         name="not_jewish",
         display_name="Not Jewish",
@@ -535,14 +601,28 @@ Be educational and welcoming. Explain rather than prescribe.
 
 
 def get_denomination_config(denomination: str) -> Optional[DenominationConfig]:
-    """Get the configuration for a denomination. Returns None if not found."""
+    """Look up the configuration for a denomination by its internal key.
+
+    Args:
+        denomination: The internal denomination key (e.g. ``"reform"``,
+            ``"orthodox"``, ``"just_jewish"``).
+
+    Returns:
+        The matching ``DenominationConfig``, or ``None`` if the key is not
+        found in the registry.
+    """
     return DENOMINATIONS.get(denomination)
 
 
 def get_default_denomination() -> str:
-    """Get the default denomination for users who haven't set one."""
+    """Return the default denomination key for users who have not set one.
+
+    Returns:
+        The string ``"just_jewish"``, which presents the full range of
+        Jewish thought without privileging any single movement.
+    """
     return "just_jewish"
 
 
-# List of valid denomination values for validation
+# List of valid denomination keys, useful for input validation.
 VALID_DENOMINATIONS = list(DENOMINATIONS.keys())

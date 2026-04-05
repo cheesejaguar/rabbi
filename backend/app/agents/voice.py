@@ -1,4 +1,16 @@
-"""Meta-Rabbinic Voice Agent - Shapes tone, humility, and rabbinic presence."""
+"""Meta-Rabbinic Voice Agent -- shapes tone, humility, and rabbinic presence.
+
+This is the **fourth and final** agent in the pipeline.  It synthesises all
+upstream outputs (pastoral context, halachic landscape, moral assessment)
+into the user-facing response.  The voice is modelled on a Hasidic rebbe who
+adapts framing and source emphasis to the user's denominational background
+without changing who he is.
+
+Two execution paths are supported:
+  - ``process()`` -- non-streaming; returns the complete response.
+  - ``process_stream()`` -- streaming; yields text chunks as they arrive
+    from the LLM, followed by a final ``LLMMetrics`` sentinel.
+"""
 
 from .base import (
     BaseAgent,
@@ -9,16 +21,17 @@ from .denominations import get_denomination_config
 
 
 class MetaRabbinicVoiceAgent(BaseAgent):
-    """
-    The Meta-Rabbinic Voice Agent shapes the final response with appropriate
-    tone, humility, and rabbinic presence. It synthesizes all previous agent
-    outputs into a coherent, pastoral response.
+    """Fourth pipeline agent -- crafts the final user-facing response.
 
-    Core behaviors:
-    - Saying "I don't know" is permitted
-    - Saying "This is hard" is encouraged
-    - Saying "You are not a bad Jew for asking" is standard
-    - Asking reflective questions is acceptable
+    Shapes the final response with appropriate tone, humility, and rabbinic
+    presence.  Synthesises all previous agent outputs into a coherent,
+    pastoral response.
+
+    Core behaviours:
+      - Saying "I don't know" is permitted and sometimes necessary.
+      - Saying "This is hard" is encouraged.
+      - Saying "You are not a bad Jew for asking" is standard.
+      - Asking reflective questions back to the user is acceptable.
     """
 
     @property
@@ -109,7 +122,24 @@ The response should:
 Respond with ONLY the final response text that will be shown to the user. Make it conversational and warm, not clinical or academic. This is a person seeking guidance, not a research paper."""
 
     def _build_denomination_guidance(self, context: AgentContext) -> str:
-        """Build denomination-specific voice guidance."""
+        """Build denomination-specific voice guidance for the LLM prompt.
+
+        Looks up the user's denomination configuration and formats it into
+        a prompt section that tells the voice agent *how* to meet this
+        particular person -- what sources to emphasise, what authority
+        framing to use, and how to phrase referrals to human rabbis.
+
+        The Hasidic rebbe voice itself does not change; only the framing,
+        assumptions about practice, and source emphasis are adapted.
+
+        Args:
+            context: The shared pipeline context.  Reads
+                ``user_denomination``.
+
+        Returns:
+            A formatted string to inject into the LLM prompt, or an empty
+            string if no denomination is set or recognised.
+        """
         if not context.user_denomination:
             return ""
 
@@ -132,8 +162,26 @@ When suggesting human consultation, say: "...speak with {config.refer_to_rabbi_p
 """
 
     async def process(self, context: AgentContext) -> AgentContext:
-        """Craft the final response with appropriate rabbinic voice."""
+        """Craft the final response with appropriate rabbinic voice.
 
+        This is the **non-streaming** path.  It collects all upstream agent
+        outputs into a single prompt, calls the LLM synchronously, and
+        writes the complete response to ``context.final_response``.
+
+        For the streaming variant used by the SSE endpoint, see
+        ``process_stream()``.
+
+        Args:
+            context: The shared pipeline context.  Reads
+                ``pastoral_context``, ``halachic_landscape``,
+                ``moral_assessment``, ``user_denomination``, ``user_bio``,
+                and ``user_message``.
+
+        Returns:
+            The same context with ``final_response`` populated.
+        """
+
+        # Collect upstream pastoral context for the prompt
         pastoral_info = ""
         if context.pastoral_context:
             pc = context.pastoral_context
@@ -226,8 +274,25 @@ Do not use headers, bullet points, or formatting. Write as if speaking directly 
         return context
 
     def process_stream(self, context: AgentContext):
-        """Craft the final response with streaming. Yields content chunks."""
+        """Craft the final response with streaming output.
 
+        This is the **streaming** path used by the SSE chat endpoint.  It
+        builds the same prompt as ``process()`` but calls
+        ``_call_claude_stream`` so text chunks are yielded as soon as the
+        LLM produces them.  After all content chunks, a final
+        ``LLMMetrics`` sentinel is yielded so the orchestrator can emit
+        cumulative cost/token metrics.
+
+        Args:
+            context: The shared pipeline context (same inputs as
+                ``process()``).
+
+        Yields:
+            str: Individual text chunks from the streaming LLM response.
+            LLMMetrics: End-of-stream sentinel with token and cost data.
+        """
+
+        # Collect upstream pastoral context for the prompt (mirrors process())
         pastoral_info = ""
         if context.pastoral_context:
             pc = context.pastoral_context
@@ -312,10 +377,12 @@ Do not use headers, bullet points, or formatting. Write as if speaking directly 
             }
         ]
 
+        # Stream response token-by-token from the LLM
         for item in self._call_claude_stream(messages, self.system_prompt):
             if isinstance(item, LLMMetrics):
-                # Final metrics - update context and yield
+                # End-of-stream sentinel -- record metrics and forward
                 self._update_context_metrics(context, item)
                 yield item
             else:
+                # Regular text chunk -- forward to the caller immediately
                 yield item

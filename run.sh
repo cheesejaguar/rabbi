@@ -1,11 +1,12 @@
 #!/bin/bash
 
-# rebbe.dev - Run Script
-# This script starts the rebbe.dev application
+# rebbe.dev - Development Startup Script
+# Checks for the uv package manager, creates .env from example if needed,
+# installs dependencies, and launches the FastAPI server with hot-reload.
 
-set -e
+set -e  # Exit immediately if any command fails
 
-# Colors for output
+# ANSI color codes for styled terminal output
 GREEN='\033[0;32m'
 BLUE='\033[0;34m'
 YELLOW='\033[1;33m'
@@ -22,7 +23,7 @@ if ! command -v uv &> /dev/null; then
     exit 1
 fi
 
-# Sync dependencies
+# Install/update project dependencies from pyproject.toml and uv.lock
 echo -e "${BLUE}Syncing dependencies with uv...${NC}"
 uv sync
 
@@ -41,4 +42,6 @@ echo -e "${GREEN}Starting rebbe.dev server...${NC}"
 echo -e "${BLUE}Open http://localhost:8000 in your browser${NC}"
 echo ""
 
+# Launch uvicorn via uv (ensures the project venv is used).
+# --reload watches for file changes and restarts the server automatically.
 uv run uvicorn backend.app.main:app --host 0.0.0.0 --port 8000 --reload

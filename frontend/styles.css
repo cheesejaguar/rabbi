@@ -1,32 +1,142 @@
-/* CSS Variables */
+/* ============================================================
+ * REBBE.DEV - Dark-Themed Chat Interface Stylesheet
+ * ============================================================
+ *
+ * A dark-mode-first design system for a Torah wisdom chatbot UI.
+ * Built with CSS custom properties (variables) for consistent
+ * theming, using a warm charcoal palette accented with gold
+ * (#d4a853) as the primary brand color.
+ *
+ * DESIGN STRATEGY:
+ * - All colors, radii, shadows, and transitions are tokenized
+ *   as CSS custom properties in :root for single-source theming.
+ * - Dark backgrounds (#1a1a1a - #333333) reduce eye strain and
+ *   convey a contemplative, scholarly atmosphere.
+ * - Gold accent evokes traditional Torah scroll ornamentation.
+ * - Mobile-first responsive approach with progressive enhancement.
+ * - Respects prefers-reduced-motion for accessibility.
+ * - iOS safe-area support for notched devices.
+ *
+ * TABLE OF CONTENTS:
+ * ------------------
+ *  1. CSS Custom Properties (:root)          ~line 40
+ *  2. Reset & Base Styles                    ~line 100
+ *  3. App Container & Layout Shell           ~line 120
+ *  4. Sidebar (Navigation Drawer)            ~line 140
+ *     - Header, Toggle, Content, Footer
+ *     - Conversation List & Menus
+ *     - User Profile & Dropdown
+ *  5. Main Content Area                      ~line 440
+ *  6. Menu Button (Sidebar Toggle)           ~line 460
+ *  7. Sidebar Overlay (Mobile Backdrop)      ~line 510
+ *  8. Mobile Sidebar Responsive (768px)      ~line 540
+ *  9. Utility Classes                        ~line 580
+ * 10. Welcome Screen                         ~line 590
+ *     - Greeting, Input, Suggestions
+ *     - Disclaimer
+ * 11. Chat Screen                            ~line 790
+ *     - Chat Header & Navigation
+ *     - Logout & User Menu
+ *     - User Avatar & Dropdown
+ *     - Login Prompt Popover
+ * 12. Chat Messages                          ~line 1080
+ *     - Message Bubbles (User & Assistant)
+ *     - Streaming Cursor
+ *     - Referral Notice
+ * 13. Chat Input Area                        ~line 1200
+ * 14. Loading & Typing Indicators            ~line 1240
+ * 15. Scrollbar Styling                      ~line 1340
+ * 16. Mobile Responsive (640px)              ~line 1360
+ * 17. iOS Safe Area Support                  ~line 1410
+ * 18. Accessibility (Reduced Motion)         ~line 1420
+ * 19. Selection Color                        ~line 1430
+ * 20. Settings Screen                        ~line 1440
+ *     - Header, Content, Cards, Rows
+ *     - Profile Settings (Denomination, Bio)
+ * 21. Message Action Buttons                 ~line 1580
+ *     - Copy, Speak, Feedback
+ *     - Toast Notifications
+ * 22. Purchase Credits Modal                 ~line 1670
+ *     - Package Selection Cards
+ *     - Stripe Payment Element
+ *     - Payment Status Feedback
+ * 23. Buy Credits & Save Profile Buttons     ~line 1890
+ * 24. D'var Torah Section                    ~line 2080
+ *     - Welcome Screen Card (Preview)
+ *     - Full-Screen Reading View
+ *     - Mobile Responsive
+ *
+ * BROWSER SUPPORT NOTES:
+ * - Uses dvh (dynamic viewport height) with vh fallback
+ * - Uses -webkit-overflow-scrolling for iOS momentum scroll
+ * - Uses backdrop-filter for glass-morphism (modal overlay)
+ * - Uses env(safe-area-inset-bottom) for iPhone notch support
+ * - Custom scrollbar styling targets WebKit browsers only
+ * ============================================================ */
+
+/* ============================================================
+ * 1. CSS CUSTOM PROPERTIES
+ * Design tokens defining the entire visual language of the app.
+ * Changing values here propagates throughout every component.
+ * ============================================================ */
 :root {
-    --bg-primary: #1a1a1a;
-    --bg-secondary: #2a2a2a;
-    --bg-tertiary: #333333;
-    --bg-input: #2f2f2f;
-    --text-primary: #e8e8e8;
-    --text-secondary: #a0a0a0;
-    --text-muted: #6b6b6b;
-    --accent: #d4a853;
-    --accent-hover: #e4bc6a;
-    --accent-glow: rgba(212, 168, 83, 0.3);
-    --border-color: #3a3a3a;
-    --border-light: #444444;
-    --success: #4ade80;
-    --warning: #fbbf24;
-    --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3);
-    --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.4);
-    --shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.5);
-    --radius-sm: 8px;
-    --radius-md: 12px;
-    --radius-lg: 20px;
-    --radius-full: 9999px;
-    --transition-fast: 150ms ease;
-    --transition-normal: 250ms ease;
-    --transition-slow: 350ms ease;
+
+    /* --- Background Colors --- */
+    /* Three-tier background hierarchy for visual depth:
+     * primary (darkest) > secondary (panels) > tertiary (hover/active states) */
+    --bg-primary: #1a1a1a;       /* Page background, main content area */
+    --bg-secondary: #2a2a2a;     /* Sidebar, cards, dropdowns, message bubbles */
+    --bg-tertiary: #333333;      /* Hover states, active items, icon backgrounds */
+    --bg-input: #2f2f2f;         /* Text input fields, slightly lighter than secondary */
+
+    /* --- Text Colors --- */
+    /* Three-tier text hierarchy for readability on dark backgrounds */
+    --text-primary: #e8e8e8;     /* Headings, body text, high-emphasis content */
+    --text-secondary: #a0a0a0;   /* Secondary labels, inactive items, descriptions */
+    --text-muted: #6b6b6b;       /* Timestamps, placeholders, tertiary info */
+
+    /* --- Accent & Brand Colors --- */
+    /* Gold (#d4a853) serves as the primary brand color, evoking the
+     * warmth of Torah scroll ornamentation and traditional Judaica */
+    --accent: #d4a853;           /* Primary gold brand color - buttons, icons, links */
+    --accent-hover: #e4bc6a;     /* Lighter gold for hover states */
+    --accent-glow: rgba(212, 168, 83, 0.3); /* Semi-transparent gold for glows/rings */
+
+    /* --- Border Colors --- */
+    --border-color: #3a3a3a;     /* Default borders - subtle separation */
+    --border-light: #444444;     /* Hover/focus borders - slightly more visible */
+
+    /* --- Semantic Colors --- */
+    --success: #4ade80;          /* Payment success, positive confirmations */
+    --warning: #fbbf24;          /* Referral notices, caution indicators */
+
+    /* --- Shadows --- */
+    /* Progressive shadow depth using high-opacity black for dark theme.
+     * Shadows must be stronger on dark backgrounds to be perceptible. */
+    --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3);   /* Subtle lift - buttons */
+    --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.4);   /* Cards, loading indicators */
+    --shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.5);   /* Dropdowns, modals, overlays */
+
+    /* --- Border Radii --- */
+    /* Consistent rounding scale from subtle to fully rounded */
+    --radius-sm: 8px;            /* Buttons, small cards, action items */
+    --radius-md: 12px;           /* Cards, dropdowns, input containers */
+    --radius-lg: 20px;           /* Message bubbles, large input containers */
+    --radius-full: 9999px;       /* Pill shapes - suggestion chips, badges, loading dots */
+
+    /* --- Transitions --- */
+    /* Three-speed easing scale for consistent motion design */
+    --transition-fast: 150ms ease;    /* Hover states, button feedback */
+    --transition-normal: 250ms ease;  /* Panel slides, visibility toggles */
+    --transition-slow: 350ms ease;    /* Complex layout transitions */
 }
 
-/* Reset & Base */
+/* ============================================================
+ * 2. RESET & BASE STYLES
+ * Normalize browser defaults and establish baseline typography.
+ * Uses border-box model globally and sets up font smoothing
+ * for crisp text rendering on dark backgrounds.
+ * ============================================================ */
 *, *::before, *::after {
     box-sizing: border-box;
     margin: 0;
@@ -35,7 +145,7 @@
 
 html {
     font-size: 16px;
-    -webkit-text-size-adjust: 100%;
+    -webkit-text-size-adjust: 100%; /* Prevent iOS font-size inflation on orientation change */
 }
 
 body {
@@ -44,19 +154,24 @@ body {
     color: var(--text-primary);
     line-height: 1.6;
     min-height: 100vh;
-    min-height: 100dvh;
-    overflow: hidden;
-    -webkit-font-smoothing: antialiased;
-    -moz-osx-font-smoothing: grayscale;
+    min-height: 100dvh; /* Dynamic viewport height - accounts for mobile browser chrome (address bar) */
+    overflow: hidden;    /* Prevent body scroll; scrolling is handled by inner containers */
+    -webkit-font-smoothing: antialiased;  /* Smoother font rendering on macOS/iOS */
+    -moz-osx-font-smoothing: grayscale;   /* Smoother font rendering on Firefox/macOS */
 }
 
-/* App Container */
+/* ============================================================
+ * 3. APP CONTAINER & LAYOUT SHELL
+ * The top-level flex containers that establish the sidebar +
+ * main content two-column layout. Uses dvh with vh fallback
+ * for full-height on all devices including mobile.
+ * ============================================================ */
 .app-container {
     height: 100vh;
-    height: 100dvh;
+    height: 100dvh; /* dvh fallback: recalculates when mobile address bar shows/hides */
     display: flex;
     position: relative;
-    overflow: hidden;
+    overflow: hidden; /* Clips sidebar slide animation on mobile */
 }
 
 .app {
@@ -67,7 +182,18 @@ body {
     position: relative;
 }
 
-/* Sidebar */
+/* ============================================================
+ * 4. SIDEBAR (Navigation Drawer)
+ * Left-side navigation panel containing conversation history,
+ * new-chat button, and user profile. Collapsible on desktop
+ * via width animation; slides off-screen on mobile via
+ * transform for GPU-accelerated animation.
+ *
+ * Key design decisions:
+ * - Fixed 260px width provides room for conversation titles
+ * - z-index: 50 places it above main content but below overlays
+ * - overflow: hidden clips content during collapse animation
+ * ============================================================ */
 .sidebar {
     width: 260px;
     min-width: 260px;
@@ -77,16 +203,18 @@ body {
     display: flex;
     flex-direction: column;
     transition: width var(--transition-normal), min-width var(--transition-normal);
-    z-index: 50;
-    overflow: hidden;
+    z-index: 50; /* Above main content, below mobile overlay (z:60) and modals (z:200) */
+    overflow: hidden; /* Clips child content when sidebar collapses to 0 width */
 }
 
+/* Collapsed state: sidebar shrinks to zero width on desktop */
 .sidebar.collapsed {
     width: 0;
     min-width: 0;
     border-right: none;
 }
 
+/* --- Sidebar Header: New Chat button + collapse toggle --- */
 .sidebar-header {
     display: flex;
     align-items: center;
@@ -95,6 +223,7 @@ body {
     border-bottom: 1px solid var(--border-color);
 }
 
+/* New Chat button - ghost style with border, fills available width */
 .new-chat-btn {
     display: flex;
     align-items: center;
@@ -109,7 +238,7 @@ body {
     font-weight: 500;
     cursor: pointer;
     transition: all var(--transition-fast);
-    flex: 1;
+    flex: 1;        /* Fills remaining width beside the toggle button */
     margin-right: 8px;
 }
 
@@ -118,10 +247,12 @@ body {
     border-color: var(--border-light);
 }
 
+/* Gold-colored plus icon inside the new-chat button */
 .new-chat-btn svg {
     color: var(--accent);
 }
 
+/* Sidebar collapse/expand toggle button - square icon button */
 .sidebar-toggle {
     width: 36px;
     height: 36px;
@@ -141,17 +272,20 @@ body {
     color: var(--text-primary);
 }
 
+/* --- Sidebar Content: Scrollable conversation list area --- */
 .sidebar-content {
     flex: 1;
     overflow-y: auto;
-    -webkit-overflow-scrolling: touch;
+    -webkit-overflow-scrolling: touch; /* Enables momentum (rubber-band) scrolling on iOS */
     padding: 12px;
 }
 
+/* --- Conversations Section --- */
 .conversations-section {
     margin-bottom: 16px;
 }
 
+/* Section label - small uppercase heading for grouping (e.g., "Recent") */
 .section-title {
     font-size: 0.75rem;
     font-weight: 500;
@@ -164,9 +298,10 @@ body {
 .conversations-list {
     display: flex;
     flex-direction: column;
-    gap: 2px;
+    gap: 2px; /* Minimal gap keeps items tight like a native list */
 }
 
+/* Individual conversation item - styled as a full-width button for accessibility */
 .conversation-item {
     display: flex;
     align-items: center;
@@ -178,7 +313,7 @@ body {
     font-size: 0.875rem;
     cursor: pointer;
     transition: all var(--transition-fast);
-    overflow: hidden;
+    overflow: hidden; /* Enables text-overflow: ellipsis on title child */
     background: transparent;
     border: none;
     width: 100%;
@@ -196,6 +331,7 @@ body {
     color: var(--text-primary);
 }
 
+/* Conversation title - truncates with ellipsis when too long */
 .conversation-title {
     flex: 1;
     white-space: nowrap;
@@ -203,14 +339,19 @@ body {
     text-overflow: ellipsis;
 }
 
-/* Conversation menu */
+/* ============================================================
+ * Conversation Context Menu
+ * Three-dot menu on each conversation item. Hidden by default,
+ * revealed on hover via opacity transition for a clean look.
+ * ============================================================ */
 .conversation-menu {
     position: relative;
     flex-shrink: 0;
 }
 
+/* Menu button - invisible until parent conversation-item is hovered */
 .conversation-menu-btn {
-    opacity: 0;
+    opacity: 0; /* Hidden by default; shown on conversation-item hover */
     width: 28px;
     height: 28px;
     display: flex;
@@ -222,9 +363,10 @@ body {
     color: var(--text-muted);
     cursor: pointer;
     transition: opacity var(--transition-fast), background var(--transition-fast);
-    z-index: 5;
+    z-index: 5; /* Above conversation text but below dropdown */
 }
 
+/* Reveal menu button when hovering the conversation row */
 .conversation-item:hover .conversation-menu-btn {
     opacity: 1;
 }
@@ -234,14 +376,16 @@ body {
     color: var(--text-primary);
 }
 
+/* Dropdown menu - uses position: fixed for proper placement
+ * regardless of sidebar scroll position */
 .conversation-dropdown {
-    position: fixed;
+    position: fixed; /* Escapes sidebar overflow:hidden clipping */
     min-width: 140px;
     background: var(--bg-secondary);
     border: 1px solid var(--border-color);
     border-radius: var(--radius-md);
     box-shadow: var(--shadow-lg);
-    z-index: 1000;
+    z-index: 1000; /* Highest layer - above all other UI elements */
     animation: dropdownIn 0.15s ease;
 }
 
@@ -254,10 +398,11 @@ body {
     cursor: pointer;
 }
 
+/* --- Sidebar Footer: User profile and settings access --- */
 .sidebar-footer {
     padding: 12px;
     border-top: 1px solid var(--border-color);
-    position: relative;
+    position: relative; /* Anchor for absolutely-positioned user dropdown */
 }
 
 .user-profile {
@@ -274,6 +419,7 @@ body {
     background: var(--bg-tertiary);
 }
 
+/* Smaller avatar variant for the sidebar footer */
 .sidebar-footer .user-avatar {
     width: 32px;
     height: 32px;
@@ -282,7 +428,7 @@ body {
 
 .user-details {
     flex: 1;
-    overflow: hidden;
+    overflow: hidden; /* Enables text truncation on child elements */
 }
 
 .sidebar-footer .user-name {
@@ -293,6 +439,7 @@ body {
     text-overflow: ellipsis;
 }
 
+/* User menu toggle - three-dot or chevron button in sidebar footer */
 .user-menu-toggle {
     width: 28px;
     height: 28px;
@@ -312,26 +459,37 @@ body {
     color: var(--text-primary);
 }
 
+/* User dropdown in sidebar - fixed positioning to escape overflow clipping */
 .sidebar-footer .user-dropdown {
     position: fixed;
     top: auto;
     right: auto;
     min-width: 200px;
-    z-index: 1000;
+    z-index: 1000; /* Same z-index tier as conversation dropdown */
 }
 
-/* Main Content */
+/* ============================================================
+ * 5. MAIN CONTENT AREA
+ * The primary content region to the right of the sidebar.
+ * Uses min-width/min-height: 0 to allow flex children to
+ * shrink below their content size (prevents flex overflow).
+ * ============================================================ */
 .main-content {
     flex: 1;
     display: flex;
     flex-direction: column;
-    min-width: 0;
-    min-height: 0;
+    min-width: 0;  /* Prevents flex item from overflowing when content is wider than container */
+    min-height: 0; /* Allows flex children (chat messages) to scroll properly */
     overflow: hidden;
     position: relative;
 }
 
-/* Menu button - shows when sidebar is collapsed or on mobile */
+/* ============================================================
+ * 6. MENU BUTTON (Sidebar Toggle for Collapsed/Mobile State)
+ * Hamburger menu button that appears when the sidebar is
+ * collapsed on desktop or always visible on mobile. Shown/hidden
+ * via the adjacent sibling combinator (~) targeting sidebar state.
+ * ============================================================ */
 .menu-btn {
     width: 40px;
     height: 40px;
@@ -339,7 +497,7 @@ body {
     background: transparent;
     border: 1px solid var(--border-color);
     cursor: pointer;
-    display: none;
+    display: none; /* Hidden by default; shown via sibling selector or media query */
     align-items: center;
     justify-content: center;
     color: var(--text-secondary);
@@ -351,19 +509,26 @@ body {
     color: var(--text-primary);
 }
 
-/* Show menu button when sidebar is collapsed on desktop */
+/* Show menu button when sidebar is collapsed on desktop.
+ * Uses the general sibling combinator (~) to target the menu button
+ * inside main-content when the sidebar has the .collapsed class. */
 .sidebar.collapsed ~ .main-content .menu-btn {
     display: flex;
 }
 
-/* Welcome screen menu button positioning */
+/* Welcome screen menu button - absolutely positioned in top-left corner */
 .welcome-menu-btn {
     position: absolute;
     top: 16px;
     left: 16px;
 }
 
-/* Sidebar overlay for mobile */
+/* ============================================================
+ * 7. SIDEBAR OVERLAY (Mobile Backdrop)
+ * Semi-transparent dark overlay that appears behind the sidebar
+ * on mobile when the sidebar is open. Clicking it closes the
+ * sidebar. Uses visibility + opacity for animated show/hide.
+ * ============================================================ */
 .sidebar-overlay {
     position: fixed;
     top: 0;
@@ -371,9 +536,9 @@ body {
     right: 0;
     bottom: 0;
     background: rgba(0, 0, 0, 0.5);
-    z-index: 40;
+    z-index: 40; /* Below sidebar (z:60 on mobile) but above main content */
     opacity: 0;
-    visibility: hidden;
+    visibility: hidden; /* visibility:hidden removes from tab order when not shown */
     transition: all var(--transition-normal);
 }
 
@@ -382,7 +547,7 @@ body {
     visibility: visible;
 }
 
-/* Empty state for conversations */
+/* Empty state shown when user has no conversation history */
 .conversations-empty {
     padding: 20px;
     text-align: center;
@@ -390,45 +555,67 @@ body {
     font-size: 0.875rem;
 }
 
-/* Mobile Responsive */
+/* ============================================================
+ * 8. MOBILE SIDEBAR RESPONSIVE (max-width: 768px)
+ * On tablet/mobile screens, the sidebar becomes a fixed overlay
+ * drawer that slides in from the left via CSS transform.
+ * The sidebar toggle in the header is hidden; a close button
+ * inside the open sidebar replaces it.
+ *
+ * Breakpoint: 768px - standard tablet portrait breakpoint.
+ * ============================================================ */
 @media (max-width: 768px) {
     .sidebar {
         position: fixed;
         left: 0;
         top: 0;
         bottom: 0;
-        transform: translateX(-100%);
-        z-index: 60;
+        transform: translateX(-100%); /* Slide off-screen left by default */
+        z-index: 60; /* Above the overlay (z:40) */
     }
 
+    /* Slide sidebar into view when open */
     .sidebar.open {
         transform: translateX(0);
     }
 
+    /* Keep sidebar hidden when collapsed on mobile */
     .sidebar.collapsed {
         transform: translateX(-100%);
     }
 
+    /* Always show hamburger menu button on mobile */
     .menu-btn {
         display: flex;
     }
 
+    /* Hide the collapse toggle in the sidebar header on mobile */
     .sidebar-toggle {
         display: none;
     }
 
-    /* Show close button when sidebar is open on mobile */
+    /* Show close button inside sidebar when it is open on mobile */
     .sidebar.open .sidebar-toggle {
         display: flex;
     }
 }
 
-/* Utility Classes */
+/* ============================================================
+ * 9. UTILITY CLASSES
+ * General-purpose helper classes used by JavaScript to toggle
+ * element visibility.
+ * ============================================================ */
 .hidden {
-    display: none !important;
+    display: none !important; /* !important ensures override of any display value */
 }
 
-/* Welcome Screen */
+/* ============================================================
+ * 10. WELCOME SCREEN
+ * The landing screen shown before a chat begins. Centers
+ * content vertically and horizontally with a greeting, input
+ * field, suggestion chips, and a disclaimer footer.
+ * Uses staggered slide-up animations for a polished entrance.
+ * ============================================================ */
 .welcome-screen {
     flex: 1;
     display: flex;
@@ -437,9 +624,11 @@ body {
     align-items: center;
     padding: 24px;
     animation: fadeIn 0.5s ease;
-    position: relative;
+    position: relative; /* Anchor for absolutely-positioned disclaimer & menu btn */
 }
 
+/* --- fadeIn Animation ---
+ * Gentle opacity + vertical slide for welcome screen entrance. */
 @keyframes fadeIn {
     from {
         opacity: 0;
@@ -453,24 +642,28 @@ body {
 
 .welcome-content {
     width: 100%;
-    max-width: 680px;
+    max-width: 680px; /* Constrains content width for comfortable reading */
     display: flex;
     flex-direction: column;
     align-items: center;
     gap: 32px;
 }
 
-/* Greeting */
+/* --- Greeting Text ---
+ * Large welcome heading with responsive font size using clamp().
+ * clamp(1.75rem, 5vw, 2.5rem) scales fluidly between min and max. */
 .greeting {
     display: flex;
     align-items: center;
     gap: 16px;
-    font-size: clamp(1.75rem, 5vw, 2.5rem);
+    font-size: clamp(1.75rem, 5vw, 2.5rem); /* Fluid typography: min 28px, preferred 5vw, max 40px */
     font-weight: 500;
     color: var(--text-primary);
     animation: slideDown 0.6s ease;
 }
 
+/* --- slideDown Animation ---
+ * Greeting drops in from above with fade. */
 @keyframes slideDown {
     from {
         opacity: 0;
@@ -482,14 +675,18 @@ body {
     }
 }
 
+/* Torah-themed icon beside the greeting (Star of David / menorah) */
 .greeting-icon {
     color: var(--accent);
-    width: 1.2em;
+    width: 1.2em;  /* Size relative to parent font-size for proportional scaling */
     height: 1.2em;
     vertical-align: middle;
     animation: gentlePulse 3s ease-in-out infinite;
 }
 
+/* --- gentlePulse Animation ---
+ * Subtle scale breathing effect on the greeting icon.
+ * Creates a warm, living feel without being distracting. */
 @keyframes gentlePulse {
     0%, 100% {
         opacity: 1;
@@ -501,7 +698,13 @@ body {
     }
 }
 
-/* Input Container */
+/* ============================================================
+ * Welcome Screen Input Container
+ * The main text input area on the welcome screen. Uses a large
+ * border-radius for a modern rounded-pill appearance. The
+ * focus-within pseudo-class highlights the entire container
+ * when the textarea inside receives focus.
+ * ============================================================ */
 .input-container {
     width: 100%;
     background: var(--bg-input);
@@ -512,9 +715,12 @@ body {
     align-items: center;
     gap: 12px;
     transition: all var(--transition-normal);
-    animation: slideUp 0.6s ease 0.1s both;
+    animation: slideUp 0.6s ease 0.1s both; /* Staggered entrance: 0.1s delay after greeting */
 }
 
+/* --- slideUp Animation ---
+ * Elements slide upward and fade in. Used by input, suggestions,
+ * and other welcome screen components with staggered delays. */
 @keyframes slideUp {
     from {
         opacity: 0;
@@ -526,11 +732,14 @@ body {
     }
 }
 
+/* Focus ring on the input container when textarea is focused.
+ * Uses box-shadow instead of outline for rounded-corner compatibility. */
 .input-container:focus-within {
     border-color: var(--border-light);
     box-shadow: 0 0 0 1px var(--border-light);
 }
 
+/* Textarea inside input container - grows with content up to max-height */
 .input-container textarea {
     flex: 1;
     background: transparent;
@@ -540,9 +749,9 @@ body {
     font-family: inherit;
     font-size: 1rem;
     line-height: 1.5;
-    resize: none;
-    min-height: 24px;
-    max-height: 200px;
+    resize: none;        /* Disable manual resize handle; height managed by JS */
+    min-height: 24px;    /* Single line minimum */
+    max-height: 200px;   /* Cap height to prevent textarea from dominating viewport */
 }
 
 .input-container textarea::placeholder {
@@ -555,7 +764,12 @@ body {
     gap: 8px;
 }
 
-/* Send Button */
+/* ============================================================
+ * Send Button
+ * Primary action button with the gold brand color. Includes
+ * subtle lift on hover and press-down effect on active for
+ * tactile feedback.
+ * ============================================================ */
 .send-btn {
     width: 40px;
     height: 40px;
@@ -568,16 +782,16 @@ body {
     justify-content: center;
     color: white;
     transition: all var(--transition-fast);
-    flex-shrink: 0;
+    flex-shrink: 0; /* Prevent button from shrinking when textarea expands */
 }
 
 .send-btn:hover {
     background: var(--accent-hover);
-    transform: translateY(-1px);
+    transform: translateY(-1px); /* Subtle lift effect on hover */
 }
 
 .send-btn:active {
-    transform: translateY(0) scale(0.98);
+    transform: translateY(0) scale(0.98); /* Press-down effect */
 }
 
 .send-btn:disabled {
@@ -586,13 +800,18 @@ body {
     transform: none;
 }
 
-/* Suggestions */
+/* ============================================================
+ * Suggestion Chips
+ * Pill-shaped prompt suggestions on the welcome screen.
+ * Staggered slide-up animation (0.2s delay) for sequential
+ * appearance after the input container.
+ * ============================================================ */
 .suggestions {
     display: flex;
     flex-wrap: wrap;
     justify-content: center;
     gap: 10px;
-    animation: slideUp 0.6s ease 0.2s both;
+    animation: slideUp 0.6s ease 0.2s both; /* 0.2s stagger after input (0.1s) */
 }
 
 .suggestion-chip {
@@ -602,7 +821,7 @@ body {
     padding: 10px 16px;
     background: transparent;
     border: 1px solid var(--border-color);
-    border-radius: var(--radius-full);
+    border-radius: var(--radius-full); /* Full pill shape */
     color: var(--text-secondary);
     font-family: inherit;
     font-size: 0.875rem;
@@ -614,7 +833,7 @@ body {
     background: var(--bg-secondary);
     border-color: var(--border-light);
     color: var(--text-primary);
-    transform: translateY(-2px);
+    transform: translateY(-2px); /* Float-up effect on hover */
 }
 
 .suggestion-chip:active {
@@ -625,7 +844,12 @@ body {
     opacity: 0.7;
 }
 
-/* Disclaimer */
+/* ============================================================
+ * Disclaimer
+ * Legal/informational text pinned to the bottom of the welcome
+ * screen. Absolutely positioned so it stays at the bottom
+ * regardless of content height.
+ * ============================================================ */
 .disclaimer {
     position: absolute;
     bottom: 24px;
@@ -637,19 +861,29 @@ body {
     text-align: center;
     max-width: 400px;
     padding: 0 24px;
-    animation: fadeIn 0.6s ease 0.4s both;
+    animation: fadeIn 0.6s ease 0.4s both; /* 0.4s stagger - appears last */
 }
 
-/* Chat Screen */
+/* ============================================================
+ * 11. CHAT SCREEN
+ * The active conversation view. Fills the main content area
+ * with a column layout: header, scrollable messages, and
+ * input area at the bottom.
+ *
+ * Uses slideInRight animation for a page-transition feel
+ * when navigating from welcome screen to chat.
+ * ============================================================ */
 .chat-screen {
     flex: 1;
     display: flex;
     flex-direction: column;
-    min-height: 0;
+    min-height: 0; /* Critical: allows flex child (chat-messages) to scroll instead of overflow */
     overflow: hidden;
     animation: slideInRight 0.3s ease;
 }
 
+/* --- slideInRight Animation ---
+ * Horizontal slide + fade for screen transitions (chat, settings, d'var torah). */
 @keyframes slideInRight {
     from {
         opacity: 0;
@@ -661,7 +895,12 @@ body {
     }
 }
 
-/* Chat Header */
+/* ============================================================
+ * Chat Header
+ * Sticky header bar with back button, chat title, and action
+ * buttons. Uses position: sticky to remain visible while
+ * messages scroll beneath it.
+ * ============================================================ */
 .chat-header {
     display: flex;
     align-items: center;
@@ -671,9 +910,10 @@ body {
     border-bottom: 1px solid var(--border-color);
     position: sticky;
     top: 0;
-    z-index: 10;
+    z-index: 10; /* Above scrolling messages but below dropdowns/modals */
 }
 
+/* Back button - returns to welcome screen */
 .back-btn {
     width: 40px;
     height: 40px;
@@ -699,11 +939,16 @@ body {
     color: var(--text-primary);
 }
 
+/* Invisible spacer matching back-btn width to center the chat title */
 .header-spacer {
     width: 40px;
 }
 
-/* Logout Buttons */
+/* ============================================================
+ * Logout & Authentication Buttons
+ * Icon buttons for signing out, positioned in the header area.
+ * Two variants: inline (chat header) and absolute (welcome screen).
+ * ============================================================ */
 .logout-btn {
     width: 40px;
     height: 40px;
@@ -724,6 +969,7 @@ body {
     border-color: var(--border-light);
 }
 
+/* Welcome screen logout - pinned to top-right corner */
 .welcome-logout-btn {
     position: absolute;
     top: 16px;
@@ -741,11 +987,17 @@ body {
     transition: all var(--transition-fast);
 }
 
-/* User Menu */
+/* ============================================================
+ * User Menu & Avatar
+ * Dropdown menu triggered by clicking the user's avatar.
+ * Contains user info, settings link, and sign-out option.
+ * Uses dropdownIn animation for a subtle reveal.
+ * ============================================================ */
 .user-menu {
-    position: relative;
+    position: relative; /* Anchor for the dropdown */
 }
 
+/* On welcome screen, position the user menu in the top-right corner */
 .welcome-screen .user-menu {
     position: absolute;
     top: 16px;
@@ -762,6 +1014,7 @@ body {
     justify-content: center;
 }
 
+/* User avatar - circular with gold background and white initial letter */
 .user-avatar {
     width: 40px;
     height: 40px;
@@ -782,19 +1035,22 @@ body {
     transform: scale(1.05);
 }
 
+/* User dropdown panel - anchored below the avatar with right alignment */
 .user-dropdown {
     position: absolute;
-    top: calc(100% + 8px);
+    top: calc(100% + 8px); /* 8px gap below the avatar */
     right: 0;
     min-width: 220px;
     background: var(--bg-secondary);
     border: 1px solid var(--border-color);
     border-radius: var(--radius-md);
     box-shadow: var(--shadow-lg);
-    z-index: 100;
+    z-index: 100; /* Above chat content, below modals (z:200) */
     animation: dropdownIn 0.15s ease;
 }
 
+/* --- dropdownIn Animation ---
+ * Dropdown menus slide down from a slight offset with fade-in. */
 @keyframes dropdownIn {
     from {
         opacity: 0;
@@ -806,6 +1062,7 @@ body {
     }
 }
 
+/* --- User Info Block inside dropdown --- */
 .user-info {
     padding: 12px 16px;
     display: flex;
@@ -824,12 +1081,14 @@ body {
     color: var(--text-muted);
 }
 
+/* Thin horizontal line separating dropdown sections */
 .dropdown-divider {
     height: 1px;
     background: var(--border-color);
     margin: 4px 0;
 }
 
+/* Dropdown menu item - styled as a full-width button for accessibility */
 .dropdown-item {
     display: flex;
     align-items: center;
@@ -860,32 +1119,40 @@ body {
     opacity: 1;
 }
 
+/* Danger variant for destructive actions (e.g., "Sign Out") */
 .dropdown-item-danger {
     color: #ef4444;
 }
 
 .dropdown-item-danger:hover {
-    background: rgba(239, 68, 68, 0.1);
+    background: rgba(239, 68, 68, 0.1); /* Subtle red tint on hover */
     color: #ef4444;
 }
 
-/* Login Prompt Popover */
+/* ============================================================
+ * Login Prompt Popover
+ * A floating popover that nudges guest users to sign in.
+ * Positioned fixed at the bottom of the viewport with a
+ * centered horizontal offset. Animates in via opacity +
+ * translateY transition when the .visible class is toggled.
+ * ============================================================ */
 .login-prompt {
     position: fixed;
     bottom: 100px;
     left: 50%;
-    transform: translateX(-50%) translateY(20px);
+    transform: translateX(-50%) translateY(20px); /* Centered + offset down when hidden */
     background: var(--bg-secondary);
     border: 1px solid var(--border-color);
     border-radius: var(--radius-md);
     box-shadow: var(--shadow-lg);
     padding: 20px 24px;
-    z-index: 200;
+    z-index: 200; /* Same tier as modals - above all other content */
     opacity: 0;
     visibility: hidden;
     transition: all var(--transition-normal);
 }
 
+/* Visible state: slides up into position */
 .login-prompt.visible {
     opacity: 1;
     visibility: visible;
@@ -904,6 +1171,7 @@ body {
     font-size: 0.95rem;
 }
 
+/* Gold CTA button inside the login prompt */
 .login-prompt-btn {
     background: var(--accent);
     color: white;
@@ -920,6 +1188,7 @@ body {
     background: var(--accent-hover);
 }
 
+/* Close button (X) for dismissing the login prompt */
 .login-prompt-close {
     background: none;
     border: none;
@@ -935,25 +1204,38 @@ body {
     color: var(--text-primary);
 }
 
-/* Chat Messages */
+/* ============================================================
+ * 12. CHAT MESSAGES
+ * The scrollable message area containing user and assistant
+ * message bubbles. Uses flex-direction: column to stack
+ * messages vertically with consistent spacing.
+ *
+ * Key behaviors:
+ * - overscroll-behavior: contain prevents pull-to-refresh
+ *   and scroll chaining to the parent/body
+ * - scroll-behavior: smooth for auto-scroll to new messages
+ * - Messages self-align via align-self (user=end, assistant=start)
+ * ============================================================ */
 .chat-messages {
     flex: 1;
-    min-height: 0;
+    min-height: 0; /* Required for flex overflow scrolling */
     overflow-y: auto;
-    -webkit-overflow-scrolling: touch;
-    overscroll-behavior: contain;
+    -webkit-overflow-scrolling: touch; /* iOS momentum scrolling */
+    overscroll-behavior: contain; /* Prevents scroll from chaining to parent or triggering pull-to-refresh */
     padding: 20px;
     display: flex;
     flex-direction: column;
     gap: 20px;
-    scroll-behavior: smooth;
+    scroll-behavior: smooth; /* Smooth auto-scroll when new messages are appended */
 }
 
 .message {
-    max-width: 85%;
+    max-width: 85%; /* Prevent messages from spanning full width for readability */
     animation: messageIn 0.3s ease;
 }
 
+/* --- messageIn Animation ---
+ * Each new message fades in with a slight upward slide. */
 @keyframes messageIn {
     from {
         opacity: 0;
@@ -965,34 +1247,41 @@ body {
     }
 }
 
+/* User messages align to the right side */
 .message.user {
     align-self: flex-end;
 }
 
+/* Assistant messages align to the left side */
 .message.assistant {
     align-self: flex-start;
 }
 
+/* Message bubble styling - rounded with a flattened corner to
+ * create a speech-bubble tail effect */
 .message-content {
     padding: 14px 18px;
     border-radius: var(--radius-lg);
     line-height: 1.6;
-    white-space: pre-wrap;
-    word-wrap: break-word;
+    white-space: pre-wrap; /* Preserves line breaks from the chat text */
+    word-wrap: break-word; /* Prevents long URLs/words from overflowing */
 }
 
+/* User messages: gold background with flattened bottom-right corner */
 .message.user .message-content {
     background: var(--accent);
     color: white;
-    border-bottom-right-radius: var(--radius-sm);
+    border-bottom-right-radius: var(--radius-sm); /* Flattened corner creates "tail" pointing right */
 }
 
+/* Assistant messages: dark background with flattened bottom-left corner */
 .message.assistant .message-content {
     background: var(--bg-secondary);
     color: var(--text-primary);
-    border-bottom-left-radius: var(--radius-sm);
+    border-bottom-left-radius: var(--radius-sm); /* Flattened corner creates "tail" pointing left */
 }
 
+/* Message metadata row (timestamp, etc.) */
 .message-meta {
     display: flex;
     align-items: center;
@@ -1001,6 +1290,7 @@ body {
     padding: 0 4px;
 }
 
+/* User message meta aligns right to match the message alignment */
 .message.user .message-meta {
     justify-content: flex-end;
 }
@@ -1010,30 +1300,42 @@ body {
     color: var(--text-muted);
 }
 
-/* Streaming cursor */
+/* ============================================================
+ * Streaming Cursor
+ * An animated blinking cursor that appears at the end of
+ * assistant messages while they are being streamed in real-time.
+ * Mimics a text editor cursor for a "typing" feel.
+ * ============================================================ */
 .message-content.streaming .cursor {
     display: inline-block;
     width: 2px;
     height: 1.1em;
     background: var(--accent);
     margin-left: 2px;
-    vertical-align: text-bottom;
+    vertical-align: text-bottom; /* Aligns cursor baseline with text */
     animation: blink 0.7s infinite;
 }
 
+/* --- blink Animation ---
+ * Simple on/off blink for the streaming text cursor. */
 @keyframes blink {
     0%, 50% { opacity: 1; }
     51%, 100% { opacity: 0; }
 }
 
-/* Referral Notice */
+/* ============================================================
+ * Referral Notice
+ * A warning banner shown when a human rabbi referral is
+ * recommended. Uses the warning color palette (amber/yellow)
+ * with a subtle tinted background.
+ * ============================================================ */
 .referral-notice {
     display: flex;
     align-items: center;
     gap: 12px;
     margin: 0 20px 16px;
     padding: 14px 18px;
-    background: rgba(251, 191, 36, 0.1);
+    background: rgba(251, 191, 36, 0.1); /* Semi-transparent warning yellow */
     border: 1px solid rgba(251, 191, 36, 0.3);
     border-radius: var(--radius-md);
     animation: slideUp 0.3s ease;
@@ -1049,7 +1351,13 @@ body {
     line-height: 1.5;
 }
 
-/* Chat Input Area */
+/* ============================================================
+ * 13. CHAT INPUT AREA
+ * The fixed input area at the bottom of the chat screen.
+ * Contains a textarea and send button within a rounded
+ * container, capped at the same max-width as the welcome
+ * screen input for visual consistency.
+ * ============================================================ */
 .chat-input-area {
     padding: 16px 20px;
     background: var(--bg-primary);
@@ -1068,7 +1376,7 @@ body {
     padding: 12px 16px;
     transition: all var(--transition-normal);
     width: 100%;
-    max-width: 680px;
+    max-width: 680px; /* Matches welcome-content max-width for consistency */
 }
 
 .chat-input-container:focus-within {
@@ -1086,14 +1394,23 @@ body {
     line-height: 1.5;
     resize: none;
     min-height: 24px;
-    max-height: 150px;
+    max-height: 150px; /* Slightly shorter than welcome input to save space */
 }
 
 .chat-input-container textarea::placeholder {
     color: var(--text-muted);
 }
 
-/* Loading Indicator */
+/* ============================================================
+ * 14. LOADING & TYPING INDICATORS
+ * Two indicator styles:
+ * 1. Loading indicator: fixed pill at bottom of viewport
+ *    with bouncing dots (shown during initial API call).
+ * 2. Typing indicator: inline message bubble with phase text
+ *    and bouncing dots (shown during multi-agent pipeline).
+ * ============================================================ */
+
+/* --- Global Loading Indicator (fixed position) --- */
 .loading-indicator {
     position: fixed;
     bottom: 100px;
@@ -1101,9 +1418,9 @@ body {
     transform: translateX(-50%);
     background: var(--bg-secondary);
     padding: 12px 20px;
-    border-radius: var(--radius-full);
+    border-radius: var(--radius-full); /* Pill shape */
     box-shadow: var(--shadow-md);
-    z-index: 100;
+    z-index: 100; /* Above messages, below modals */
 }
 
 .loading-dots {
@@ -1119,6 +1436,7 @@ body {
     animation: loadingBounce 1.4s ease-in-out infinite both;
 }
 
+/* Staggered animation delays create a wave effect across three dots */
 .loading-dots span:nth-child(1) {
     animation-delay: -0.32s;
 }
@@ -1127,6 +1445,8 @@ body {
     animation-delay: -0.16s;
 }
 
+/* --- loadingBounce Animation ---
+ * Dots scale up/down and change opacity in a wave pattern. */
 @keyframes loadingBounce {
     0%, 80%, 100% {
         transform: scale(0.6);
@@ -1138,9 +1458,11 @@ body {
     }
 }
 
-/* Typing Indicator in Messages */
+/* --- Inline Typing Indicator (inside message bubble) ---
+ * Shows which pipeline phase is active (e.g., "Considering pastoral context...")
+ * with animated dots alongside the phase label. */
 .typing-indicator {
-    padding: 14px 18px !important;
+    padding: 14px 18px !important;   /* !important overrides message-content defaults */
     min-height: auto !important;
     line-height: 1.4 !important;
     white-space: normal !important;
@@ -1156,7 +1478,7 @@ body {
     color: var(--text-secondary);
     font-size: 0.9rem;
     font-style: italic;
-    transition: opacity 0.15s ease;
+    transition: opacity 0.15s ease; /* Smooth text swap between phases */
 }
 
 .phase-dots {
@@ -1172,6 +1494,7 @@ body {
     animation: typingBounce 1.4s ease-in-out infinite both;
 }
 
+/* Staggered delays for the three typing dots */
 .phase-dots span:nth-child(1) {
     animation-delay: -0.32s;
 }
@@ -1180,6 +1503,9 @@ body {
     animation-delay: -0.16s;
 }
 
+/* --- typingBounce Animation ---
+ * Dots bounce vertically (translateY) rather than scaling,
+ * distinguishing this from the loading indicator. */
 @keyframes typingBounce {
     0%, 80%, 100% {
         transform: translateY(0);
@@ -1189,7 +1515,13 @@ body {
     }
 }
 
-/* Scrollbar Styling */
+/* ============================================================
+ * 15. SCROLLBAR STYLING (WebKit Only)
+ * Custom thin scrollbar for the chat messages area.
+ * Keeps the scrollbar subtle to maintain the dark theme.
+ * Note: Only affects WebKit-based browsers (Chrome, Safari, Edge).
+ * Firefox uses scrollbar-width/scrollbar-color (not styled here).
+ * ============================================================ */
 .chat-messages::-webkit-scrollbar {
     width: 6px;
 }
@@ -1207,7 +1539,14 @@ body {
     background: var(--border-light);
 }
 
-/* Mobile Responsive */
+/* ============================================================
+ * 16. MOBILE RESPONSIVE (max-width: 640px)
+ * Tightens padding, reduces font sizes, and adjusts message
+ * width for small phone screens.
+ *
+ * Breakpoint: 640px - standard small mobile breakpoint.
+ * Changes: Reduced padding, smaller text, wider message bubbles.
+ * ============================================================ */
 @media (max-width: 640px) {
     .welcome-screen {
         padding: 20px 16px;
@@ -1240,7 +1579,7 @@ body {
     }
 
     .message {
-        max-width: 90%;
+        max-width: 90%; /* Allow wider messages on narrow screens for more text per line */
     }
 
     .message-content {
@@ -1249,7 +1588,16 @@ body {
     }
 }
 
-/* Safe Area Padding for iOS */
+/* ============================================================
+ * 17. iOS SAFE AREA SUPPORT
+ * Adds extra bottom padding on devices with a home indicator
+ * bar (iPhone X and later). The env(safe-area-inset-bottom)
+ * value is provided by the browser and equals the height of
+ * the home indicator area.
+ *
+ * @supports ensures these rules only apply in browsers that
+ * understand the env() function.
+ * ============================================================ */
 @supports (padding-bottom: env(safe-area-inset-bottom)) {
     .chat-input-area {
         padding-bottom: calc(16px + env(safe-area-inset-bottom));
@@ -1260,7 +1608,15 @@ body {
     }
 }
 
-/* Reduced Motion */
+/* ============================================================
+ * 18. ACCESSIBILITY - REDUCED MOTION
+ * Respects the user's OS-level "reduce motion" preference by
+ * collapsing all animations and transitions to near-zero
+ * duration. This eliminates slide, fade, bounce, and pulse
+ * effects for users who experience motion sickness.
+ *
+ * Uses !important to override inline animation-duration values.
+ * ============================================================ */
 @media (prefers-reduced-motion: reduce) {
     *, *::before, *::after {
         animation-duration: 0.01ms !important;
@@ -1269,13 +1625,25 @@ body {
     }
 }
 
-/* Selection Color */
+/* ============================================================
+ * 19. TEXT SELECTION COLOR
+ * Overrides the default blue text selection highlight to use
+ * the gold brand color for a cohesive feel.
+ * ============================================================ */
 ::selection {
     background: var(--accent);
     color: white;
 }
 
-/* Settings Screen */
+/* ============================================================
+ * 20. SETTINGS SCREEN
+ * User account and preferences panel. Reuses the same slide-in
+ * transition as the chat screen. Content is organized into
+ * labeled sections with card-style groupings.
+ *
+ * Layout: Scrollable content area with a max-width constraint
+ * (600px) to center settings cards on large screens.
+ * ============================================================ */
 .settings-screen {
     flex: 1;
     display: flex;
@@ -1303,16 +1671,18 @@ body {
 .settings-content {
     flex: 1;
     overflow-y: auto;
-    -webkit-overflow-scrolling: touch;
+    -webkit-overflow-scrolling: touch; /* iOS momentum scrolling */
     padding: 24px 20px;
 }
 
+/* Settings section container - centered with max-width */
 .settings-section {
     max-width: 600px;
     margin: 0 auto;
     margin-bottom: 32px;
 }
 
+/* Section heading - small uppercase label above each settings card */
 .settings-section-title {
     font-size: 0.75rem;
     font-weight: 600;
@@ -1323,13 +1693,15 @@ body {
     padding-left: 4px;
 }
 
+/* Settings card - grouped container for related settings rows */
 .settings-card {
     background: var(--bg-secondary);
     border: 1px solid var(--border-color);
     border-radius: var(--radius-md);
-    overflow: hidden;
+    overflow: hidden; /* Clips child border-radius for first/last rows */
 }
 
+/* Individual settings row - icon + label + value layout */
 .settings-row {
     display: flex;
     align-items: center;
@@ -1337,6 +1709,7 @@ body {
     padding: 16px;
 }
 
+/* Settings row icon - square icon container with tertiary background */
 .settings-row-icon {
     width: 40px;
     height: 40px;
@@ -1368,12 +1741,14 @@ body {
     color: var(--text-secondary);
 }
 
+/* Credits balance - emphasized with gold color and larger font */
 .settings-row-value.credits-value {
     font-weight: 600;
     color: var(--accent);
     font-size: 1.1rem;
 }
 
+/* Description text below a settings row */
 .settings-row-description {
     padding: 12px 16px 16px;
     font-size: 0.8rem;
@@ -1382,13 +1757,15 @@ body {
     border-top: 1px solid var(--border-color);
 }
 
+/* Divider between settings rows within a card */
 .settings-divider {
     height: 1px;
     background: var(--border-color);
-    margin: 0 16px;
+    margin: 0 16px; /* Inset from card edges for a refined look */
 }
 
-/* Mobile responsive for settings */
+/* --- Settings Mobile Responsive (max-width: 640px) ---
+ * Reduces padding and icon sizes on small screens. */
 @media (max-width: 640px) {
     .settings-content {
         padding: 20px 16px;
@@ -1409,7 +1786,12 @@ body {
     }
 }
 
-/* Message Action Buttons */
+/* ============================================================
+ * 21. MESSAGE ACTION BUTTONS
+ * Small icon buttons below assistant messages for copy, speak
+ * (text-to-speech), and feedback actions. Compact size to avoid
+ * cluttering the message area.
+ * ============================================================ */
 .message-actions {
     display: flex;
     gap: 8px;
@@ -1438,6 +1820,7 @@ body {
     border-color: var(--border-light);
 }
 
+/* Active state for toggled actions (e.g., thumbs up selected) */
 .action-btn.active {
     background: var(--accent);
     color: white;
@@ -1449,7 +1832,9 @@ body {
     height: 16px;
 }
 
-/* Speak button states */
+/* --- Speak Button States ---
+ * Loading: pulsing animation while TTS audio is being generated.
+ * Playing: gold background indicates audio is currently playing. */
 .speak-btn.loading svg {
     animation: pulse 1s ease-in-out infinite;
 }
@@ -1460,7 +1845,13 @@ body {
     border-color: var(--accent);
 }
 
-/* Toast notification */
+/* ============================================================
+ * Toast Notification
+ * A brief floating notification (e.g., "Copied to clipboard")
+ * that appears at the bottom of the viewport and fades in/out.
+ * Uses the same show/hide pattern as the login prompt:
+ * opacity + visibility + translateY transition.
+ * ============================================================ */
 .toast {
     position: fixed;
     bottom: 100px;
@@ -1472,7 +1863,7 @@ body {
     padding: 12px 20px;
     color: var(--text-primary);
     font-size: 0.875rem;
-    z-index: 1000;
+    z-index: 1000; /* Top-level z-index to ensure visibility above all content */
     opacity: 0;
     transition: all var(--transition-normal);
     box-shadow: var(--shadow-lg);
@@ -1483,7 +1874,8 @@ body {
     transform: translateX(-50%) translateY(0);
 }
 
-/* Mobile responsive for action buttons */
+/* --- Action Buttons Mobile Responsive (max-width: 640px) ---
+ * Slightly smaller action buttons on narrow screens. */
 @media (max-width: 640px) {
     .action-btn {
         width: 28px;
@@ -1496,10 +1888,22 @@ body {
     }
 }
 
-/* ========================================
-   Purchase Credits Modal
-   ======================================== */
+/* ============================================================
+ * 22. PURCHASE CREDITS MODAL
+ * Full-screen overlay modal for purchasing chat credits via
+ * Stripe. Contains package selection cards, a Stripe Payment
+ * Element embed, and payment status feedback.
+ *
+ * Key design decisions:
+ * - backdrop-filter: blur(4px) creates a glass-morphism effect
+ *   on the dark overlay, visually separating the modal from
+ *   the content behind it.
+ * - z-index: 200 ensures the modal sits above all other UI.
+ * - Modal content uses scale + translateY animation for a
+ *   natural-feeling entrance.
+ * ============================================================ */
 
+/* Modal backdrop overlay */
 .modal-overlay {
     position: fixed;
     top: 0;
@@ -1510,11 +1914,11 @@ body {
     display: flex;
     align-items: center;
     justify-content: center;
-    z-index: 200;
+    z-index: 200; /* Highest UI layer - above everything including login prompt */
     opacity: 0;
     visibility: hidden;
     transition: all var(--transition-normal);
-    backdrop-filter: blur(4px);
+    backdrop-filter: blur(4px); /* Glass-morphism: blurs content behind the overlay */
 }
 
 .modal-overlay.visible {
@@ -1522,6 +1926,7 @@ body {
     visibility: visible;
 }
 
+/* Modal content container */
 .modal-content {
     background: var(--bg-secondary);
     border: 1px solid var(--border-color);
@@ -1531,9 +1936,12 @@ body {
     max-height: 90vh;
     overflow-y: auto;
     animation: modalIn 0.2s ease;
-    margin: 20px;
+    margin: 20px; /* Prevents modal from touching screen edges on mobile */
 }
 
+/* --- modalIn Animation ---
+ * Modal scales up from 95% with a slight upward slide for
+ * a "popping into view" effect. */
 @keyframes modalIn {
     from {
         opacity: 0;
@@ -1559,6 +1967,7 @@ body {
     color: var(--text-primary);
 }
 
+/* Modal close button (X) */
 .modal-close {
     width: 32px;
     height: 32px;
@@ -1578,7 +1987,11 @@ body {
     color: var(--text-primary);
 }
 
-/* Package Selection */
+/* ============================================================
+ * Package Selection Cards
+ * Two side-by-side cards for choosing a credit package.
+ * The selected card gets a gold border and tinted background.
+ * ============================================================ */
 .package-selection {
     display: flex;
     gap: 12px;
@@ -1589,7 +2002,7 @@ body {
     flex: 1;
     padding: 20px 16px;
     background: var(--bg-primary);
-    border: 2px solid var(--border-color);
+    border: 2px solid var(--border-color); /* Thicker border for card selection affordance */
     border-radius: var(--radius-md);
     cursor: pointer;
     transition: all var(--transition-fast);
@@ -1597,16 +2010,17 @@ body {
     flex-direction: column;
     align-items: center;
     gap: 8px;
-    position: relative;
+    position: relative; /* Anchor for the "Best Value" badge */
 }
 
 .package-card:hover {
     border-color: var(--border-light);
 }
 
+/* Selected package: gold border with semi-transparent gold background tint */
 .package-card.selected {
     border-color: var(--accent);
-    background: rgba(212, 168, 83, 0.1);
+    background: rgba(212, 168, 83, 0.1); /* 10% gold tint */
 }
 
 .package-credits {
@@ -1621,25 +2035,32 @@ body {
     font-weight: 500;
 }
 
+/* "Best Value" badge - absolutely positioned at the top-right corner of the card.
+ * Uses negative offset to overlap the card border. */
 .package-badge {
     position: absolute;
-    top: -10px;
-    right: -10px;
+    top: -10px;  /* Overlaps above the card border */
+    right: -10px; /* Overlaps past the card border */
     background: var(--accent);
     color: var(--bg-primary);
     font-size: 0.65rem;
     font-weight: 600;
     padding: 4px 8px;
-    border-radius: var(--radius-full);
+    border-radius: var(--radius-full); /* Pill shape */
     text-transform: uppercase;
 }
 
-/* Payment Element Container */
+/* ============================================================
+ * Stripe Payment Element Container
+ * Wrapper for the Stripe-injected payment form. Minimum height
+ * ensures layout stability before the Stripe iframe loads.
+ * ============================================================ */
 #paymentElementContainer {
     padding: 0 24px 24px;
-    min-height: 150px;
+    min-height: 150px; /* Prevents layout shift while Stripe iframe loads */
 }
 
+/* Loading state shown while Stripe Payment Element initializes */
 .payment-loading {
     display: flex;
     align-items: center;
@@ -1649,6 +2070,7 @@ body {
     font-size: 0.875rem;
 }
 
+/* Payment error message text */
 .payment-error-text {
     color: #ef4444;
     text-align: center;
@@ -1656,7 +2078,7 @@ body {
     font-size: 0.875rem;
 }
 
-/* Modal Footer */
+/* --- Modal Footer: Purchase button and security note --- */
 .modal-footer {
     padding: 0 24px 24px;
     display: flex;
@@ -1664,13 +2086,14 @@ body {
     gap: 12px;
 }
 
+/* Primary purchase CTA button - full-width gold */
 .purchase-btn {
     width: 100%;
     padding: 14px 24px;
     background: var(--accent);
     border: none;
     border-radius: var(--radius-md);
-    color: var(--bg-primary);
+    color: var(--bg-primary); /* Dark text on gold background for contrast */
     font-family: inherit;
     font-size: 1rem;
     font-weight: 600;
@@ -1687,6 +2110,7 @@ body {
     cursor: not-allowed;
 }
 
+/* "Secure payment" text with lock icon below the purchase button */
 .payment-secure {
     display: flex;
     align-items: center;
@@ -1696,12 +2120,16 @@ body {
     color: var(--text-muted);
 }
 
-/* Payment Status */
+/* ============================================================
+ * Payment Status Feedback
+ * Success and error states shown after a payment attempt.
+ * ============================================================ */
 .payment-status {
     padding: 40px 24px;
     text-align: center;
 }
 
+/* Success state - green checkmark and confirmation text */
 .payment-success {
     color: var(--success);
 }
@@ -1715,12 +2143,19 @@ body {
     font-weight: 500;
 }
 
+/* Error state - red error text */
 .payment-error p {
     color: #ef4444;
     font-size: 0.875rem;
 }
 
-/* Buy Credits Button in Settings */
+/* ============================================================
+ * 23. BUY CREDITS & SAVE PROFILE BUTTONS
+ * Full-width gold CTA buttons used within settings cards
+ * for purchasing credits and saving profile changes.
+ * ============================================================ */
+
+/* Buy Credits button in the Settings screen */
 .buy-credits-btn {
     display: flex;
     align-items: center;
@@ -1744,7 +2179,12 @@ body {
     background: var(--accent-hover);
 }
 
-/* Profile Settings - Denomination Select */
+/* ============================================================
+ * Profile Settings - Denomination Select
+ * Custom-styled <select> dropdown for choosing a Jewish
+ * denomination. Uses appearance: none to remove native styling
+ * and an inline SVG chevron as the custom dropdown indicator.
+ * ============================================================ */
 .settings-select {
     background: var(--bg-primary);
     border: 1px solid var(--border-color);
@@ -1754,11 +2194,12 @@ body {
     font-size: 0.875rem;
     padding: 8px 12px;
     cursor: pointer;
-    appearance: none;
+    appearance: none; /* Remove native select styling (arrow, border, etc.) */
+    /* Inline SVG chevron icon as background image for the dropdown indicator */
     background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%23a0a0a0' stroke-width='2'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E");
     background-repeat: no-repeat;
     background-position: right 10px center;
-    padding-right: 32px;
+    padding-right: 32px; /* Extra right padding to avoid text overlapping the chevron */
     min-width: 160px;
 }
 
@@ -1766,10 +2207,11 @@ body {
     border-color: var(--accent);
 }
 
+/* Focus ring using box-shadow for rounded-corner compatibility */
 .settings-select:focus {
     outline: none;
     border-color: var(--accent);
-    box-shadow: 0 0 0 2px rgba(212, 168, 83, 0.2);
+    box-shadow: 0 0 0 2px rgba(212, 168, 83, 0.2); /* Subtle gold focus ring */
 }
 
 .settings-select option {
@@ -1777,9 +2219,14 @@ body {
     color: var(--text-primary);
 }
 
-/* Profile Settings - Bio Textarea */
+/* ============================================================
+ * Profile Settings - Bio Textarea
+ * Multi-line text input for the user's personal bio/context.
+ * Includes a character counter absolutely positioned at the
+ * bottom-right corner of the textarea.
+ * ============================================================ */
 .settings-row-bio {
-    align-items: flex-start;
+    align-items: flex-start; /* Top-align icon with textarea */
 }
 
 .settings-row-bio .settings-row-content {
@@ -1789,7 +2236,7 @@ body {
 }
 
 .bio-input-container {
-    position: relative;
+    position: relative; /* Anchor for the character counter */
     width: 100%;
     margin-top: 8px;
 }
@@ -1803,7 +2250,7 @@ body {
     font-family: inherit;
     font-size: 0.875rem;
     padding: 10px 12px;
-    padding-bottom: 24px;
+    padding-bottom: 24px; /* Extra bottom padding to make room for char counter */
     resize: none;
     line-height: 1.5;
 }
@@ -1822,6 +2269,7 @@ body {
     color: var(--text-muted);
 }
 
+/* Character counter - positioned inside the textarea's bottom-right corner */
 .char-count {
     position: absolute;
     bottom: 6px;
@@ -1830,7 +2278,7 @@ body {
     color: var(--text-muted);
 }
 
-/* Save Profile Button */
+/* Save Profile button - same style as buy-credits-btn */
 .save-profile-btn {
     display: flex;
     align-items: center;
@@ -1859,26 +2307,37 @@ body {
     cursor: not-allowed;
 }
 
+/* --- Saving Spinner ---
+ * Small inline spinner shown inside the save button during save.
+ * Uses border-based CSS spinner technique with a transparent top border. */
 .saving-spinner {
     display: inline-block;
     width: 14px;
     height: 14px;
     border: 2px solid var(--bg-primary);
-    border-top-color: transparent;
+    border-top-color: transparent; /* Creates the spinning gap */
     border-radius: 50%;
     animation: spin 0.8s linear infinite;
 }
 
+/* --- spin Animation ---
+ * Continuous 360-degree rotation for the loading spinner. */
 @keyframes spin {
     to {
         transform: rotate(360deg);
     }
 }
 
-/* Mobile responsive for modal */
+/* ============================================================
+ * Modal Mobile Responsive (max-width: 480px)
+ * Reduces padding and card sizes on very small screens.
+ *
+ * Breakpoint: 480px - smallest phone screens.
+ * Changes: Tighter spacing, smaller cards, near-full-width modal.
+ * ============================================================ */
 @media (max-width: 480px) {
     .modal-content {
-        margin: 10px;
+        margin: 10px; /* Minimal edge margin on very small screens */
         max-height: calc(100vh - 20px);
     }
 
@@ -1901,5 +2360,183 @@ body {
 
     .modal-footer {
         padding: 0 16px 16px;
+    }
+}
+
+/* ============================================================
+ * 24. D'VAR TORAH SECTION
+ * Weekly Torah portion commentary displayed in two contexts:
+ * 1. A preview card on the welcome screen with truncated text
+ *    and a gradient fade-out at the bottom.
+ * 2. A full-screen reading view accessible by expanding the card.
+ *
+ * The preview card uses a ::after pseudo-element to create a
+ * gradient overlay that fades the text into the card background,
+ * indicating there is more content to read.
+ * ============================================================ */
+
+/* Welcome screen preview card */
+.dvar-torah-section {
+    width: 100%;
+    animation: slideUp 0.6s ease 0.1s both; /* Staggered entrance with other welcome elements */
+}
+
+/* Card container with a subtle gold-tinted border */
+.dvar-torah-card {
+    background: var(--bg-secondary);
+    border: 1px solid rgba(212, 168, 83, 0.25); /* Semi-transparent gold border */
+    border-radius: var(--radius-md);
+    padding: 20px 24px;
+    width: 100%;
+}
+
+/* Card header: label on left, parsha name on right */
+.dvar-torah-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 12px;
+}
+
+/* "D'var Torah" label - small uppercase gold text */
+.dvar-torah-label {
+    font-size: 0.7rem;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--accent);
+    font-weight: 600;
+}
+
+/* Parsha (Torah portion) name */
+.dvar-torah-parsha {
+    font-size: 0.85rem;
+    color: var(--text-primary);
+    font-weight: 500;
+}
+
+/* Preview text - truncated to approximately 3 lines (4.2em / 1.7 line-height) */
+.dvar-torah-preview {
+    color: var(--text-secondary);
+    font-size: 0.9rem;
+    line-height: 1.7;
+    max-height: 4.2em; /* Limits visible text to ~2.5 lines */
+    overflow: hidden;
+    position: relative; /* Anchor for the gradient fade ::after pseudo-element */
+}
+
+/* ::after pseudo-element: Creates a gradient overlay that fades from
+ * transparent to the card's background color, visually indicating
+ * that the text is truncated and more content is available. */
+.dvar-torah-preview::after {
+    content: '';
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    height: 2em;
+    background: linear-gradient(transparent, var(--bg-secondary)); /* Fades to card background */
+    pointer-events: none; /* Allows clicks to pass through to text beneath */
+}
+
+/* "Read more" expand button - ghost pill style with gold tint */
+.dvar-torah-expand-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    margin-top: 14px;
+    padding: 8px 16px;
+    background: transparent;
+    border: 1px solid rgba(212, 168, 83, 0.25);
+    border-radius: var(--radius-full);
+    color: var(--accent);
+    font-family: inherit;
+    font-size: 0.8rem;
+    cursor: pointer;
+    transition: all var(--transition-fast);
+}
+
+.dvar-torah-expand-btn:hover {
+    background: rgba(212, 168, 83, 0.1);
+    border-color: rgba(212, 168, 83, 0.4);
+}
+
+/* ============================================================
+ * D'var Torah Full-Screen Reading View
+ * Expanded reading experience for the weekly Torah commentary.
+ * Uses the same slide-in animation and layout pattern as the
+ * chat and settings screens for consistency.
+ * ============================================================ */
+.dvar-torah-screen {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    overflow: hidden;
+    animation: slideInRight 0.3s ease;
+}
+
+.dvar-torah-screen-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 16px 20px;
+    background: var(--bg-primary);
+    border-bottom: 1px solid var(--border-color);
+}
+
+.dvar-torah-screen-title {
+    font-size: 1rem;
+    font-weight: 600;
+    color: var(--text-primary);
+}
+
+/* Scrollable reading area */
+.dvar-torah-screen-content {
+    flex: 1;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch; /* iOS momentum scrolling */
+    padding: 32px 20px;
+}
+
+/* Reading body text - comfortable reading width and generous line-height */
+.dvar-torah-screen-content .dvar-torah-body {
+    max-width: 640px; /* Optimal reading width (~65-75 characters per line) */
+    margin: 0 auto;
+    color: var(--text-primary);
+    font-size: 1rem;
+    line-height: 1.85; /* Extra-generous line-height for long-form reading comfort */
+}
+
+.dvar-torah-screen-content .dvar-torah-body p {
+    margin-bottom: 1.2em;
+}
+
+.dvar-torah-screen-content .dvar-torah-body p:last-child {
+    margin-bottom: 0;
+}
+
+/* --- D'var Torah Mobile Responsive (max-width: 768px) ---
+ * Reduces card padding and stacks header elements vertically.
+ *
+ * Breakpoint: 768px - tablet portrait / large phones.
+ * Changes: Tighter padding, stacked header, smaller body text.
+ * ============================================================ */
+@media (max-width: 768px) {
+    .dvar-torah-card {
+        padding: 16px 18px;
+    }
+
+    .dvar-torah-header {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 4px;
+    }
+
+    .dvar-torah-screen-content {
+        padding: 24px 16px;
+    }
+
+    .dvar-torah-screen-content .dvar-torah-body {
+        font-size: 0.95rem;
     }
 }

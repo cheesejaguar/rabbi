@@ -1,27 +1,58 @@
 /**
- * rebbe.dev - Modern Frontend Application
+ * @file rebbe.dev - Frontend Application
+ * @description Single-page application for Torah wisdom chatbot with streaming chat,
+ *              text-to-speech, Stripe payments, conversation management, and analytics.
+ * @version 1.0.0
  */
 
-// Configuration
+/* ============================================================
+ * CONFIGURATION & STATE
+ * Global constants, application state variables, and session
+ * identifiers used throughout the application lifecycle.
+ * ============================================================ */
+
+/** @type {string} Base path for all API endpoints */
 const API_BASE = '/api';
 
-// State
+/** @type {Array<{role: string, content: string}>} Conversation message history, capped at 20 messages */
 let conversationHistory = [];
+/** @type {string|null} Server-assigned session identifier for the current chat stream */
 let sessionId = null;
+/** @type {string|null} UUID of the currently active conversation (null for guests or new chats) */
 let currentConversationId = null;
+/** @type {Array<{id: string, title: string, first_message: string}>} List of all user conversations loaded from the server */
 let conversations = [];
+/** @type {boolean} Whether a chat message is currently being sent/streamed */
 let isLoading = false;
+/** @type {{first_name: string, last_name: string, email: string}|null} Authenticated user object, null when logged out or guest */
 let currentUser = null;
-let guestStatus = null; // Track guest chat status
+/** @type {{chats_remaining: number}|null} Guest chat allowance tracker for unauthenticated users */
+let guestStatus = null;
 
-// Analytics session ID (persists across page loads within same browser session)
+/** @type {string} Analytics session ID that persists across page loads within the same browser session */
 let analyticsSessionId = sessionStorage.getItem('analyticsSessionId');
+// Generate a new analytics session ID if one does not already exist in sessionStorage.
+// Format: "sess_<timestamp>_<random alphanumeric>" to ensure uniqueness.
 if (!analyticsSessionId) {
     analyticsSessionId = 'sess_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
     sessionStorage.setItem('analyticsSessionId', analyticsSessionId);
 }
 
-// Analytics helper function
+/* ============================================================
+ * ANALYTICS
+ * Functions for tracking user events and text-to-speech usage.
+ * All analytics calls fail silently to avoid disrupting the UX.
+ * ============================================================ */
+
+/**
+ * @description Sends a generic analytics event to the server. Failures are silently
+ *              ignored so analytics never interfere with the user experience.
+ * @param {string} eventType - The type of event (e.g., 'session_start', 'page_view')
+ * @param {Object} [eventData={}] - Additional event metadata
+ * @param {string|null} [pagePath=null] - Override for the current page path; defaults to window.location.pathname
+ * @returns {Promise<void>}
+ * @async
+ */
 async function trackEvent(eventType, eventData = {}, pagePath = null) {
     try {
         await fetch(`${API_BASE}/analytics`, {
@@ -36,11 +67,21 @@ async function trackEvent(eventType, eventData = {}, pagePath = null) {
             })
         });
     } catch (e) {
-        // Silently fail - analytics shouldn't break the app
+        // Silently fail - analytics should never break the app
     }
 }
 
-// TTS event tracking
+/**
+ * @description Tracks a text-to-speech lifecycle event (start, stop, complete, error).
+ *              Used to monitor TTS feature usage and diagnose failures.
+ * @param {string} eventType - One of 'start', 'stop', 'complete', or 'error'
+ * @param {string|null} [messageId=null] - The database ID of the message being spoken
+ * @param {number|null} [textLength=null] - Character length of the text being converted to speech
+ * @param {number|null} [durationMs=null] - Total playback duration in milliseconds (for 'complete' events)
+ * @param {string|null} [errorMessage=null] - Error description (for 'error' events)
+ * @returns {Promise<void>}
+ * @async
+ */
 async function trackTTSEvent(eventType, messageId = null, textLength = null, durationMs = null, errorMessage = null) {
     try {
         await fetch(`${API_BASE}/tts-event`, {
@@ -55,71 +96,161 @@ async function trackTTSEvent(eventType, messageId = null, textLength = null, dur
             })
         });
     } catch (e) {
-        // Silently fail
+        // Silently fail - TTS analytics should never break the app
     }
 }
 
-// DOM Elements
+/* ============================================================
+ * DOM REFERENCES
+ * Cached references to DOM elements used throughout the app.
+ * Organized by screen/feature area for maintainability.
+ * ============================================================ */
+
+// --- Main screen elements ---
+/** @type {HTMLElement} */
 const welcomeScreen = document.getElementById('welcomeScreen');
+/** @type {HTMLElement} */
 const chatScreen = document.getElementById('chatScreen');
+/** @type {HTMLElement} */
 const greetingText = document.getElementById('greetingText');
+/** @type {HTMLTextAreaElement} Welcome screen message textarea */
 const messageInput = document.getElementById('messageInput');
+/** @type {HTMLButtonElement} Welcome screen send button */
 const sendBtn = document.getElementById('sendBtn');
+/** @type {HTMLTextAreaElement} Chat screen message textarea */
 const chatInput = document.getElementById('chatInput');
+/** @type {HTMLButtonElement} Chat screen send button */
 const chatSendBtn = document.getElementById('chatSendBtn');
+/** @type {HTMLElement} Scrollable container for chat message bubbles */
 const chatMessages = document.getElementById('chatMessages');
+/** @type {HTMLElement} */
 const chatTitle = document.getElementById('chatTitle');
+/** @type {HTMLElement} Banner suggesting the user consult a human rabbi */
 const referralNotice = document.getElementById('referralNotice');
+/** @type {HTMLElement} */
 const loadingIndicator = document.getElementById('loadingIndicator');
+/** @type {NodeListOf<HTMLElement>} Preset prompt suggestion chips on the welcome screen */
 const suggestionChips = document.querySelectorAll('.suggestion-chip');
 
-// Sidebar elements
+// --- Sidebar elements ---
+/** @type {HTMLElement} */
 const sidebar = document.getElementById('sidebar');
+/** @type {HTMLElement} */
 const sidebarToggle = document.getElementById('sidebarToggle');
+/** @type {HTMLElement} Translucent overlay shown behind the sidebar on mobile */
 const sidebarOverlay = document.getElementById('sidebarOverlay');
+/** @type {HTMLElement} Hamburger menu button on the chat screen header */
 const menuBtn = document.getElementById('menuBtn');
+/** @type {HTMLElement} Hamburger menu button on the welcome screen header */
 const welcomeMenuBtn = document.getElementById('welcomeMenuBtn');
+/** @type {HTMLElement} */
 const newChatBtn = document.getElementById('newChatBtn');
+/** @type {HTMLElement} Container for the rendered conversation list items */
 const conversationsList = document.getElementById('conversationsList');
+/** @type {HTMLElement} */
 const sidebarUserAvatar = document.getElementById('sidebarUserAvatar');
+/** @type {HTMLElement} */
 const sidebarUserName = document.getElementById('sidebarUserName');
+/** @type {HTMLElement} Clickable user profile area at the bottom of the sidebar */
 const userProfile = document.getElementById('userProfile');
+/** @type {HTMLElement} */
 const sidebarUserMenuToggle = document.getElementById('sidebarUserMenuToggle');
+/** @type {HTMLElement} Dropdown menu positioned above the user profile (Settings, Logout) */
 const sidebarDropdown = document.getElementById('sidebarDropdown');
+/** @type {HTMLElement} */
 const settingsScreen = document.getElementById('settingsScreen');
+/** @type {HTMLElement} */
 const settingsBtn = document.getElementById('settingsBtn');
+/** @type {HTMLElement} */
 const settingsBackBtn = document.getElementById('settingsBackBtn');
+/** @type {HTMLElement} Displays the user's current credit balance */
 const creditsValue = document.getElementById('creditsValue');
+/** @type {HTMLElement} */
 const settingsUserName = document.getElementById('settingsUserName');
+/** @type {HTMLElement} */
 const settingsUserEmail = document.getElementById('settingsUserEmail');
+/** @type {HTMLSelectElement} */
 const denominationSelect = document.getElementById('denominationSelect');
+/** @type {HTMLTextAreaElement} */
 const bioInput = document.getElementById('bioInput');
+/** @type {HTMLElement} */
 const bioCharCount = document.getElementById('bioCharCount');
+/** @type {HTMLButtonElement} */
 const saveProfileBtn = document.getElementById('saveProfileBtn');
 
-// Payment modal elements
+// --- D'var Torah elements ---
+/** @type {HTMLElement} */
+const dvarTorahSection = document.getElementById('dvarTorahSection');
+/** @type {HTMLElement} */
+const dvarTorahParsha = document.getElementById('dvarTorahParsha');
+/** @type {HTMLElement} */
+const dvarTorahPreview = document.getElementById('dvarTorahPreview');
+/** @type {HTMLElement} */
+const dvarTorahExpandBtn = document.getElementById('dvarTorahExpandBtn');
+/** @type {HTMLElement} */
+const dvarTorahScreen = document.getElementById('dvarTorahScreen');
+/** @type {HTMLElement} */
+const dvarTorahBackBtn = document.getElementById('dvarTorahBackBtn');
+/** @type {HTMLElement} */
+const dvarTorahScreenTitle = document.getElementById('dvarTorahScreenTitle');
+/** @type {HTMLElement} */
+const dvarTorahScreenContent = document.getElementById('dvarTorahScreenContent');
+/** @type {{parsha_name: string, parsha_name_hebrew: string, content: string, is_holiday_week: boolean}|null} Cached weekly Torah portion data */
+let dvarTorahData = null;
+
+// --- Payment modal elements ---
+/** @type {HTMLElement} */
 const purchaseModal = document.getElementById('purchaseModal');
+/** @type {HTMLElement} */
 const buyCreditsBtn = document.getElementById('buyCreditsBtn');
+/** @type {HTMLElement} */
 const closePurchaseModal = document.getElementById('closePurchaseModal');
+/** @type {NodeListOf<HTMLElement>} Credit package option cards (e.g., 10 credits, 25 credits) */
 const packageCards = document.querySelectorAll('.package-card');
+/** @type {HTMLButtonElement} */
 const submitPayment = document.getElementById('submitPayment');
+/** @type {HTMLElement} Mount point for the Stripe PaymentElement */
 const paymentElementContainer = document.getElementById('paymentElementContainer');
+/** @type {HTMLElement} */
 const packageSelection = document.getElementById('packageSelection');
+/** @type {HTMLElement} */
 const modalFooter = document.getElementById('modalFooter');
+/** @type {HTMLElement} */
 const paymentStatus = document.getElementById('paymentStatus');
+/** @type {HTMLElement} */
 const paymentSuccess = document.getElementById('paymentSuccess');
+/** @type {HTMLElement} */
 const paymentError = document.getElementById('paymentError');
+/** @type {HTMLElement} */
 const paymentErrorMessage = document.getElementById('paymentErrorMessage');
 
-// Stripe payment state
+// --- Stripe payment state ---
+/** @type {Object|null} Stripe.js instance, initialized lazily on first modal open */
 let stripe = null;
+/** @type {Object|null} Stripe Elements instance bound to the current PaymentIntent client secret */
 let elements = null;
+/** @type {Object|null} Stripe PaymentElement mounted inside the purchase modal */
 let paymentElement = null;
+/** @type {string} Currently selected credit package identifier (e.g., 'credits_10', 'credits_25') */
 let selectedPackage = 'credits_10';
 
-// Initialize
+/* ============================================================
+ * INITIALIZATION
+ * Entry point that bootstraps the application on DOMContentLoaded.
+ * Sets up event listeners, checks authentication, loads greeting
+ * and D'var Torah, and restores conversation state.
+ * ============================================================ */
+
 document.addEventListener('DOMContentLoaded', init);
 
+/**
+ * @description Main initialization function. Runs on DOMContentLoaded. Sets up the UI
+ *              in logged-out state immediately (for fast first paint), attaches all event
+ *              listeners, fires analytics, checks auth, loads greeting/D'var Torah,
+ *              and restores conversations for authenticated users.
+ * @returns {Promise<void>}
+ * @async
+ */
 async function init() {
     // Show logged-out state immediately (will be updated if authenticated)
     showLoggedOutState();
@@ -138,8 +269,8 @@ async function init() {
     // Check authentication
     const isAuthenticated = await checkAuth();
 
-    // Load greeting for all users (authenticated and guests)
-    await loadGreeting();
+    // Load greeting and d'var Torah for all users (authenticated and guests)
+    await Promise.all([loadGreeting(), loadDvarTorah()]);
 
     if (!isAuthenticated) {
         // Check guest status for non-authenticated users
@@ -159,6 +290,18 @@ async function init() {
     await loadConversations();
 }
 
+/* ============================================================
+ * AUTHENTICATION
+ * Functions for checking auth state, managing guest sessions,
+ * and toggling the UI between logged-in and logged-out states.
+ * ============================================================ */
+
+/**
+ * @description Fetches the guest chat allowance from the server. Used for
+ *              unauthenticated users to determine how many free chats remain.
+ * @returns {Promise<{chats_remaining: number}|null>} Guest status object or null on failure
+ * @async
+ */
 async function checkGuestStatus() {
     try {
         const response = await fetch(`${API_BASE}/guest/status`);
@@ -172,6 +315,12 @@ async function checkGuestStatus() {
     return null;
 }
 
+/**
+ * @description Checks the user's authentication status by calling the /auth/check endpoint.
+ *              If authenticated, stores the user object and updates the sidebar UI.
+ * @returns {Promise<boolean>} True if the user is authenticated, false otherwise
+ * @async
+ */
 async function checkAuth() {
     try {
         const response = await fetch('/auth/check');
@@ -188,6 +337,12 @@ async function checkAuth() {
     }
 }
 
+/**
+ * @description Updates the sidebar and dropdown UI to reflect the authenticated user's
+ *              name, initials avatar, and available menu options (Settings, Logout).
+ *              Re-attaches the settings button listener since the dropdown HTML is replaced.
+ * @returns {void}
+ */
 function updateUserUI() {
     if (!currentUser) return;
 
@@ -236,6 +391,11 @@ function updateUserUI() {
     hideLoginPrompt();
 }
 
+/**
+ * @description Configures the sidebar UI for unauthenticated visitors. Shows a right-arrow
+ *              icon in the avatar area and a "Sign In" link in the dropdown.
+ * @returns {void}
+ */
 function showLoggedOutState() {
     // Update avatar to show login icon
     sidebarUserAvatar.innerHTML = '&#x2192;';
@@ -255,6 +415,13 @@ function showLoggedOutState() {
     `;
 }
 
+/**
+ * @description Displays a login prompt banner at the bottom of the viewport. Creates the
+ *              element on first call, then toggles visibility on subsequent calls.
+ * @param {boolean} [showFreeChatsMessage=false] - If true, shows "Sign in for 3 more free chats"
+ *                                                  instead of the default sign-in message
+ * @returns {void}
+ */
 function showLoginPrompt(showFreeChatsMessage = false) {
     let prompt = document.getElementById('loginPrompt');
     const message = showFreeChatsMessage
@@ -278,6 +445,10 @@ function showLoginPrompt(showFreeChatsMessage = false) {
     prompt.classList.add('visible');
 }
 
+/**
+ * @description Hides the login prompt banner if it exists in the DOM.
+ * @returns {void}
+ */
 function hideLoginPrompt() {
     const prompt = document.getElementById('loginPrompt');
     if (prompt) {
@@ -285,6 +456,14 @@ function hideLoginPrompt() {
     }
 }
 
+/**
+ * @description Derives a one- or two-character initials string from the user's name or email.
+ *              Falls back to '?' if no identifying information is available.
+ * @param {string} firstName - The user's first name
+ * @param {string} lastName - The user's last name
+ * @param {string} email - The user's email address
+ * @returns {string} Uppercase initials (1-2 characters)
+ */
 function getInitials(firstName, lastName, email) {
     if (firstName && lastName) {
         return (firstName[0] + lastName[0]).toUpperCase();
@@ -296,6 +475,18 @@ function getInitials(firstName, lastName, email) {
     return '?';
 }
 
+/* ============================================================
+ * EVENT LISTENERS
+ * Central registration of all DOM event listeners. Called once
+ * during initialization to wire up the entire UI.
+ * ============================================================ */
+
+/**
+ * @description Registers all DOM event listeners for the application. Covers welcome screen
+ *              input, chat input, sidebar controls, navigation, payment modal, settings,
+ *              D'var Torah, profile form, suggestion chips, and textarea auto-resize.
+ * @returns {void}
+ */
 function setupEventListeners() {
     // Welcome screen input
     messageInput.addEventListener('keydown', handleWelcomeKeydown);
@@ -316,10 +507,11 @@ function setupEventListeners() {
     // New chat button
     newChatBtn.addEventListener('click', startNewConversation);
 
-    // User menu in sidebar - entire profile area is clickable
+    // User menu in sidebar - entire profile area is clickable.
+    // The dropdown is positioned absolutely above the profile element using
+    // bounding rect calculations to work correctly regardless of sidebar state.
     userProfile.addEventListener('click', (e) => {
         e.stopPropagation();
-        // Position the fixed dropdown above the profile
         const rect = userProfile.getBoundingClientRect();
         sidebarDropdown.style.top = 'auto';
         sidebarDropdown.style.bottom = `${window.innerHeight - rect.top + 8}px`;
@@ -346,6 +538,10 @@ function setupEventListeners() {
     // Settings back button
     settingsBackBtn.addEventListener('click', hideSettings);
 
+    // D'var Torah
+    dvarTorahExpandBtn.addEventListener('click', showDvarTorah);
+    dvarTorahBackBtn.addEventListener('click', hideDvarTorah);
+
     // Profile form listeners
     bioInput.addEventListener('input', updateBioCharCount);
     saveProfileBtn.addEventListener('click', saveProfile);
@@ -366,10 +562,25 @@ function setupEventListeners() {
     });
 }
 
+/* ============================================================
+ * SIDEBAR & NAVIGATION
+ * Functions controlling sidebar collapse/expand behavior on
+ * desktop and mobile, and screen-switching helpers.
+ * ============================================================ */
+
+/**
+ * @description Toggles the sidebar between collapsed and expanded states on desktop.
+ * @returns {void}
+ */
 function toggleSidebar() {
     sidebar.classList.toggle('collapsed');
 }
 
+/**
+ * @description Toggles sidebar visibility with responsive behavior. On mobile (<=768px),
+ *              uses an overlay slide-in pattern. On desktop, toggles the collapsed state.
+ * @returns {void}
+ */
 function toggleSidebarMobile() {
     // On mobile, use open/overlay behavior
     // On desktop with collapsed sidebar, toggle collapsed state
@@ -384,11 +595,21 @@ function toggleSidebarMobile() {
     }
 }
 
+/**
+ * @description Closes the mobile sidebar overlay by removing the 'open' and 'visible' classes.
+ * @returns {void}
+ */
 function closeSidebarMobile() {
     sidebar.classList.remove('open');
     sidebarOverlay.classList.remove('visible');
 }
 
+/**
+ * @description Handles keydown events on the welcome screen textarea. Submits the message
+ *              on Enter (without Shift) and allows Shift+Enter for newlines.
+ * @param {KeyboardEvent} e - The keydown event
+ * @returns {void}
+ */
 function handleWelcomeKeydown(e) {
     if (e.key === 'Enter' && !e.shiftKey) {
         e.preventDefault();
@@ -396,6 +617,12 @@ function handleWelcomeKeydown(e) {
     }
 }
 
+/**
+ * @description Handles keydown events on the chat screen textarea. Same Enter/Shift+Enter
+ *              behavior as the welcome screen handler.
+ * @param {KeyboardEvent} e - The keydown event
+ * @returns {void}
+ */
 function handleChatKeydown(e) {
     if (e.key === 'Enter' && !e.shiftKey) {
         e.preventDefault();
@@ -403,18 +630,37 @@ function handleChatKeydown(e) {
     }
 }
 
+/**
+ * @description Enables/disables the associated send button based on whether the textarea
+ *              has non-whitespace content, and triggers auto-resize.
+ * @param {HTMLTextAreaElement} textarea - The input textarea element
+ * @param {HTMLButtonElement} button - The send button to enable/disable
+ * @returns {void}
+ */
 function handleTextareaInput(textarea, button) {
     const hasContent = textarea.value.trim().length > 0;
     button.disabled = !hasContent;
     autoResize(textarea);
 }
 
+/**
+ * @description Auto-resizes a textarea to fit its content up to a maximum height.
+ *              Uses different max heights for the welcome input (200px) vs chat input (150px).
+ * @param {HTMLTextAreaElement} textarea - The textarea element to resize
+ * @returns {void}
+ */
 function autoResize(textarea) {
     textarea.style.height = 'auto';
     const maxHeight = textarea === messageInput ? 200 : 150;
     textarea.style.height = Math.min(textarea.scrollHeight, maxHeight) + 'px';
 }
 
+/**
+ * @description Fetches the greeting message from the API. Currently hardcodes the display
+ *              text to "Shalom, how can I help?" regardless of the server response.
+ * @returns {Promise<void>}
+ * @async
+ */
 async function loadGreeting() {
     try {
         const response = await fetch(`${API_BASE}/greeting`);
@@ -428,7 +674,79 @@ async function loadGreeting() {
     }
 }
 
-// Conversation management
+/* ============================================================
+ * D'VAR TORAH
+ * Weekly Torah portion display. Fetches the current parsha's
+ * D'var Torah from the API and renders it in a dedicated screen.
+ * ============================================================ */
+
+/**
+ * @description Fetches the weekly D'var Torah (Torah portion commentary) from the API.
+ *              If the data is available and it is not a holiday week, caches the response
+ *              and reveals the D'var Torah preview section on the welcome screen.
+ * @returns {Promise<void>}
+ * @async
+ */
+async function loadDvarTorah() {
+    try {
+        const response = await fetch(`${API_BASE}/dvar-torah`);
+        if (!response.ok) return;
+
+        const data = await response.json();
+        if (data.is_holiday_week || !data.content) return;
+
+        dvarTorahData = data;
+        dvarTorahParsha.textContent = `${data.parsha_name} / ${data.parsha_name_hebrew}`;
+        dvarTorahPreview.textContent = data.content.substring(0, 200) + '...';
+        dvarTorahSection.classList.remove('hidden');
+    } catch (error) {
+        console.error('Failed to load d\'var Torah:', error);
+    }
+}
+
+/**
+ * @description Navigates to the full-screen D'var Torah view. Hides all other screens,
+ *              sets the title to the parsha name, and converts the plain-text content
+ *              into HTML paragraphs (splitting on double newlines).
+ * @returns {void}
+ */
+function showDvarTorah() {
+    if (!dvarTorahData) return;
+
+    welcomeScreen.classList.add('hidden');
+    chatScreen.classList.add('hidden');
+    settingsScreen.classList.add('hidden');
+    dvarTorahScreen.classList.remove('hidden');
+
+    dvarTorahScreenTitle.textContent = `Parashat ${dvarTorahData.parsha_name}`;
+
+    // Convert plain text to paragraphs
+    const paragraphs = dvarTorahData.content.split('\n\n').filter(p => p.trim());
+    const html = paragraphs.map(p => `<p>${p.replace(/\n/g, ' ')}</p>`).join('');
+    dvarTorahScreenContent.innerHTML = `<div class="dvar-torah-body">${html}</div>`;
+}
+
+/**
+ * @description Returns from the D'var Torah screen back to the welcome screen.
+ * @returns {void}
+ */
+function hideDvarTorah() {
+    dvarTorahScreen.classList.add('hidden');
+    welcomeScreen.classList.remove('hidden');
+}
+
+/* ============================================================
+ * CONVERSATIONS CRUD
+ * Create, read, update, and delete operations for persistent
+ * chat conversations. Only available for authenticated users.
+ * ============================================================ */
+
+/**
+ * @description Loads all conversations for the authenticated user from the server
+ *              and renders them in the sidebar list.
+ * @returns {Promise<void>}
+ * @async
+ */
 async function loadConversations() {
     try {
         const response = await fetch(`${API_BASE}/conversations`);
@@ -444,6 +762,14 @@ async function loadConversations() {
     }
 }
 
+/**
+ * @description Renders the sidebar conversation list from the in-memory conversations array.
+ *              Each item includes a clickable title to load the conversation and a three-dot
+ *              context menu with a delete option. The context menu dropdown is positioned
+ *              using getBoundingClientRect() relative to the menu button so it works
+ *              correctly inside the scrollable sidebar.
+ * @returns {void}
+ */
 function renderConversationsList() {
     if (conversations.length === 0) {
         conversationsList.innerHTML = '<div class="conversations-empty">No conversations yet</div>';
@@ -516,6 +842,12 @@ function renderConversationsList() {
     });
 }
 
+/**
+ * @description Creates a new conversation on the server. Adds the new conversation to the
+ *              front of the local conversations array and updates the sidebar.
+ * @returns {Promise<string|null>} The new conversation's UUID, or null on failure
+ * @async
+ */
 async function createConversation() {
     try {
         const response = await fetch(`${API_BASE}/conversations`, {
@@ -536,6 +868,14 @@ async function createConversation() {
     return null;
 }
 
+/**
+ * @description Loads a specific conversation by ID from the server, populates the chat
+ *              message area with its history, switches to the chat screen, and highlights
+ *              the conversation in the sidebar.
+ * @param {string} conversationId - UUID of the conversation to load
+ * @returns {Promise<void>}
+ * @async
+ */
 async function loadConversation(conversationId) {
     try {
         const response = await fetch(`${API_BASE}/conversations/${conversationId}`);
@@ -559,6 +899,7 @@ async function loadConversation(conversationId) {
             // Switch to chat screen
             welcomeScreen.classList.add('hidden');
             settingsScreen.classList.add('hidden');
+            dvarTorahScreen.classList.add('hidden');
             chatScreen.classList.remove('hidden');
 
             // Update active state in sidebar
@@ -574,6 +915,14 @@ async function loadConversation(conversationId) {
     }
 }
 
+/**
+ * @description Deletes a conversation on the server and removes it from the local list.
+ *              If the deleted conversation was currently active, navigates back to the
+ *              welcome screen via startNewConversation().
+ * @param {string} conversationId - UUID of the conversation to delete
+ * @returns {Promise<void>}
+ * @async
+ */
 async function deleteConversation(conversationId) {
     // Close any open dropdown
     document.querySelectorAll('.conversation-dropdown').forEach(d => d.classList.add('hidden'));
@@ -596,6 +945,19 @@ async function deleteConversation(conversationId) {
     }
 }
 
+/* ============================================================
+ * CHAT MESSAGING & STREAMING
+ * Core chat functionality: sending messages, processing SSE
+ * (Server-Sent Events) streams, and managing the streaming UI.
+ * ============================================================ */
+
+/**
+ * @description Sends a message from the welcome screen. Creates a new server-side
+ *              conversation (for authenticated users), transitions to the chat screen,
+ *              and delegates to sendMessage().
+ * @returns {Promise<void>}
+ * @async
+ */
 async function sendFromWelcome() {
     const message = messageInput.value.trim();
     if (!message || isLoading) return;
@@ -612,6 +974,7 @@ async function sendFromWelcome() {
     // Switch to chat screen
     welcomeScreen.classList.add('hidden');
     settingsScreen.classList.add('hidden');
+    dvarTorahScreen.classList.add('hidden');
     chatScreen.classList.remove('hidden');
     chatTitle.textContent = currentUser ? 'New conversation' : 'Guest chat';
 
@@ -623,6 +986,11 @@ async function sendFromWelcome() {
     sendMessage(message);
 }
 
+/**
+ * @description Sends a message from the chat screen input. Clears the input, resets
+ *              the textarea height, and delegates to sendMessage().
+ * @returns {void}
+ */
 function sendFromChat() {
     const message = chatInput.value.trim();
     if (!message || isLoading) return;
@@ -636,6 +1004,26 @@ function sendFromChat() {
     sendMessage(message);
 }
 
+/**
+ * @description Sends a user message through the multi-agent pipeline and streams the
+ *              response using Server-Sent Events (SSE). This is the core chat function.
+ *
+ *              The SSE stream uses a ReadableStream reader to process chunks incrementally.
+ *              Incoming bytes are decoded and accumulated in a buffer. The buffer is split
+ *              on newline boundaries; incomplete lines are kept for the next iteration.
+ *              Each complete line prefixed with "data: " is parsed as JSON.
+ *
+ *              SSE event types:
+ *              - "session": Contains session_id and optional conversation_id
+ *              - "metadata": Contains requires_human_referral flag from the moral agent
+ *              - "token": A text chunk to append to the streaming response
+ *              - "message_saved": The server-assigned message ID after persistence
+ *              - "error": An error from the pipeline (e.g., "guest_limit_reached")
+ *
+ * @param {string} message - The user's message text to send
+ * @returns {Promise<void>}
+ * @async
+ */
 async function sendMessage(message) {
     if (isLoading) return;
 
@@ -673,11 +1061,14 @@ async function sendMessage(message) {
             throw new Error(`HTTP error! status: ${response.status}`);
         }
 
+        // Set up a ReadableStream reader to consume the SSE byte stream incrementally.
+        // The TextDecoder is configured with { stream: true } to handle multi-byte UTF-8
+        // characters that may be split across chunk boundaries.
         const reader = response.body.getReader();
         const decoder = new TextDecoder();
         let fullResponse = '';
         let requiresHumanReferral = false;
-        let buffer = '';
+        let buffer = ''; // Accumulates partial lines between read() calls
         let messageElement = null;
         let savedMessageId = null;
 
@@ -685,11 +1076,16 @@ async function sendMessage(message) {
             const { done, value } = await reader.read();
             if (done) break;
 
+            // Append decoded text to the buffer and split on newlines.
+            // The last element (possibly incomplete) is kept in the buffer
+            // for the next iteration via lines.pop().
             buffer += decoder.decode(value, { stream: true });
             const lines = buffer.split('\n');
             buffer = lines.pop() || '';
 
             for (const line of lines) {
+                // SSE lines are prefixed with "data: " followed by a JSON payload.
+                // Lines without this prefix (e.g., empty keep-alive lines) are skipped.
                 if (line.startsWith('data: ')) {
                     try {
                         const data = JSON.parse(line.slice(6));
@@ -727,6 +1123,8 @@ async function sendMessage(message) {
                             throw new Error(data.message);
                         }
                     } catch (e) {
+                        // JSON parse errors in individual SSE lines are logged but
+                        // do not abort the stream, allowing recovery from malformed events.
                         console.error('Error parsing SSE:', e, line);
                     }
                 }
@@ -757,6 +1155,8 @@ async function sendMessage(message) {
         }
 
     } catch (error) {
+        // Catch-all for network failures, HTTP errors, and unexpected stream errors.
+        // Cleans up any in-progress streaming UI and shows a friendly error message.
         console.error('Error sending message:', error);
         removeTypingIndicator();
         const streamingMsg = document.getElementById('streamingMessage');
@@ -769,6 +1169,14 @@ async function sendMessage(message) {
     }
 }
 
+/**
+ * @description Adds a message to both the UI and the in-memory conversation history.
+ *              Caps the history at 20 messages (most recent) to limit token usage on
+ *              subsequent API calls.
+ * @param {string} role - Either 'user' or 'assistant'
+ * @param {string} content - The message text content
+ * @returns {void}
+ */
 function addMessage(role, content) {
     addMessageToUI(role, content, new Date());
 
@@ -783,6 +1191,23 @@ function addMessage(role, content) {
     scrollToBottom();
 }
 
+/* ============================================================
+ * MESSAGE RENDERING
+ * Functions for creating, updating, and finalizing message DOM
+ * elements including the streaming cursor animation and typing
+ * indicator with rotating agent phase messages.
+ * ============================================================ */
+
+/**
+ * @description Creates and appends a message bubble to the chat area. Assistant messages
+ *              are rendered with Markdown formatting and receive action buttons (copy,
+ *              speak, thumbs up/down).
+ * @param {string} role - Either 'user' or 'assistant'
+ * @param {string} content - The message text content
+ * @param {Date} date - Timestamp to display in the message metadata
+ * @param {string|null} [messageId=null] - Server-assigned message ID for feedback/TTS tracking
+ * @returns {void}
+ */
 function addMessageToUI(role, content, date, messageId = null) {
     const messageDiv = document.createElement('div');
     messageDiv.className = `message ${role}`;
@@ -818,16 +1243,44 @@ function addMessageToUI(role, content, date, messageId = null) {
     chatMessages.appendChild(messageDiv);
 }
 
+/* ============================================================
+ * UI HELPERS
+ * Utility functions for time formatting, HTML escaping,
+ * Markdown rendering, scroll management, and toast notifications.
+ * ============================================================ */
+
+/**
+ * @description Formats a Date object to a short time string (e.g., "2:30 PM").
+ * @param {Date} date - The date to format
+ * @returns {string} Locale-formatted time string with hours and minutes
+ */
 function formatTime(date) {
     return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 }
 
+/**
+ * @description Escapes HTML special characters by using the browser's built-in DOM
+ *              text encoding. Creates a temporary div, sets its textContent (which
+ *              auto-escapes), and reads back the innerHTML.
+ * @param {string} text - Raw text to escape
+ * @returns {string} HTML-escaped string safe for insertion via innerHTML
+ */
 function escapeHtml(text) {
     const div = document.createElement('div');
     div.textContent = text;
     return div.innerHTML;
 }
 
+/**
+ * @description Converts a subset of Markdown to HTML using a regex-based formatting pipeline.
+ *              First escapes HTML to prevent XSS, then applies transformations:
+ *              1. **bold** -> <strong>bold</strong>
+ *              2. *italic* -> <em>italic</em>
+ *              This is intentionally minimal; full Markdown parsing is not needed for
+ *              the rabbinic response format.
+ * @param {string} text - Raw Markdown text from the assistant
+ * @returns {string} HTML string with basic formatting applied
+ */
 function formatMarkdown(text) {
     let html = escapeHtml(text);
     html = html.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
@@ -835,6 +1288,12 @@ function formatMarkdown(text) {
     return html;
 }
 
+/**
+ * @description Creates an empty assistant message element with a blinking cursor animation
+ *              for the streaming response. The element is given id="streamingMessage" so it
+ *              can be found and removed if streaming fails.
+ * @returns {HTMLElement} The newly created message container div
+ */
 function createStreamingMessage() {
     const messageDiv = document.createElement('div');
     messageDiv.className = 'message assistant';
@@ -860,12 +1319,29 @@ function createStreamingMessage() {
     return messageDiv;
 }
 
+/**
+ * @description Updates the content of a streaming message element with new text. Re-renders
+ *              the full accumulated content through formatMarkdown on each call, appending
+ *              the blinking cursor span.
+ * @param {HTMLElement} messageElement - The streaming message container
+ * @param {string} content - The full accumulated response text so far
+ * @returns {void}
+ */
 function updateStreamingMessage(messageElement, content) {
     const contentDiv = messageElement.querySelector('.message-content');
     contentDiv.innerHTML = formatMarkdown(content) + '<span class="cursor"></span>';
     scrollToBottom();
 }
 
+/**
+ * @description Finalizes a streaming message after the SSE stream completes. Removes the
+ *              cursor animation, clears the temporary ID, attaches action buttons, and
+ *              adds the complete message to conversation history.
+ * @param {HTMLElement} messageElement - The streaming message container to finalize
+ * @param {string} content - The complete response text
+ * @param {string|null} [messageId=null] - Server-assigned message ID for feedback tracking
+ * @returns {void}
+ */
 function finalizeStreamingMessage(messageElement, content, messageId = null) {
     const contentDiv = messageElement.querySelector('.message-content');
     contentDiv.innerHTML = formatMarkdown(content);
@@ -889,15 +1365,30 @@ function finalizeStreamingMessage(messageElement, content, messageId = null) {
     }
 }
 
+/**
+ * @type {Array<{name: string, phrase: string}>}
+ * @description The four agent pipeline phases displayed in the typing indicator.
+ *              Each phase corresponds to an agent in the backend multi-agent pipeline:
+ *              Pastoral (emotional context), Halachic (legal reasoning), Moral (ethics check),
+ *              and Voice (final response crafting). Phases rotate on a 2.5-second interval.
+ */
 const agentPhases = [
     { name: 'Pastoral', phrase: 'Listening with an open heart...' },
     { name: 'Halachic', phrase: 'Searching the sources...' },
     { name: 'Moral', phrase: 'Weighing with care...' },
     { name: 'Voice', phrase: 'Crafting a thoughtful response...' }
 ];
+/** @type {number|null} Interval ID for the phase rotation timer */
 let phaseInterval = null;
+/** @type {number} Index into agentPhases for the currently displayed phase */
 let currentPhaseIndex = 0;
 
+/**
+ * @description Shows an animated typing indicator that cycles through the four agent
+ *              pipeline phases every 2.5 seconds with a fade transition. The indicator
+ *              includes three animated dots alongside the phase text.
+ * @returns {void}
+ */
 function showTypingIndicator() {
     const typing = document.createElement('div');
     typing.className = 'message assistant';
@@ -925,6 +1416,10 @@ function showTypingIndicator() {
     }, 2500);
 }
 
+/**
+ * @description Removes the typing indicator from the DOM and clears the phase rotation interval.
+ * @returns {void}
+ */
 function removeTypingIndicator() {
     if (phaseInterval) {
         clearInterval(phaseInterval);
@@ -936,20 +1431,41 @@ function removeTypingIndicator() {
     }
 }
 
+/**
+ * @description Toggles the global loading state. Disables the send button while loading
+ *              (unless the input is empty) and shows/hides the loading indicator.
+ * @param {boolean} loading - Whether the app is in a loading state
+ * @returns {void}
+ */
 function setLoading(loading) {
     isLoading = loading;
     chatSendBtn.disabled = loading || !chatInput.value.trim();
     loadingIndicator.classList.toggle('hidden', !loading);
 }
 
+/**
+ * @description Shows the human rabbi referral notice banner when the moral agent
+ *              determines the user's question requires professional human guidance.
+ * @returns {void}
+ */
 function showReferralNotice() {
     referralNotice.classList.remove('hidden');
 }
 
+/**
+ * @description Hides the human rabbi referral notice banner.
+ * @returns {void}
+ */
 function hideReferralNotice() {
     referralNotice.classList.add('hidden');
 }
 
+/**
+ * @description Resets the application to a clean state for a new conversation. Clears
+ *              the message history, chat area, and all inputs. Navigates back to the
+ *              welcome screen and focuses the welcome input after a short delay.
+ * @returns {void}
+ */
 function startNewConversation() {
     // Reset state
     conversationHistory = [];
@@ -965,6 +1481,7 @@ function startNewConversation() {
     // Switch to welcome screen
     chatScreen.classList.add('hidden');
     settingsScreen.classList.add('hidden');
+    dvarTorahScreen.classList.add('hidden');
     welcomeScreen.classList.remove('hidden');
 
     // Update sidebar
@@ -983,17 +1500,34 @@ function startNewConversation() {
     setTimeout(() => messageInput.focus(), 300);
 }
 
+/**
+ * @description Scrolls the chat message container to the bottom after a 100ms delay.
+ *              The delay ensures the DOM has been updated before measuring scrollHeight.
+ * @returns {void}
+ */
 function scrollToBottom() {
     setTimeout(() => {
         chatMessages.scrollTop = chatMessages.scrollHeight;
     }, 100);
 }
 
-// Settings functions
+/* ============================================================
+ * SETTINGS & PROFILE
+ * Settings screen management, user profile CRUD, credit balance
+ * display, and bio character counter.
+ * ============================================================ */
+
+/**
+ * @description Navigates to the settings screen. Hides all other screens, populates
+ *              user info, and loads credits and profile data in parallel.
+ * @returns {Promise<void>}
+ * @async
+ */
 async function showSettings() {
     // Hide other screens
     welcomeScreen.classList.add('hidden');
     chatScreen.classList.add('hidden');
+    dvarTorahScreen.classList.add('hidden');
     settingsScreen.classList.remove('hidden');
 
     // Close mobile sidebar
@@ -1012,6 +1546,11 @@ async function showSettings() {
     await Promise.all([loadCredits(), loadProfile()]);
 }
 
+/**
+ * @description Hides the settings screen and returns to either the active chat or
+ *              the welcome screen, depending on whether a conversation is in progress.
+ * @returns {void}
+ */
 function hideSettings() {
     settingsScreen.classList.add('hidden');
 
@@ -1023,6 +1562,13 @@ function hideSettings() {
     }
 }
 
+/**
+ * @description Fetches and displays the user's current credit balance from the server.
+ *              Shows "Unlimited" for admin/unlimited accounts, the numeric balance for
+ *              regular users, or "Error loading" on failure.
+ * @returns {Promise<void>}
+ * @async
+ */
 async function loadCredits() {
     creditsValue.textContent = 'Loading...';
     creditsValue.classList.remove('credits-value');
@@ -1046,6 +1592,12 @@ async function loadCredits() {
     }
 }
 
+/**
+ * @description Loads the user's profile data (denomination, bio) from the server and
+ *              populates the settings form fields.
+ * @returns {Promise<void>}
+ * @async
+ */
 async function loadProfile() {
     try {
         const response = await fetch(`${API_BASE}/profile`);
@@ -1060,6 +1612,13 @@ async function loadProfile() {
     }
 }
 
+/**
+ * @description Saves the user's profile (denomination and bio) to the server via PUT.
+ *              Shows a spinner during the request and a checkmark on success. Displays
+ *              an alert on failure and re-enables the button in all cases.
+ * @returns {Promise<void>}
+ * @async
+ */
 async function saveProfile() {
     const originalText = saveProfileBtn.innerHTML;
     saveProfileBtn.disabled = true;
@@ -1097,12 +1656,29 @@ async function saveProfile() {
     }
 }
 
+/**
+ * @description Updates the bio character count display to reflect the current input length.
+ * @returns {void}
+ */
 function updateBioCharCount() {
     const count = bioInput.value.length;
     bioCharCount.textContent = count;
 }
 
-// Message action buttons
+/* ============================================================
+ * MESSAGE ACTIONS
+ * Action buttons on assistant messages: copy to clipboard,
+ * text-to-speech via Web Audio API, and thumbs up/down feedback.
+ * ============================================================ */
+
+/**
+ * @description Creates the action button toolbar for an assistant message. Includes
+ *              copy, speak (TTS), thumbs-up, and thumbs-down buttons. Stores the message
+ *              content and ID as data attributes on the container for use by handlers.
+ * @param {string} content - The message text (used for copy and TTS)
+ * @param {string|null} messageId - Server-assigned message ID (used for feedback API calls)
+ * @returns {HTMLElement} The action buttons container div
+ */
 function createMessageActions(content, messageId) {
     const actionsDiv = document.createElement('div');
     actionsDiv.className = 'message-actions';
@@ -1147,13 +1723,23 @@ function createMessageActions(content, messageId) {
     return actionsDiv;
 }
 
-// Current audio for speak functionality
-// Web Audio API for streaming PCM playback
+// --- Web Audio API state for streaming PCM playback ---
+/** @type {AudioContext|null} Shared AudioContext instance, initialized at 24kHz sample rate on first TTS use */
 let audioContext = null;
+/** @type {boolean} Whether TTS audio is currently playing */
 let isPlaying = false;
+/** @type {boolean} Flag to signal the streaming loop to cancel and stop all sources */
 let stopRequested = false;
-let activeSources = []; // Track all scheduled sources for stop functionality
+/** @type {Array<AudioBufferSourceNode>} All scheduled AudioBufferSourceNodes, tracked so they can be stopped immediately */
+let activeSources = [];
 
+/**
+ * @description Dispatches a message action button click to the appropriate handler
+ *              based on the button's data-action attribute.
+ * @param {Event} event - The click event from an action button
+ * @param {HTMLElement} actionsDiv - The actions container holding content and messageId data
+ * @returns {void}
+ */
 function handleMessageAction(event, actionsDiv) {
     const button = event.currentTarget;
     const action = button.dataset.action;
@@ -1174,6 +1760,13 @@ function handleMessageAction(event, actionsDiv) {
     }
 }
 
+/**
+ * @description Copies the message content to the clipboard using the Clipboard API
+ *              and shows a toast notification on success or failure.
+ * @param {string} content - The text to copy to the clipboard
+ * @returns {Promise<void>}
+ * @async
+ */
 async function handleCopy(content) {
     try {
         await navigator.clipboard.writeText(content);
@@ -1184,9 +1777,32 @@ async function handleCopy(content) {
     }
 }
 
+/**
+ * @description Streams text-to-speech audio from the /api/speak endpoint and plays it
+ *              using the Web Audio API. The audio format is raw PCM: 24kHz sample rate,
+ *              16-bit signed integer, mono (little-endian). This matches the ElevenLabs
+ *              streaming output format.
+ *
+ *              Playback uses a chain of AudioBufferSourceNodes scheduled back-to-back.
+ *              Each chunk of PCM bytes received from the ReadableStream is:
+ *              1. Combined with any leftover bytes from the previous chunk (PCM 16-bit
+ *                 requires an even number of bytes)
+ *              2. Converted from Int16 to Float32 by dividing by 32768
+ *              3. Wrapped in an AudioBuffer at 24kHz sample rate
+ *              4. Scheduled via AudioBufferSourceNode.start(nextStartTime)
+ *
+ *              The activeSources array tracks all scheduled nodes so they can be
+ *              immediately stopped if the user clicks the button again (toggle stop).
+ *
+ * @param {string} content - The message text to convert to speech
+ * @param {HTMLButtonElement} button - The speak button element (toggled between loading/playing states)
+ * @returns {Promise<void>}
+ * @async
+ */
 async function handleSpeak(content, button) {
-    // Initialize AudioContext on first use - must happen in user gesture
-    // Set sample rate to 24kHz to match ElevenLabs PCM output
+    // Initialize AudioContext on first use - must happen inside a user gesture handler
+    // to satisfy the browser autoplay policy. Sample rate is set to 24kHz to match
+    // the ElevenLabs PCM output format, avoiding any resampling.
     if (!audioContext) {
         const AudioContextClass = window.AudioContext || window.webkitAudioContext;
         audioContext = new AudioContextClass({ sampleRate: 24000 });
@@ -1202,15 +1818,14 @@ async function handleSpeak(content, button) {
     const messageId = messageEl ? messageEl.dataset.messageId : null;
     const textLength = content ? content.length : 0;
 
-    // If already playing, stop all sources
+    // If already playing, stop all scheduled AudioBufferSourceNodes immediately
     if (isPlaying) {
         stopRequested = true;
-        // Stop all active sources immediately
         for (const source of activeSources) {
             try {
                 source.stop();
             } catch (e) {
-                // Source may have already stopped
+                // Ignore errors from sources that have already finished playing
             }
         }
         activeSources = [];
@@ -1228,6 +1843,7 @@ async function handleSpeak(content, button) {
     // Track TTS start
     trackTTSEvent('start', messageId, textLength);
 
+    /** @type {number} PCM sample rate matching ElevenLabs output (24kHz, 16-bit signed, mono) */
     const PCM_SAMPLE_RATE = 24000;
 
     try {
@@ -1243,11 +1859,14 @@ async function handleSpeak(content, button) {
             throw new Error('Speech generation failed');
         }
 
+        // Stream the PCM response using a ReadableStream reader.
+        // nextStartTime tracks when the next AudioBuffer should begin playing,
+        // ensuring gapless back-to-back scheduling of audio chunks.
         const reader = response.body.getReader();
         let nextStartTime = audioContext.currentTime;
         let firstChunk = true;
         let lastSource = null;
-        let leftoverBytes = new Uint8Array(0);
+        let leftoverBytes = new Uint8Array(0); // Holds odd trailing byte from previous chunk
 
         while (true) {
             if (stopRequested) {
@@ -1258,40 +1877,46 @@ async function handleSpeak(content, button) {
             const { done, value } = await reader.read();
             if (done) break;
 
-            // Combine with any leftover bytes from previous chunk
+            // Combine leftover bytes from the previous iteration with the new chunk.
+            // PCM 16-bit requires an even number of bytes (2 bytes per sample), so
+            // any trailing odd byte is saved for the next iteration.
             const combined = new Uint8Array(leftoverBytes.length + value.length);
             combined.set(leftoverBytes);
             combined.set(value, leftoverBytes.length);
 
-            // PCM 16-bit needs even number of bytes
             const usableLength = combined.length - (combined.length % 2);
             leftoverBytes = combined.slice(usableLength);
             const pcmData = combined.slice(0, usableLength);
 
             if (pcmData.length === 0) continue;
 
-            // Convert Int16 PCM to Float32 using DataView for explicit little-endian handling
+            // Convert Int16 PCM to Float32 for the Web Audio API.
+            // DataView with little-endian flag ensures correct byte order regardless
+            // of the host system's endianness. The division by 32768 normalizes
+            // the signed 16-bit range [-32768, 32767] to the Float32 range [-1.0, 1.0].
             const numSamples = pcmData.length / 2;
             const float32 = new Float32Array(numSamples);
             const dataView = new DataView(pcmData.buffer, pcmData.byteOffset, pcmData.byteLength);
             for (let i = 0; i < numSamples; i++) {
-                const int16Value = dataView.getInt16(i * 2, true); // true = little-endian
+                const int16Value = dataView.getInt16(i * 2, true);
                 float32[i] = int16Value / 32768;
             }
 
-            // Create AudioBuffer
+            // Create a mono AudioBuffer at the PCM sample rate and fill channel 0
             const audioBuffer = audioContext.createBuffer(1, float32.length, PCM_SAMPLE_RATE);
             audioBuffer.getChannelData(0).set(float32);
 
-            // Create source and schedule playback
+            // Create an AudioBufferSourceNode, connect it to the default output,
+            // and schedule it to play immediately after the previous chunk ends.
             const source = audioContext.createBufferSource();
             source.buffer = audioBuffer;
             source.connect(audioContext.destination);
 
-            // Track source for stop functionality
+            // Track all scheduled sources so they can be stopped on user request
             activeSources.push(source);
 
-            // Schedule to play after previous chunk
+            // Schedule gapless playback: use whichever is later - the planned
+            // nextStartTime or the current audio clock (handles scheduling drift)
             const startTime = Math.max(nextStartTime, audioContext.currentTime);
             source.start(startTime);
             nextStartTime = startTime + audioBuffer.duration;
@@ -1305,7 +1930,8 @@ async function handleSpeak(content, button) {
             }
         }
 
-        // When last chunk finishes playing
+        // Attach an onended callback to the last scheduled source to clean up
+        // playback state and track completion analytics when audio finishes naturally.
         if (lastSource && !stopRequested) {
             lastSource.onended = () => {
                 button.classList.remove('playing');
@@ -1322,16 +1948,29 @@ async function handleSpeak(content, button) {
         }
 
     } catch (error) {
+        // Handles network failures, non-OK HTTP responses, and stream read errors.
+        // Resets all playback state and notifies the user via toast.
         console.error('Speech generation failed:', error);
         button.classList.remove('loading', 'playing');
         isPlaying = false;
         activeSources = [];
         showToast('Could not generate speech');
-        // Track error
         trackTTSEvent('error', messageId, textLength, null, error.message || 'Unknown error');
     }
 }
 
+/**
+ * @description Submits or removes user feedback (thumbs up/down) for a message.
+ *              Toggling the same button removes the feedback; clicking the opposite
+ *              button switches the feedback type. Only one feedback type can be active
+ *              per message at a time.
+ * @param {string|null} messageId - Server-assigned message ID
+ * @param {string} feedbackType - Either 'thumbs_up' or 'thumbs_down'
+ * @param {HTMLButtonElement} button - The clicked feedback button
+ * @param {HTMLElement} actionsDiv - Parent container for clearing the opposite button's active state
+ * @returns {Promise<void>}
+ * @async
+ */
 async function handleFeedback(messageId, feedbackType, button, actionsDiv) {
     if (!messageId) {
         showToast('Cannot save feedback');
@@ -1358,12 +1997,19 @@ async function handleFeedback(messageId, feedbackType, button, actionsDiv) {
             button.classList.add('active');
         }
     } catch (error) {
+        // Network or server error when saving feedback - notify user but don't disrupt UX
         console.error('Failed to save feedback:', error);
         showToast('Could not save feedback');
     }
 }
 
-// Toast notification
+/**
+ * @description Displays a temporary toast notification at the bottom of the viewport.
+ *              Removes any existing toast before creating a new one. Uses requestAnimationFrame
+ *              for the entrance animation and auto-hides after 2 seconds with a 300ms exit transition.
+ * @param {string} message - The text to display in the toast
+ * @returns {void}
+ */
 function showToast(message) {
     // Remove existing toast
     const existingToast = document.querySelector('.toast');
@@ -1388,10 +2034,22 @@ function showToast(message) {
     }, 2000);
 }
 
-// ========================================
-// Payment Modal Functions
-// ========================================
+/* ============================================================
+ * STRIPE PAYMENTS
+ * Credit purchase flow using Stripe Elements. The flow is:
+ * 1. User opens modal and selects a package (10 or 25 credits)
+ * 2. A PaymentIntent + CustomerSession are created server-side
+ * 3. Stripe Elements mounts a PaymentElement in the modal
+ * 4. On submit, stripe.confirmPayment() handles 3DS/redirects
+ * 5. Fulfillment uses a dual path: webhooks (production) or
+ *    client-side verify-and-fulfill (development/staging)
+ * ============================================================ */
 
+/**
+ * @description Registers click handlers for the payment modal: open/close buttons,
+ *              backdrop click to close, package card selection, and payment submit.
+ * @returns {void}
+ */
 function setupPaymentListeners() {
     if (buyCreditsBtn) {
         buyCreditsBtn.addEventListener('click', openPurchaseModal);
@@ -1414,6 +2072,12 @@ function setupPaymentListeners() {
     }
 }
 
+/**
+ * @description Opens the credit purchase modal. Resets the modal to its initial state,
+ *              lazily loads Stripe.js if not already loaded, and initializes the payment form.
+ * @returns {Promise<void>}
+ * @async
+ */
 async function openPurchaseModal() {
     if (!purchaseModal) return;
 
@@ -1432,6 +2096,12 @@ async function openPurchaseModal() {
     await initializePaymentForm();
 }
 
+/**
+ * @description Closes the purchase modal with an animation. Destroys the Stripe
+ *              PaymentElement to prevent memory leaks and resets the modal state
+ *              after the CSS transition completes (300ms).
+ * @returns {void}
+ */
 function closePurchaseModalHandler() {
     if (!purchaseModal) return;
 
@@ -1449,6 +2119,12 @@ function closePurchaseModalHandler() {
     setTimeout(resetModalState, 300);
 }
 
+/**
+ * @description Resets all payment modal UI elements to their initial state: shows the
+ *              package selection and loading placeholder, hides status messages, resets
+ *              the submit button, and selects the default 10-credit package.
+ * @returns {void}
+ */
 function resetModalState() {
     // Show package selection and footer
     if (packageSelection) packageSelection.classList.remove('hidden');
@@ -1476,6 +2152,12 @@ function resetModalState() {
     });
 }
 
+/**
+ * @description Selects a credit package and reinitializes the Stripe payment form with
+ *              the new package's price. Updates the visual selection state on all cards.
+ * @param {string} packageId - Package identifier (e.g., 'credits_10', 'credits_25')
+ * @returns {void}
+ */
 function selectPackage(packageId) {
     selectedPackage = packageId;
     packageCards.forEach(card => {
@@ -1486,6 +2168,12 @@ function selectPackage(packageId) {
     initializePaymentForm();
 }
 
+/**
+ * @description Dynamically loads the Stripe.js library by injecting a script tag.
+ *              Returns immediately if Stripe is already loaded. This is done lazily
+ *              to avoid loading the ~40KB library until the user opens the purchase modal.
+ * @returns {Promise<void>} Resolves when Stripe.js is loaded, rejects on script error
+ */
 function loadStripeJs() {
     return new Promise((resolve, reject) => {
         if (window.Stripe) {
@@ -1500,6 +2188,19 @@ function loadStripeJs() {
     });
 }
 
+/**
+ * @description Initializes the Stripe payment form by:
+ *              1. Creating a PaymentIntent on the server for the selected package
+ *              2. Receiving the client_secret, customer_session_client_secret, and publishable_key
+ *              3. Initializing a Stripe Elements instance with the dark theme appearance
+ *              4. Creating and mounting a PaymentElement (handles cards, wallets, etc.)
+ *
+ *              The CustomerSession client secret enables features like saved payment
+ *              methods and Link autofill for returning customers.
+ *
+ * @returns {Promise<void>}
+ * @async
+ */
 async function initializePaymentForm() {
     if (!paymentElementContainer || !submitPayment) return;
 
@@ -1559,11 +2260,32 @@ async function initializePaymentForm() {
         });
 
     } catch (error) {
+        // Handles PaymentIntent creation failures, Stripe initialization errors,
+        // or network issues. Shows the error message inline in the payment container.
         console.error('Failed to initialize payment form:', error);
         paymentElementContainer.innerHTML = `<p class="payment-error-text">${error.message || 'Failed to load payment form. Please try again.'}</p>`;
     }
 }
 
+/**
+ * @description Handles the "Pay Now" button click. Calls stripe.confirmPayment() which
+ *              may trigger 3DS authentication or redirect to an external payment method
+ *              (e.g., Amazon Pay). Uses redirect: 'if_required' to stay on the page for
+ *              simple card payments.
+ *
+ *              After successful payment, attempts dual fulfillment:
+ *              - Primary (production): Stripe webhooks handle credit fulfillment server-side
+ *              - Fallback (development): Client calls /payments/verify-and-fulfill to trigger
+ *                immediate credit addition. If this endpoint returns 404, it means we are in
+ *                production and webhooks will handle it.
+ *
+ *              All paths converge on showing a success message and refreshing the credit
+ *              balance, even if the verify-and-fulfill call fails (since webhooks will
+ *              eventually fulfill the order).
+ *
+ * @returns {Promise<void>}
+ * @async
+ */
 async function handlePaymentSubmit() {
     if (!stripe || !elements || !submitPayment) return;
 
@@ -1587,6 +2309,9 @@ async function handlePaymentSubmit() {
             // Payment succeeded - try to verify and fulfill immediately (non-production only)
             submitPayment.textContent = 'Adding credits...';
 
+            // Attempt client-side verification and fulfillment. This is a non-production
+            // convenience path; in production, Stripe webhooks handle fulfillment and
+            // this endpoint returns 404.
             try {
                 const verifyResponse = await fetch(`${API_BASE}/payments/verify-and-fulfill`, {
                     method: 'POST',
@@ -1617,7 +2342,8 @@ async function handlePaymentSubmit() {
                     }
                 }
             } catch (verifyError) {
-                // Payment succeeded but verification call failed
+                // Network error during verification. Payment already succeeded on Stripe's
+                // side, so webhooks will fulfill the order. Show success to the user.
                 console.error('Verification error:', verifyError);
                 showPaymentSuccessMessage();
                 showToast('Payment received. Credits will be added shortly.');
@@ -1631,6 +2357,8 @@ async function handlePaymentSubmit() {
             setTimeout(closePurchaseModalHandler, 2000);
         }
     } catch (err) {
+        // Catch-all for unexpected errors during the entire payment flow
+        // (Stripe SDK errors, network issues, etc.)
         console.error('Payment error:', err);
         showPaymentErrorMessage('An unexpected error occurred.');
         submitPayment.disabled = false;
@@ -1638,6 +2366,11 @@ async function handlePaymentSubmit() {
     }
 }
 
+/**
+ * @description Transitions the payment modal to the success state by hiding the form
+ *              elements and showing the success message panel.
+ * @returns {void}
+ */
 function showPaymentSuccessMessage() {
     if (packageSelection) packageSelection.classList.add('hidden');
     if (paymentElementContainer) paymentElementContainer.classList.add('hidden');
@@ -1646,6 +2379,12 @@ function showPaymentSuccessMessage() {
     if (paymentSuccess) paymentSuccess.classList.remove('hidden');
 }
 
+/**
+ * @description Shows a temporary error message in the payment modal. The error auto-hides
+ *              after 5 seconds so the user can retry without manual dismissal.
+ * @param {string} message - The error message to display
+ * @returns {void}
+ */
 function showPaymentErrorMessage(message) {
     if (paymentErrorMessage) paymentErrorMessage.textContent = message;
     if (paymentError) {

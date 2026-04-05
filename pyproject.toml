@@ -6,19 +6,28 @@ readme = "README.md"
 license = { text = "MIT" }
 requires-python = ">=3.11"
 dependencies = [
+    # Web framework and server
     "fastapi>=0.109.0",
     "uvicorn[standard]>=0.27.0",
     "pydantic>=2.8.2",
     "pydantic-settings>=2.1.0",
     "python-dotenv>=1.0.0",
-    "openai>=1.0.0",
-    "httpx>=0.28.0",
+    # AI/LLM client libraries
+    "openai>=1.0.0",            # OpenAI-compatible client (used with OpenRouter)
+    "httpx>=0.28.0",            # Async HTTP client for API calls
+    # Authentication (WorkOS SSO)
     "workos>=5.0.0",
-    "itsdangerous>=2.1.0",
+    "itsdangerous>=2.1.0",      # Secure session/token signing
+    # Serverless adapter (AWS Lambda / Vercel)
     "mangum>=0.17.0",
+    # Database (PostgreSQL async)
     "asyncpg>=0.29.0",
-    "slowapi>=0.1.9",
+    # Utilities
+    "slowapi>=0.1.9",           # Rate limiting middleware
+    # Payment processing (Stripe)
     "stripe>=8.0.0",
+    # Hebrew calendar for d'var Torah
+    "pyluach>=2.2.0",
 ]
 
 [project.optional-dependencies]
@@ -36,6 +45,7 @@ build-backend = "hatchling.build"
 [tool.hatch.build.targets.wheel]
 packages = ["backend/app"]
 
+# uv-specific dev dependencies (mirrors [project.optional-dependencies].dev)
 [tool.uv]
 dev-dependencies = [
     "pytest>=8.3.5",
@@ -44,23 +54,26 @@ dev-dependencies = [
     "pytest-mock>=3.14.0",
 ]
 
+# Pytest configuration — controls test discovery and execution behavior
 [tool.pytest.ini_options]
-testpaths = ["backend/tests"]
-python_files = ["test_*.py"]
-python_classes = ["Test*"]
-python_functions = ["test_*"]
-asyncio_mode = "auto"
-asyncio_default_fixture_loop_scope = "function"
-addopts = "-v --tb=short"
+testpaths = ["backend/tests"]          # Only look for tests in this directory
+python_files = ["test_*.py"]           # Test file naming convention
+python_classes = ["Test*"]             # Test class naming convention
+python_functions = ["test_*"]          # Test function naming convention
+asyncio_mode = "auto"                  # Automatically handle async test functions
+asyncio_default_fixture_loop_scope = "function"  # Fresh event loop per test
+addopts = "-v --tb=short"             # Verbose output with short tracebacks
 
+# Coverage: which source files to measure
 [tool.coverage.run]
-source = ["backend/app"]
-omit = ["*/tests/*", "*/__pycache__/*", "*/auth.py"]
+source = ["backend/app"]               # Measure coverage for application code only
+omit = ["*/tests/*", "*/__pycache__/*", "*/auth.py"]  # Exclude tests and auth module
 
+# Coverage: reporting thresholds and display options
 [tool.coverage.report]
-fail_under = 60
-show_missing = true
-exclude_lines = [
+fail_under = 60                        # CI fails if coverage drops below 60%
+show_missing = true                    # Show line numbers of uncovered code
+exclude_lines = [                      # Lines matching these patterns are ignored
     "pragma: no cover",
     "def __repr__",
     "raise NotImplementedError",

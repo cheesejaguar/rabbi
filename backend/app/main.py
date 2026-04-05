@@ -1,4 +1,23 @@
-"""FastAPI application for rebbe.dev."""
+"""FastAPI application for rebbe.dev -- a multi-agent Torah wisdom chatbot.
+
+This module defines the main FastAPI application, including:
+
+- **CORS middleware** for cross-origin browser requests.
+- **Security headers middleware** (X-Frame-Options, HSTS, etc.).
+- **Request size limiting middleware** to prevent DoS via oversized bodies.
+- **Authentication middleware** protecting non-public routes via WorkOS sessions.
+- **Rate limiting** via slowapi, keyed on authenticated user ID or client IP.
+- **Multi-agent chat pipeline** that streams Torah responses as Server-Sent Events.
+- **Guest access management** with cookie + IP-based chat tracking.
+- **Credit system endpoints** for authenticated users.
+- **Feedback and analytics endpoints** for message ratings and session tracking.
+- **Text-to-speech endpoints** using ElevenLabs streaming API.
+- **Static file serving** for the vanilla HTML/JS/CSS frontend.
+"""
+
+# ---------------------------------------------------------------------------
+# Imports
+# ---------------------------------------------------------------------------
 
 import uuid
 import json
@@ -21,6 +40,7 @@ from .config import get_settings
 from .models import (
     ChatRequest,
     ChatResponse,
+    DvarTorahResponse,
     GreetingResponse,
     HealthResponse,
     ProfileUpdate,
@@ -45,12 +65,33 @@ from .security import (
 from .conversations import router as conversations_router
 from .payments import router as payments_router
 from . import database as db
+from .dvar_torah import get_or_generate_dvar_torah
+
+# ---------------------------------------------------------------------------
+# App Configuration & Middleware
+# ---------------------------------------------------------------------------
 
 settings = get_settings()
 
 
+# ---------------------------------------------------------------------------
+# Rate Limiting
+# ---------------------------------------------------------------------------
+
+
 def get_rate_limit_key(request: Request) -> str:
-    """Get rate limit key - use user ID if authenticated, otherwise IP address."""
+    """Derive the rate-limit bucket key for the current request.
+
+    Authenticated users are keyed by their unique user ID so that
+    rate limits apply per-account. Unauthenticated (guest) users
+    fall back to the client IP address.
+
+    Args:
+        request: The incoming FastAPI request object.
+
+    Returns:
+        A string key in the format ``"user:<id>"`` or ``"guest:<ip>"``.
+    """
     # Check for authenticated user
     user = get_current_user(request)
     if user:
@@ -60,16 +101,34 @@ def get_rate_limit_key(request: Request) -> str:
 
 
 def get_guest_rate_limit_key(request: Request) -> str:
-    """Get rate limit key specifically for guest tracking."""
+    """Derive a rate-limit key specifically for guest (unauthenticated) tracking.
+
+    Always uses the client IP address regardless of authentication state.
+
+    Args:
+        request: The incoming FastAPI request object.
+
+    Returns:
+        A string key in the format ``"guest:<ip>"``.
+    """
     return f"guest:{get_remote_address(request)}"
 
 
-# Initialize rate limiter
+# Initialize rate limiter -- uses the per-user/IP key function above
 limiter = Limiter(key_func=get_rate_limit_key)
 
 
 def rate_limit_exceeded_handler(request: Request, exc: RateLimitExceeded):
-    """Handle rate limit exceeded errors."""
+    """Return a 429 JSON response when the client exceeds its rate limit.
+
+    Args:
+        request: The incoming FastAPI request object.
+        exc: The slowapi ``RateLimitExceeded`` exception instance.
+
+    Returns:
+        A ``JSONResponse`` with HTTP 429 status, a ``Retry-After`` header,
+        and a JSON body containing the error detail.
+    """
     return JSONResponse(
         status_code=429,
         content={
@@ -89,7 +148,17 @@ orchestrator = RabbiOrchestrator(
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """Initialize and cleanup resources."""
+    """Manage application startup and shutdown lifecycle.
+
+    On startup, initializes the PostgreSQL schema (if a database URL is
+    configured). On shutdown, gracefully closes the asyncpg connection pool.
+
+    Args:
+        app: The FastAPI application instance.
+
+    Yields:
+        Control to the running application between startup and shutdown.
+    """
     # Startup: Initialize database schema if configured
     if settings.db_url:
         try:
@@ -127,9 +196,28 @@ app.add_middleware(
 
 
 class SecurityHeadersMiddleware(BaseHTTPMiddleware):
-    """Add security headers to all responses."""
+    """Inject browser security headers into every HTTP response.
+
+    Headers applied:
+        - ``X-Frame-Options: DENY`` -- prevents clickjacking via iframes.
+        - ``X-Content-Type-Options: nosniff`` -- stops MIME-type sniffing.
+        - ``X-XSS-Protection: 1; mode=block`` -- legacy XSS filter hint.
+        - ``Referrer-Policy`` -- limits referrer leakage.
+        - ``Permissions-Policy`` -- disables camera, mic, and geolocation.
+        - ``Strict-Transport-Security`` -- HSTS, production only.
+    """
 
     async def dispatch(self, request: Request, call_next):
+        """Process request and attach security headers to the response.
+
+        Args:
+            request: The incoming HTTP request.
+            call_next: Callable to forward the request to the next middleware
+                or the actual route handler.
+
+        Returns:
+            The response with security headers appended.
+        """
         response = await call_next(request)
         # Prevent clickjacking
         response.headers["X-Frame-Options"] = "DENY"
@@ -151,11 +239,26 @@ app.add_middleware(SecurityHeadersMiddleware)
 
 
 class RequestSizeLimitMiddleware(BaseHTTPMiddleware):
-    """Limit request body size to prevent DoS attacks."""
+    """Reject requests whose ``Content-Length`` exceeds a safe threshold.
 
-    MAX_BODY_SIZE = 1 * 1024 * 1024  # 1MB limit
+    This is a lightweight DoS mitigation layer. It checks the declared
+    ``Content-Length`` header and returns HTTP 413 if the body would
+    exceed ``MAX_BODY_SIZE`` (1 MB).
+    """
+
+    MAX_BODY_SIZE = 1 * 1024 * 1024  # 1 MB limit
 
     async def dispatch(self, request: Request, call_next):
+        """Validate request body size before forwarding to the handler.
+
+        Args:
+            request: The incoming HTTP request.
+            call_next: Callable to forward the request downstream.
+
+        Returns:
+            HTTP 413 ``JSONResponse`` if body is too large, otherwise the
+            downstream response.
+        """
         # Check Content-Length header
         content_length = request.headers.get("content-length")
         if content_length:
@@ -174,9 +277,15 @@ app.add_middleware(RequestSizeLimitMiddleware)
 
 
 class AuthMiddleware(BaseHTTPMiddleware):
-    """Middleware to require authentication for protected routes."""
+    """Enforce authentication on non-public routes.
 
-    # Paths that don't require authentication
+    Routes listed in ``PUBLIC_PATHS`` or matching ``PUBLIC_PREFIXES`` are
+    exempt. All other requests must carry a valid session cookie. API
+    routes receive HTTP 401; browser page requests are redirected to the
+    logged-out landing page.
+    """
+
+    # Paths that don't require authentication (exact match)
     PUBLIC_PATHS = {
         "/auth/login",
         "/auth/callback",
@@ -187,6 +296,7 @@ class AuthMiddleware(BaseHTTPMiddleware):
         "/api/guest/status",  # Guest chat status check
         "/api/chat/stream",  # Allow guest free chat (handled in endpoint)
         "/api/greeting",  # Allow guests to see greeting
+        "/api/dvar-torah",  # Weekly d'var Torah (public, cached)
         "/docs",
         "/openapi.json",
         "/redoc",
@@ -196,13 +306,24 @@ class AuthMiddleware(BaseHTTPMiddleware):
     PUBLIC_PREFIXES = ("/static/", "/auth/")
 
     async def dispatch(self, request: Request, call_next):
+        """Check authentication and either forward or reject the request.
+
+        Args:
+            request: The incoming HTTP request.
+            call_next: Callable to forward the request downstream.
+
+        Returns:
+            The downstream response for authenticated or public requests,
+            HTTP 401 JSON for unauthenticated API calls, or a 302 redirect
+            for unauthenticated page requests.
+        """
         path = request.url.path
 
-        # Allow public paths
+        # Allow public paths (exact match against the set)
         if path in self.PUBLIC_PATHS:
             return await call_next(request)
 
-        # Allow public prefixes
+        # Allow public prefixes (startswith check)
         for prefix in self.PUBLIC_PREFIXES:
             if path.startswith(prefix):
                 return await call_next(request)
@@ -210,7 +331,7 @@ class AuthMiddleware(BaseHTTPMiddleware):
         # Check authentication for all other paths
         user = get_current_user(request)
         if not user:
-            # For API requests, return 401
+            # For API requests, return 401 JSON
             if path.startswith("/api/"):
                 from fastapi.responses import JSONResponse
                 return JSONResponse(
@@ -223,18 +344,26 @@ class AuthMiddleware(BaseHTTPMiddleware):
         return await call_next(request)
 
 
-# Add auth middleware
+# Add auth middleware (outermost -- runs first on every request)
 app.add_middleware(AuthMiddleware)
 
-# Include routers
+# Include sub-routers for auth, conversations, and payments
 app.include_router(auth_router)
 app.include_router(conversations_router)
 app.include_router(payments_router)
 
 
+# ---------------------------------------------------------------------------
+# Health & Utility Endpoints
+# ---------------------------------------------------------------------------
+
 @app.get("/api/health", response_model=HealthResponse)
 async def health_check():
-    """Health check endpoint."""
+    """Return service health status and version.
+
+    Returns:
+        HealthResponse: JSON with ``status`` and ``version`` fields.
+    """
     return HealthResponse(
         status="healthy",
         version=settings.app_version,
@@ -244,15 +373,91 @@ async def health_check():
 @app.get("/api/greeting", response_model=GreetingResponse)
 @limiter.limit("30/minute")
 async def get_greeting(request: Request):
-    """Get initial greeting message."""
+    """Generate and return an initial greeting message.
+
+    The greeting is produced by the rabbinic orchestrator and varies
+    based on the time of day and Jewish calendar context.
+
+    Args:
+        request: The incoming HTTP request (used by the rate limiter).
+
+    Returns:
+        GreetingResponse: JSON with a ``greeting`` string.
+    """
     greeting = await orchestrator.get_greeting()
     return GreetingResponse(greeting=greeting)
+
+
+@app.get("/api/dvar-torah", response_model=DvarTorahResponse)
+@limiter.limit("30/minute")
+async def get_dvar_torah(request: Request):
+    """Retrieve the weekly d'var Torah for the current parsha.
+
+    Attempts to load a cached commentary or generate one on the fly.
+    Returns an empty response with ``is_holiday_week=True`` if no regular
+    parsha is read this week (e.g., during holiday weeks).
+
+    Args:
+        request: The incoming HTTP request (used by the rate limiter).
+
+    Returns:
+        DvarTorahResponse: JSON with parsha details and the commentary
+        text, wrapped in a ``Cache-Control: public, max-age=3600`` header.
+    """
+    try:
+        result = await get_or_generate_dvar_torah(orchestrator.client, orchestrator.model)
+    except Exception as e:
+        logger.error(f"D'var Torah error: {e}")
+        result = None
+
+    if result is None:
+        return DvarTorahResponse(
+            parsha_name="",
+            parsha_name_hebrew="",
+            hebrew_year=0,
+            content="",
+            is_holiday_week=True,
+        )
+
+    response = DvarTorahResponse(
+        parsha_name=result["parsha_name"],
+        parsha_name_hebrew=result["parsha_name_hebrew"],
+        hebrew_year=result["hebrew_year"],
+        content=result["content"],
+        is_holiday_week=False,
+    )
+
+    return JSONResponse(
+        content=response.model_dump(),
+        headers={"Cache-Control": "public, max-age=3600"},
+    )
+
+
+# ---------------------------------------------------------------------------
+# Guest Management
+# ---------------------------------------------------------------------------
 
 
 @app.get("/api/guest/status")
 @limiter.limit("60/minute")
 async def get_guest_status(request: Request):
-    """Get guest chat status - how many free chats remain."""
+    """Report how many free guest chats remain for the current visitor.
+
+    For authenticated users, returns the credit-based system info instead.
+    For guests, the effective count is the *maximum* of the signed cookie
+    count and the server-side IP tracker (guards against cookie clearing).
+
+    Args:
+        request: The incoming HTTP request.
+
+    Returns:
+        JSONResponse with fields: ``is_guest``, ``chats_used``,
+        ``chats_remaining``, ``limit``, and optionally ``blocked`` /
+        ``block_reason``.
+
+    Raises:
+        HTTP 403: If the guest IP has been blocked for abuse.
+    """
     user = get_current_user(request)
     if user:
         # User is logged in - they have their credits system
@@ -263,7 +468,7 @@ async def get_guest_status(request: Request):
             "limit": LOGGED_IN_FREE_CREDITS,
         })
 
-    # Check if IP is blocked
+    # Check if IP is blocked due to rate-limit violations
     is_blocked, block_reason = guest_security.is_ip_blocked(request)
     if is_blocked:
         return JSONResponse(
@@ -291,10 +496,28 @@ async def get_guest_status(request: Request):
     })
 
 
+# ---------------------------------------------------------------------------
+# Credits & Profile
+# ---------------------------------------------------------------------------
+
+
 @app.get("/api/credits")
 @limiter.limit("60/minute")
 async def get_credits(request: Request):
-    """Get the current user's remaining credits."""
+    """Return the authenticated user's remaining chat credits.
+
+    If no database is configured, assumes unlimited credits (development
+    mode). Defaults to 3 credits on read failure as a safe fallback.
+
+    Args:
+        request: The incoming HTTP request.
+
+    Returns:
+        JSON dict with ``credits`` (int) and ``unlimited`` (bool).
+
+    Raises:
+        HTTPException: 401 if the user is not authenticated.
+    """
     user = get_current_user(request)
     if not user:
         raise HTTPException(status_code=401, detail="Not authenticated")
@@ -314,7 +537,17 @@ async def get_credits(request: Request):
 @app.get("/api/profile", response_model=ProfileResponse)
 @limiter.limit("60/minute")
 async def get_profile(request: Request):
-    """Get the current user's profile (denomination and bio)."""
+    """Retrieve the authenticated user's profile (denomination and bio).
+
+    Args:
+        request: The incoming HTTP request.
+
+    Returns:
+        ProfileResponse: JSON with ``denomination`` and ``bio`` fields.
+
+    Raises:
+        HTTPException: 401 if the user is not authenticated.
+    """
     user = get_current_user(request)
     if not user:
         raise HTTPException(status_code=401, detail="Not authenticated")
@@ -339,7 +572,23 @@ async def get_profile(request: Request):
 @app.put("/api/profile", response_model=ProfileResponse)
 @limiter.limit("30/minute")
 async def update_profile(request: Request, profile_update: ProfileUpdate):
-    """Update the current user's profile (denomination and/or bio)."""
+    """Update the authenticated user's denomination and/or bio.
+
+    Validates the denomination against ``VALID_DENOMINATIONS`` before
+    persisting. Returns the updated profile on success.
+
+    Args:
+        request: The incoming HTTP request.
+        profile_update: Request body with optional ``denomination`` and
+            ``bio`` fields.
+
+    Returns:
+        ProfileResponse: The updated profile.
+
+    Raises:
+        HTTPException: 400 for invalid denomination, 401 if not
+            authenticated, 503 if database is not configured.
+    """
     user = get_current_user(request)
     if not user:
         raise HTTPException(status_code=401, detail="Not authenticated")
@@ -377,10 +626,31 @@ async def update_profile(request: Request, profile_update: ProfileUpdate):
         raise HTTPException(status_code=500, detail="Failed to update profile")
 
 
+# ---------------------------------------------------------------------------
+# Feedback & Analytics
+# ---------------------------------------------------------------------------
+
+
 @app.post("/api/feedback")
 @limiter.limit("30/minute")
 async def submit_feedback(request: Request):
-    """Submit thumbs up/down feedback for a message."""
+    """Submit or update thumbs-up/thumbs-down feedback for a message.
+
+    Uses an upsert so that re-submitting for the same message replaces
+    the previous rating.
+
+    Args:
+        request: The incoming HTTP request. JSON body must contain
+            ``message_id`` (str) and ``feedback_type``
+            (``"thumbs_up"`` | ``"thumbs_down"``).
+
+    Returns:
+        JSON dict with ``success`` (bool) and ``feedback`` (dict).
+
+    Raises:
+        HTTPException: 400 for invalid input, 401 if not authenticated,
+            503 if no database.
+    """
     user = get_current_user(request)
     if not user:
         raise HTTPException(status_code=401, detail="Not authenticated")
@@ -406,7 +676,18 @@ async def submit_feedback(request: Request):
 @app.delete("/api/feedback/{message_id}")
 @limiter.limit("30/minute")
 async def remove_feedback(request: Request, message_id: str):
-    """Remove feedback for a message."""
+    """Remove the authenticated user's feedback for a specific message.
+
+    Args:
+        request: The incoming HTTP request.
+        message_id: UUID of the message whose feedback should be removed.
+
+    Returns:
+        JSON dict with ``success`` (bool).
+
+    Raises:
+        HTTPException: 401 if not authenticated, 503 if no database.
+    """
     user = get_current_user(request)
     if not user:
         raise HTTPException(status_code=401, detail="Not authenticated")
@@ -425,7 +706,21 @@ async def remove_feedback(request: Request, message_id: str):
 @app.post("/api/tts-event")
 @limiter.limit("60/minute")
 async def log_tts_event(request: Request):
-    """Log a TTS (text-to-speech) usage event."""
+    """Record a text-to-speech lifecycle event for analytics.
+
+    Valid event types: ``start``, ``stop``, ``complete``, ``error``.
+
+    Args:
+        request: The incoming HTTP request. JSON body should contain
+            ``event_type`` (str, required), and optionally ``message_id``,
+            ``text_length``, ``duration_ms``, ``error_message``.
+
+    Returns:
+        JSON dict with ``success`` (bool) and ``event_id`` (str).
+
+    Raises:
+        HTTPException: 400 for invalid event_type, 401 if not authenticated.
+    """
     user = get_current_user(request)
     if not user:
         raise HTTPException(status_code=401, detail="Not authenticated")
@@ -461,7 +756,22 @@ async def log_tts_event(request: Request):
 @app.post("/api/analytics")
 @limiter.limit("120/minute")
 async def log_analytics_event(request: Request):
-    """Log an analytics event (page view, session, etc.)."""
+    """Record a client-side analytics event (page view, session start, etc.).
+
+    This endpoint is publicly accessible (no auth required) so that
+    anonymous session tracking works for all visitors.
+
+    Args:
+        request: The incoming HTTP request. JSON body must contain
+            ``session_id`` (str) and ``event_type`` (str). Optional:
+            ``event_data`` (dict), ``page_path``, ``referrer``.
+
+    Returns:
+        JSON dict with ``success`` (bool) and ``event_id`` (str).
+
+    Raises:
+        HTTPException: 400 if ``session_id`` or ``event_type`` is missing.
+    """
     user = get_current_user(request)
 
     if not settings.db_url:
@@ -477,7 +787,7 @@ async def log_analytics_event(request: Request):
     if not session_id or not event_type:
         raise HTTPException(status_code=400, detail="session_id and event_type required")
 
-    # Get user agent from headers
+    # Get user agent from headers for device-type analytics
     user_agent = request.headers.get("user-agent", "")
 
     try:
@@ -496,10 +806,32 @@ async def log_analytics_event(request: Request):
         return {"success": False}
 
 
+# ---------------------------------------------------------------------------
+# TTS Endpoints
+# ---------------------------------------------------------------------------
+
+
 @app.post("/api/speak")
 @limiter.limit("10/minute")
 async def text_to_speech(request: Request):
-    """Convert text to speech using ElevenLabs streaming API with PCM output."""
+    """Stream text-to-speech audio using the ElevenLabs API.
+
+    Proxies the request to ElevenLabs and returns raw PCM audio at
+    24 kHz / 16-bit as a streaming response. The frontend plays this
+    directly via the Web Audio API.
+
+    Args:
+        request: The incoming HTTP request. JSON body must include
+            ``text`` (str).
+
+    Returns:
+        StreamingResponse: Raw PCM audio stream with headers
+        ``X-Sample-Rate: 24000`` and ``X-Bit-Depth: 16``.
+
+    Raises:
+        HTTPException: 400 if text is empty, 401 if not authenticated,
+            503 if ElevenLabs is not configured.
+    """
     user = get_current_user(request)
     if not user:
         raise HTTPException(status_code=401, detail="Not authenticated")
@@ -514,7 +846,7 @@ async def text_to_speech(request: Request):
         raise HTTPException(status_code=400, detail="No text provided")
 
     async def stream_audio():
-        """Stream PCM audio chunks from ElevenLabs."""
+        """Yield raw PCM audio chunks from ElevenLabs streaming endpoint."""
         async with httpx.AsyncClient() as client:
             async with client.stream(
                 "POST",
@@ -549,17 +881,36 @@ async def text_to_speech(request: Request):
     )
 
 
+# ---------------------------------------------------------------------------
+# Chat Endpoints
+# ---------------------------------------------------------------------------
+
+
 @app.post("/api/chat", response_model=ChatResponse)
 @limiter.limit(f"{settings.rate_limit_chat_per_minute}/minute")
 async def chat(request: Request, chat_request: ChatRequest):
-    """
-    Process a chat message through the rebbe.dev pipeline.
+    """Process a chat message through the non-streaming rebbe.dev pipeline.
 
     The message flows through four specialized agents:
-    1. Pastoral Context Agent - Determines HOW to respond
-    2. Halachic Reasoning Agent - Provides halachic landscape
-    3. Moral-Ethical Agent - Ensures dignity and prevents harm
-    4. Meta-Rabbinic Voice Agent - Crafts the final response
+
+    1. **Pastoral Context Agent** -- determines *how* to respond.
+    2. **Halachic Reasoning Agent** -- provides the halachic landscape.
+    3. **Moral-Ethical Agent** -- ensures dignity and prevents harm.
+    4. **Meta-Rabbinic Voice Agent** -- crafts the final response.
+
+    Args:
+        request: The incoming HTTP request.
+        chat_request: Validated request body with ``message``,
+            ``conversation_history``, and optional ``session_id`` /
+            ``conversation_id``.
+
+    Returns:
+        ChatResponse: The rabbi's response, referral flag, session/
+        conversation IDs, and pipeline metadata.
+
+    Raises:
+        HTTPException: 400 for invalid input, 403 if guest IP is blocked,
+            429 if rate-limited, 500 on pipeline errors.
     """
     user = get_current_user(request)
 
@@ -628,14 +979,35 @@ async def chat(request: Request, chat_request: ChatRequest):
 @app.post("/api/chat/stream")
 @limiter.limit(f"{settings.rate_limit_chat_per_minute}/minute")
 async def chat_stream(request: Request, chat_request: ChatRequest):
-    """
-    Process a chat message with streaming response using Server-Sent Events.
+    """Process a chat message and stream the response as Server-Sent Events.
 
-    The message flows through four specialized agents:
-    1. Pastoral Context Agent - Determines HOW to respond
-    2. Halachic Reasoning Agent - Provides halachic landscape
-    3. Moral-Ethical Agent - Ensures dignity and prevents harm
-    4. Meta-Rabbinic Voice Agent - Streams the final response
+    The message flows through the same four-agent pipeline as ``/api/chat``,
+    but the final Voice Agent streams tokens incrementally.
+
+    SSE event types emitted by the generator:
+
+    - **session** -- ``{session_id, conversation_id}`` sent first.
+    - **token** -- ``{data: "<text>"}`` for each streaming text chunk.
+    - **metrics** -- ``{data: {…}}`` with pipeline timing/metadata.
+    - **message_saved** -- ``{message_id}`` after the assistant message
+      is persisted to the database.
+    - **done** -- ``{}`` signals the stream is complete.
+    - **error** -- ``{message, detail?}`` on failure.
+
+    For guest (unauthenticated) users the endpoint enforces:
+
+    - IP block-list checks.
+    - Per-minute rate limiting (stricter than authenticated).
+    - A per-IP daily free-chat quota tracked by both a signed cookie
+      and a server-side IP counter (guards against cookie clearing).
+
+    Args:
+        request: The incoming HTTP request.
+        chat_request: Validated request body (same schema as ``/api/chat``).
+
+    Returns:
+        StreamingResponse: ``text/event-stream`` with SSE-formatted JSON
+        events. A ``guest_chats_used`` cookie is set for guest visitors.
     """
     # Get current user for database operations
     user = get_current_user(request)
@@ -740,10 +1112,18 @@ async def chat_stream(request: Request, chat_request: ChatRequest):
             logger.warning(f"Could not save user message: {e}")
 
     async def event_generator():
+        """Yield SSE-formatted JSON events for the streaming chat response.
+
+        Accumulates the full response text and pipeline metrics so they
+        can be persisted to the database after streaming completes.
+
+        Yields:
+            Strings in SSE ``data: <json>\\n\\n`` format.
+        """
         full_response = ""
         metrics_data = None
         try:
-            # Send session_id and conversation_id first
+            # Emit session context so the client can associate this stream
             yield f"data: {json.dumps({'type': 'session', 'session_id': session_id, 'conversation_id': conversation_id})}\n\n"
 
             async for event in orchestrator.process_message_stream(
@@ -754,10 +1134,10 @@ async def chat_stream(request: Request, chat_request: ChatRequest):
             ):
                 yield f"data: {json.dumps(event)}\n\n"
 
-                # Accumulate response for database
+                # Accumulate streaming tokens into full_response for DB persistence
                 if event.get("type") == "token":
                     full_response += event.get("data", "")
-                # Capture metrics
+                # Capture pipeline metrics (timing, token counts, etc.)
                 elif event.get("type") == "metrics":
                     metrics_data = event.get("data", {})
 
@@ -806,7 +1186,7 @@ async def chat_stream(request: Request, chat_request: ChatRequest):
         }
     )
 
-    # Set guest chat cookie and record to IP tracker
+    # Set guest chat cookie and record to server-side IP tracker
     if is_guest_chat:
         guest_cookie = create_guest_chat_cookie(new_guest_chats_used)
         response.set_cookie(
@@ -815,7 +1195,7 @@ async def chat_stream(request: Request, chat_request: ChatRequest):
             httponly=True,
             secure=settings.is_production,
             samesite="lax",
-            max_age=86400 * 30,  # 30 days
+            max_age=86400 * 30,  # 30-day expiry
             path="/",
         )
         # Also record in IP tracker (guards against cookie clearing)
@@ -824,11 +1204,21 @@ async def chat_stream(request: Request, chat_request: ChatRequest):
     return response
 
 
+# ---------------------------------------------------------------------------
+# Static File Serving
+# ---------------------------------------------------------------------------
+
 frontend_path = os.path.join(os.path.dirname(__file__), "..", "..", "frontend")
 if os.path.exists(frontend_path):
+    # Mount the frontend directory at /static for CSS, JS, and asset files
     app.mount("/static", StaticFiles(directory=frontend_path), name="static")
 
     @app.get("/")
     async def serve_frontend():
-        """Serve the frontend application."""
+        """Serve the single-page frontend application (index.html).
+
+        Returns:
+            FileResponse: The main ``index.html`` file from the frontend
+            directory.
+        """
         return FileResponse(os.path.join(frontend_path, "index.html"))
