@@ -1176,10 +1176,13 @@ body {
     background: var(--accent);
     color: white;
     padding: 10px 20px;
+    border: none;
     border-radius: var(--radius-sm);
     text-decoration: none;
+    font-family: inherit;
     font-weight: 500;
     font-size: 0.9rem;
+    cursor: pointer;
     transition: all var(--transition-fast);
     white-space: nowrap;
 }

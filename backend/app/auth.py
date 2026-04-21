@@ -25,7 +25,7 @@ Cookie signing approach:
 
 import logging
 from fastapi import APIRouter, Request, HTTPException, Depends
-from fastapi.responses import RedirectResponse, JSONResponse
+from fastapi.responses import RedirectResponse, JSONResponse, HTMLResponse
 from itsdangerous import URLSafeTimedSerializer, BadSignature, SignatureExpired
 from workos import WorkOSClient
 from slowapi import Limiter
@@ -223,7 +223,7 @@ def require_auth(request: Request) -> dict:
 
 @router.get("/login")
 @limiter.limit("10/minute")
-async def login(request: Request):
+async def login(request: Request, popup: int = 0):
     """Initiate the WorkOS AuthKit SSO login flow.
 
     Generates a CSRF ``state`` token, stores it in a short-lived cookie,
@@ -231,6 +231,10 @@ async def login(request: Request):
 
     Args:
         request: The incoming FastAPI ``Request`` object.
+        popup: When ``1``, marks the flow so the callback closes the
+            popup window and postMessages the opener instead of
+            redirecting to the app root. Allows seamless in-app sign-in
+            without reloading the main page.
 
     Returns:
         A ``RedirectResponse`` (HTTP 302) to the WorkOS authorization URL.
@@ -266,6 +270,18 @@ async def login(request: Request):
         max_age=600,  # 10 minutes
         path="/",  # Ensure cookie is available on callback
     )
+    if popup:
+        # Marker the callback reads to decide whether to close-and-postMessage
+        # (popup flow) or redirect to "/" (normal flow).
+        response.set_cookie(
+            key="oauth_popup",
+            value="1",
+            httponly=True,
+            secure=settings.is_production,
+            samesite="lax",
+            max_age=600,
+            path="/",
+        )
     return response
 
 
@@ -312,6 +328,10 @@ async def callback(request: Request, code: str = None, state: str = None, error:
     if not stored_state or stored_state != state:
         raise HTTPException(status_code=400, detail="Invalid state parameter")
 
+    # If login was initiated as a popup, the callback closes the popup and
+    # notifies the opener via postMessage instead of redirecting.
+    popup_mode = request.cookies.get("oauth_popup") == "1"
+
     try:
         # Exchange the authorization code with WorkOS for user information.
         # This is the server-to-server leg of the OAuth flow.
@@ -333,8 +353,31 @@ async def callback(request: Request, code: str = None, state: str = None, error:
         # Create a signed session token embedding the user data.
         session_token = create_session_token(user_data)
 
-        # Redirect to app with session cookie
-        response = RedirectResponse(url="/", status_code=302)
+        if popup_mode:
+            # Return a tiny HTML page that notifies the opener window and
+            # closes itself. The session cookie set below is already scoped
+            # to the full origin, so the parent window's next auth check
+            # will succeed without reloading.
+            html = (
+                "<!DOCTYPE html><html><head><title>Signed in</title></head>"
+                "<body style=\"background:#1a1a1a;color:#e8e8e8;"
+                "font-family:system-ui,sans-serif;text-align:center;"
+                "padding:40px;\">"
+                "<p>Signed in. You can close this window.</p>"
+                "<script>"
+                "(function(){try{"
+                "if(window.opener&&!window.opener.closed){"
+                "window.opener.postMessage({type:'rebbe-auth-complete'},"
+                "window.location.origin);"
+                "}}catch(e){}"
+                "window.close();"
+                "})();"
+                "</script></body></html>"
+            )
+            response = HTMLResponse(content=html)
+        else:
+            # Redirect to app with session cookie
+            response = RedirectResponse(url="/", status_code=302)
         response.set_cookie(
             key="session",
             value=session_token,
@@ -346,6 +389,8 @@ async def callback(request: Request, code: str = None, state: str = None, error:
         )
         # Clear the oauth state cookie -- it is single-use.
         response.delete_cookie("oauth_state", path="/")
+        if popup_mode:
+            response.delete_cookie("oauth_popup", path="/")
         return response
 
     except Exception as e:
