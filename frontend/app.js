@@ -453,6 +453,7 @@ function clearPendingDraft() {
 /**
  * @description Restores a pending prompt draft (saved before a login redirect) into the
  *              welcome-screen input so the user doesn't lose their message after signing in.
+ *              Also focuses the input so the user can send immediately.
  * @returns {void}
  */
 function restorePendingDraft() {
@@ -466,17 +467,74 @@ function restorePendingDraft() {
     showToast('Your message is ready to send.');
 }
 
+/** @type {Window|null} Handle to the currently open login popup, if any */
+let authPopup = null;
+
 /**
- * @description Displays a login prompt banner at the bottom of the viewport. Creates the
- *              element on first call, then toggles visibility on subsequent calls.
- * @param {boolean} [showFreeChatsMessage=false] - If true, shows "Sign in for 3 more free chats"
- *                                                  instead of the default sign-in message
+ * @description Opens the WorkOS sign-in flow in a popup window so the main page does
+ *              not reload. The popup navigates through /auth/login?popup=1 → WorkOS →
+ *              /auth/callback, which sets the session cookie and posts a
+ *              'rebbe-auth-complete' message back before closing itself. If the browser
+ *              blocks the popup, falls back to a full redirect that relies on the
+ *              sessionStorage draft being restored on reload.
  * @returns {void}
  */
-function showLoginPrompt(showFreeChatsMessage = false) {
+function openLoginPopup() {
+    const width = 500;
+    const height = 700;
+    // Center the popup on the user's screen
+    const left = window.screenX + (window.outerWidth - width) / 2;
+    const top = window.screenY + (window.outerHeight - height) / 2;
+    const features = `width=${width},height=${height},left=${left},top=${top},resizable=yes,scrollbars=yes`;
+
+    authPopup = window.open('/auth/login?popup=1', 'rebbeAuth', features);
+
+    if (!authPopup) {
+        // Popup blocked - fall back to full-page redirect. The draft is
+        // already saved to sessionStorage and will be restored on reload.
+        window.location.href = '/auth/login';
+    }
+}
+
+/**
+ * @description Handles a 'rebbe-auth-complete' postMessage from the login popup.
+ *              Re-checks the session, hides the login prompt, refreshes the UI, and
+ *              restores the user's saved draft back into the input.
+ * @returns {Promise<void>}
+ * @async
+ */
+async function handleAuthComplete() {
+    // Verify sign-in actually succeeded (the cookie should be present now)
+    const isAuthenticated = await checkAuth();
+    if (!isAuthenticated) return;
+
+    hideLoginPrompt();
+
+    // Pick up any state that's only available post-login
+    restorePendingDraft();
+    loadConversations().catch(() => { /* non-fatal */ });
+}
+
+// Accept the auth-complete signal from the popup. Reject messages from foreign
+// origins so a malicious embed can't forge authentication.
+window.addEventListener('message', (event) => {
+    if (event.origin !== window.location.origin) return;
+    if (!event.data || event.data.type !== 'rebbe-auth-complete') return;
+    handleAuthComplete();
+});
+
+/**
+ * @description Displays a login prompt banner at the bottom of the viewport. Creates the
+ *              element on first call, then toggles visibility on subsequent calls. The
+ *              Sign In button opens a popup so the user's typed prompt is preserved in
+ *              place without a page reload.
+ * @returns {void}
+ */
+function showLoginPrompt() {
     let prompt = document.getElementById('loginPrompt');
-    const message = showFreeChatsMessage
-        ? 'Sign in for 3 more free chats'
+    const hasDraft = !!getPendingDraft();
+    const message = hasDraft
+        ? 'Sign in to send your message'
         : 'Please sign in to chat with rebbe.dev';
 
     if (!prompt) {
@@ -488,11 +546,15 @@ function showLoginPrompt(showFreeChatsMessage = false) {
 
     prompt.innerHTML = `
         <div class="login-prompt-content">
-            <p>${message}</p>
-            <a href="/auth/login" class="login-prompt-btn">Sign In</a>
-            <button class="login-prompt-close" onclick="hideLoginPrompt()">&times;</button>
+            <p></p>
+            <button class="login-prompt-btn" id="loginPromptSignInBtn">Sign In</button>
+            <button class="login-prompt-close" id="loginPromptCloseBtn" aria-label="Close">&times;</button>
         </div>
     `;
+    // Use textContent for the message to avoid any HTML injection risk
+    prompt.querySelector('p').textContent = message;
+    prompt.querySelector('#loginPromptSignInBtn').addEventListener('click', openLoginPopup);
+    prompt.querySelector('#loginPromptCloseBtn').addEventListener('click', hideLoginPrompt);
     prompt.classList.add('visible');
 }
 
@@ -1013,13 +1075,18 @@ async function sendFromWelcome() {
     const message = messageInput.value.trim();
     if (!message || isLoading) return;
 
-    // Only create conversation for logged-in users
-    if (currentUser) {
-        const convId = await createConversation();
-        if (!convId) {
-            // Database might not be configured, continue without persistence
-            console.warn('Could not create conversation, continuing without persistence');
-        }
+    // Require sign-in before any submission. Preserve the typed prompt so
+    // it can be restored in-place once the popup login completes.
+    if (!currentUser) {
+        savePendingDraft(message);
+        showLoginPrompt();
+        return;
+    }
+
+    const convId = await createConversation();
+    if (!convId) {
+        // Database might not be configured, continue without persistence
+        console.warn('Could not create conversation, continuing without persistence');
     }
 
     // Switch to chat screen
@@ -1027,7 +1094,7 @@ async function sendFromWelcome() {
     settingsScreen.classList.add('hidden');
     dvarTorahScreen.classList.add('hidden');
     chatScreen.classList.remove('hidden');
-    chatTitle.textContent = currentUser ? 'New conversation' : 'Guest chat';
+    chatTitle.textContent = 'New conversation';
 
     // Clear welcome input
     messageInput.value = '';
@@ -1045,6 +1112,13 @@ async function sendFromWelcome() {
 function sendFromChat() {
     const message = chatInput.value.trim();
     if (!message || isLoading) return;
+
+    // Require sign-in before submitting a follow-up as well.
+    if (!currentUser) {
+        savePendingDraft(message);
+        showLoginPrompt();
+        return;
+    }
 
     // Clear chat input
     chatInput.value = '';
@@ -1078,15 +1152,13 @@ function sendFromChat() {
 async function sendMessage(message) {
     if (isLoading) return;
 
-    // Check if user is authenticated or is a guest with remaining chats
+    // Safety net: sendFromWelcome/sendFromChat already require login before
+    // calling sendMessage, but guard here too so a stray call can't slip
+    // through.
     if (!currentUser) {
-        // For guests, check if they have remaining free chats
-        if (!guestStatus || guestStatus.chats_remaining <= 0) {
-            // Preserve the prompt so it survives the OAuth redirect
-            savePendingDraft(message);
-            showLoginPrompt(true); // true = show "3 more free chats" message
-            return;
-        }
+        savePendingDraft(message);
+        showLoginPrompt();
+        return;
     }
 
     // Add user message to chat
@@ -1170,9 +1242,9 @@ async function sendMessage(message) {
                                 }
                                 removeTypingIndicator();
                                 setLoading(false);
-                                // Preserve the prompt so it survives the OAuth redirect
+                                // Preserve the prompt so it survives the sign-in flow
                                 savePendingDraft(message);
-                                showLoginPrompt(true);
+                                showLoginPrompt();
                                 return;
                             }
                             throw new Error(data.message);
