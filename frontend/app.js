@@ -287,6 +287,9 @@ async function init() {
         showToast('Payment successful! Credits have been added to your account.');
     }
 
+    // If the user was mid-prompt before logging in, restore their draft
+    restorePendingDraft();
+
     await loadConversations();
 }
 
@@ -413,6 +416,54 @@ function showLoggedOutState() {
             Sign In
         </a>
     `;
+}
+
+/** @type {string} sessionStorage key for preserving a user's in-flight prompt across the login redirect */
+const PENDING_DRAFT_KEY = 'pendingPromptDraft';
+
+/**
+ * @description Saves a user's prompt to sessionStorage so it can be restored after the
+ *              OAuth login round-trip. sessionStorage is per-tab and survives the
+ *              redirect to WorkOS and back, but is cleared when the tab closes.
+ * @param {string} message - The user's prompt text
+ * @returns {void}
+ */
+function savePendingDraft(message) {
+    const trimmed = (message || '').trim();
+    if (!trimmed) return;
+    sessionStorage.setItem(PENDING_DRAFT_KEY, trimmed);
+}
+
+/**
+ * @description Retrieves a previously saved prompt draft, if any.
+ * @returns {string|null} The saved prompt, or null if none exists
+ */
+function getPendingDraft() {
+    return sessionStorage.getItem(PENDING_DRAFT_KEY);
+}
+
+/**
+ * @description Clears the saved prompt draft from sessionStorage.
+ * @returns {void}
+ */
+function clearPendingDraft() {
+    sessionStorage.removeItem(PENDING_DRAFT_KEY);
+}
+
+/**
+ * @description Restores a pending prompt draft (saved before a login redirect) into the
+ *              welcome-screen input so the user doesn't lose their message after signing in.
+ * @returns {void}
+ */
+function restorePendingDraft() {
+    const draft = getPendingDraft();
+    if (!draft) return;
+    clearPendingDraft();
+
+    messageInput.value = draft;
+    handleTextareaInput(messageInput, sendBtn);
+    messageInput.focus();
+    showToast('Your message is ready to send.');
 }
 
 /**
@@ -1031,6 +1082,8 @@ async function sendMessage(message) {
     if (!currentUser) {
         // For guests, check if they have remaining free chats
         if (!guestStatus || guestStatus.chats_remaining <= 0) {
+            // Preserve the prompt so it survives the OAuth redirect
+            savePendingDraft(message);
             showLoginPrompt(true); // true = show "3 more free chats" message
             return;
         }
@@ -1117,6 +1170,8 @@ async function sendMessage(message) {
                                 }
                                 removeTypingIndicator();
                                 setLoading(false);
+                                // Preserve the prompt so it survives the OAuth redirect
+                                savePendingDraft(message);
                                 showLoginPrompt(true);
                                 return;
                             }
