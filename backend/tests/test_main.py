@@ -317,6 +317,70 @@ class TestChatStreamEndpoint:
         assert '"type": "token"' in response.text
         mock_refund.assert_not_called()
 
+    def test_crisis_metadata_records_safety_event(self, client_and_mock):
+        """When the pipeline flags a crisis, a safety event must be persisted
+        (not just streamed to the user) so it reaches the admin review queue."""
+        client, mock_orch = client_and_mock
+
+        async def _crisis_stream(**kwargs):
+            yield {"type": "metadata", "data": {
+                "requires_human_referral": True,
+                "crisis_indicators": ["self-harm language"],
+                "vulnerability_detected": True,
+                "emotional_state": "acute distress",
+                "pastoral_mode": "crisis",
+            }}
+            yield {"type": "token", "data": "I hear you, and I'm glad you reached out."}
+
+        mock_orch.process_message_stream = _crisis_stream
+
+        import app.main as main_module
+        with patch.object(main_module.settings, 'database_url', 'postgresql://test/db'):
+            with patch('app.main.db.get_user_profile', new=AsyncMock(return_value=None)):
+                with patch('app.main.db.consume_credit', new=AsyncMock(return_value=True)):
+                    with patch('app.main.db.add_message', new=AsyncMock(return_value={"id": "msg-1"})):
+                        with patch('app.main.db.get_conversation', new=AsyncMock(return_value=None)):
+                            with patch('app.main.db.create_safety_event', new=AsyncMock(return_value={"id": "se-1"})) as mock_safety:
+                                response = client.post(
+                                    "/api/chat/stream",
+                                    json={"message": "I don't want to be here anymore", "conversation_id": "conv-1"},
+                                )
+
+        assert response.status_code == 200
+        mock_safety.assert_called_once()
+        # Explicit crisis indicators -> severity 'crisis'.
+        assert mock_safety.call_args.kwargs["severity"] == "crisis"
+        assert mock_safety.call_args.kwargs["requires_referral"] is True
+
+    def test_no_safety_event_without_crisis_signal(self, client_and_mock):
+        """An ordinary message with no referral/indicators records no safety event."""
+        client, mock_orch = client_and_mock
+
+        async def _normal_stream(**kwargs):
+            yield {"type": "metadata", "data": {
+                "requires_human_referral": False,
+                "vulnerability_detected": False,
+                "pastoral_mode": "teaching",
+            }}
+            yield {"type": "token", "data": "Shabbat is the day of rest."}
+
+        mock_orch.process_message_stream = _normal_stream
+
+        import app.main as main_module
+        with patch.object(main_module.settings, 'database_url', 'postgresql://test/db'):
+            with patch('app.main.db.get_user_profile', new=AsyncMock(return_value=None)):
+                with patch('app.main.db.consume_credit', new=AsyncMock(return_value=True)):
+                    with patch('app.main.db.add_message', new=AsyncMock(return_value={"id": "msg-2"})):
+                        with patch('app.main.db.get_conversation', new=AsyncMock(return_value=None)):
+                            with patch('app.main.db.create_safety_event', new=AsyncMock()) as mock_safety:
+                                response = client.post(
+                                    "/api/chat/stream",
+                                    json={"message": "What is Shabbat?", "conversation_id": "conv-2"},
+                                )
+
+        assert response.status_code == 200
+        mock_safety.assert_not_called()
+
 
 class TestAdminEndpoints:
     """Test /api/admin/* endpoints and require_admin gating.
@@ -351,12 +415,14 @@ class TestAdminEndpoints:
                     with patch('app.main.db.get_error_stats', new=AsyncMock(return_value=[])):
                         with patch('app.main.db.get_session_stats', new=AsyncMock(return_value={'unique_users': 3})):
                             with patch('app.main.db.get_referrer_stats', new=AsyncMock(return_value=[])):
-                                response = client.get("/api/admin/overview")
+                                with patch('app.main.db.count_open_safety_events', new=AsyncMock(return_value=2)):
+                                    response = client.get("/api/admin/overview")
 
         assert response.status_code == 200
         data = response.json()
         assert data["stats"]["total_users"] == 5
         assert data["stats"]["revenue_cents"] == 1200
+        assert data["open_safety_events"] == 2
         assert data["window_days"] == 7
 
     def test_users_list_returns_users_for_admin(self, client_and_mock):
@@ -372,6 +438,43 @@ class TestAdminEndpoints:
         assert response.status_code == 200
         users = response.json()["users"]
         assert users[0]["id"] == "u1"
+
+    def test_safety_queue_forbidden_for_non_admin(self, client_and_mock):
+        """An authenticated non-admin cannot read the safety queue."""
+        client, _ = client_and_mock
+        response = client.get("/api/admin/safety")
+        assert response.status_code == 403
+
+    def test_safety_queue_returns_events_for_admin(self, client_and_mock):
+        """An admin gets the safety queue with an open count."""
+        client, _ = client_and_mock
+        import app.main as main_module
+        import app.auth as auth_module
+        with patch.object(auth_module.settings, 'admin_emails', 'test@example.com'):
+            with patch.object(main_module.settings, 'database_url', 'postgresql://test/db'):
+                with patch('app.main.db.list_safety_events', new=AsyncMock(return_value=[{'id': 'se-1', 'severity': 'crisis'}])):
+                    with patch('app.main.db.count_open_safety_events', new=AsyncMock(return_value=1)):
+                        response = client.get("/api/admin/safety")
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["open_count"] == 1
+        assert data["events"][0]["id"] == "se-1"
+
+    def test_review_safety_event_for_admin(self, client_and_mock):
+        """An admin can mark a safety event reviewed."""
+        client, _ = client_and_mock
+        import app.main as main_module
+        import app.auth as auth_module
+        with patch.object(auth_module.settings, 'admin_emails', 'test@example.com'):
+            with patch.object(main_module.settings, 'database_url', 'postgresql://test/db'):
+                with patch('app.main.db.review_safety_event', new=AsyncMock(return_value=True)) as mock_review:
+                    response = client.post("/api/admin/safety/se-1/review", json={"status": "reviewed"})
+
+        assert response.status_code == 200
+        assert response.json()["reviewed"] is True
+        mock_review.assert_called_once()
+        assert mock_review.call_args.args[0] == "se-1"
 
 
 class TestCORSMiddleware:

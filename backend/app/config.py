@@ -102,6 +102,13 @@ class Settings(BaseSettings):
     llm_model: str = "anthropic/claude-sonnet-5"
 
     # -------------------------------------------------------------------
+    # Alerting / Observability
+    # -------------------------------------------------------------------
+    # Optional Slack Incoming Webhook URL. When set, high-priority events
+    # (e.g. a detected crisis) are posted to it. No-op when empty.
+    slack_webhook_url: str = ""
+
+    # -------------------------------------------------------------------
     # TTS Configuration (ElevenLabs)
     # -------------------------------------------------------------------
     elevenlabs_api_key: str = ""

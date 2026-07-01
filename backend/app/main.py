@@ -37,6 +37,7 @@ import os
 
 logger = logging.getLogger(__name__)
 
+from pydantic import BaseModel
 from .config import get_settings
 from .models import (
     ChatRequest,
@@ -669,9 +670,11 @@ async def admin_overview(request: Request, days: int = 7):
         errors = await db.get_error_stats(days=days)
         sessions = await db.get_session_stats(days=days)
         referrers = await db.get_referrer_stats(days=days)
+        open_safety_events = await db.count_open_safety_events()
         return {
             "window_days": max(1, min(days, 365)),
             "stats": stats,
+            "open_safety_events": open_safety_events,
             "errors": errors,
             "sessions": sessions,
             "referrers": referrers,
@@ -709,6 +712,80 @@ async def admin_list_users(request: Request, limit: int = 50, offset: int = 0):
     except Exception as e:
         logger.error(f"Error listing users for admin: {e}")
         raise HTTPException(status_code=500, detail="Failed to list users")
+
+
+@app.get("/api/admin/safety")
+@limiter.limit("60/minute")
+async def admin_safety_queue(request: Request, status: str = "open", limit: int = 100, offset: int = 0):
+    """List safety events (crisis/vulnerability signals) for admin review.
+
+    Args:
+        request: The incoming HTTP request.
+        status: Filter by ``open``/``reviewed``/``actioned``, or ``all``.
+        limit: Maximum events (1-200).
+        offset: Pagination offset (>= 0).
+
+    Returns:
+        JSON dict with an ``events`` list and the ``open_count``.
+
+    Raises:
+        HTTPException: 401 if not authenticated, 403 if not an admin, 503 if
+            no database is configured.
+    """
+    require_admin(request)
+
+    if not settings.db_url:
+        raise HTTPException(status_code=503, detail="Database not configured")
+
+    try:
+        status_filter = None if status == "all" else status
+        events = await db.list_safety_events(status=status_filter, limit=limit, offset=offset)
+        open_count = await db.count_open_safety_events()
+        return {"events": events, "open_count": open_count}
+    except Exception as e:
+        logger.error(f"Error listing safety events: {e}")
+        raise HTTPException(status_code=500, detail="Failed to list safety events")
+
+
+class SafetyReviewBody(BaseModel):
+    """Request body for reviewing a safety event."""
+    status: str = "reviewed"
+
+
+@app.post("/api/admin/safety/{event_id}/review")
+@limiter.limit("60/minute")
+async def admin_review_safety_event(request: Request, event_id: str, body: SafetyReviewBody):
+    """Mark a safety event as reviewed or actioned.
+
+    Args:
+        request: The incoming HTTP request.
+        event_id: The safety event UUID.
+        body: New status (``reviewed`` or ``actioned``).
+
+    Returns:
+        JSON dict with ``reviewed: True``.
+
+    Raises:
+        HTTPException: 401/403 for auth, 400 for invalid status, 404 if not
+            found, 503 if no database is configured.
+    """
+    admin = require_admin(request)
+
+    if body.status not in ("reviewed", "actioned"):
+        raise HTTPException(status_code=400, detail="Invalid status")
+    if not settings.db_url:
+        raise HTTPException(status_code=503, detail="Database not configured")
+
+    try:
+        updated = await db.review_safety_event(event_id, admin.get("email", "unknown"), body.status)
+        if not updated:
+            raise HTTPException(status_code=404, detail="Safety event not found")
+        return {"reviewed": True}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error reviewing safety event {event_id}: {e}")
+        raise HTTPException(status_code=500, detail="Failed to review safety event")
 
 
 # ---------------------------------------------------------------------------
@@ -967,6 +1044,66 @@ async def text_to_speech(request: Request):
 
 
 # ---------------------------------------------------------------------------
+# Safety escalation helpers
+# ---------------------------------------------------------------------------
+
+
+async def _post_slack_alert(text: str) -> None:
+    """Best-effort post to a Slack Incoming Webhook, if configured. No-op otherwise."""
+    if not settings.slack_webhook_url:
+        return
+    try:
+        async with httpx.AsyncClient(timeout=5.0) as client:
+            await client.post(settings.slack_webhook_url, json={"text": text})
+    except Exception as e:
+        logger.warning(f"Could not post Slack safety alert: {e}")
+
+
+async def _record_safety_event(pastoral_meta, user, conversation_id, message_id, user_message):
+    """Persist a crisis/vulnerability signal and alert, when one was flagged.
+
+    Best-effort and fully guarded: a failure here must never break the user's
+    chat response. Only records when the pastoral agent set
+    ``requires_human_referral`` or emitted crisis indicators.
+    """
+    try:
+        requires_referral = bool(pastoral_meta.get("requires_human_referral"))
+        indicators = pastoral_meta.get("crisis_indicators") or []
+
+        # Only escalate genuine safety signals -- a referral recommendation or
+        # explicit crisis indicators. Plain vulnerability without either is
+        # handled pastorally in-response and doesn't need a review-queue entry.
+        if not (requires_referral or indicators):
+            return
+
+        severity = "crisis" if indicators else "concern"
+        event = await db.create_safety_event(
+            user_id=user["id"] if user else None,
+            conversation_id=conversation_id,
+            message_id=message_id,
+            severity=severity,
+            requires_referral=requires_referral,
+            indicators=indicators,
+            emotional_state=pastoral_meta.get("emotional_state"),
+            message_excerpt=(user_message or "")[:500],
+        )
+
+        # Alert (Slack now; email alert added with the email milestone). Never
+        # include the raw message body in the alert -- just enough to triage.
+        who = (user or {}).get("email", "a guest")
+        await _post_slack_alert(
+            f":rotating_light: Safety event ({severity}) for {who} — "
+            f"referral={requires_referral}, indicators={len(indicators)}. Review in the admin safety queue."
+        )
+        logger.warning(
+            f"Safety event recorded: id={event.get('id')} severity={severity} "
+            f"referral={requires_referral} indicators={len(indicators)}"
+        )
+    except Exception as e:
+        logger.error(f"Failed to record safety event: {e}")
+
+
+# ---------------------------------------------------------------------------
 # Chat Endpoints
 # ---------------------------------------------------------------------------
 
@@ -1215,6 +1352,7 @@ async def chat_stream(request: Request, chat_request: ChatRequest):
         """
         full_response = ""
         metrics_data = None
+        pastoral_meta = None
         try:
             # Emit session context so the client can associate this stream
             yield f"data: {json.dumps({'type': 'session', 'session_id': session_id, 'conversation_id': conversation_id})}\n\n"
@@ -1230,18 +1368,33 @@ async def chat_stream(request: Request, chat_request: ChatRequest):
                 # Accumulate streaming tokens into full_response for DB persistence
                 if event.get("type") == "token":
                     full_response += event.get("data", "")
+                # Capture the pre-stream pastoral/crisis metadata (emitted once,
+                # before tokens). This carries requires_human_referral,
+                # vulnerability_detected, crisis_indicators, etc. -- which we
+                # must persist for safety review, not just stream to the client.
+                elif event.get("type") == "metadata":
+                    pastoral_meta = event.get("data", {})
                 # Capture pipeline metrics (timing, token counts, etc.)
                 elif event.get("type") == "metrics":
                     metrics_data = event.get("data", {})
 
-            # Save assistant response to database with metrics
+            # Save assistant response to database, merging pipeline metrics with
+            # the safety-relevant pastoral fields (previously dropped on save).
+            saved_message_id = None
             if conversation_id and user and settings.db_url and full_response:
-                # Include metrics in message metadata
-                metadata = metrics_data if metrics_data else {}
+                metadata = dict(metrics_data) if metrics_data else {}
+                if pastoral_meta:
+                    for key in (
+                        "requires_human_referral", "vulnerability_detected",
+                        "crisis_indicators", "pastoral_mode", "emotional_state",
+                    ):
+                        if key in pastoral_meta:
+                            metadata[key] = pastoral_meta[key]
                 try:
                     message = await db.add_message(conversation_id, "assistant", full_response, metadata)
                     # Emit message_id so frontend can track feedback
                     if message and message.get("id"):
+                        saved_message_id = message["id"]
                         yield f"data: {json.dumps({'type': 'message_saved', 'message_id': message['id']})}\n\n"
                 except Exception as e:
                     logger.warning(f"Could not save assistant message: {e}")
@@ -1249,6 +1402,15 @@ async def chat_stream(request: Request, chat_request: ChatRequest):
                     # available for this message rather than silently offering
                     # buttons that will fail.
                     yield f"data: {json.dumps({'type': 'message_save_failed'})}\n\n"
+
+            # Record a safety event whenever the pastoral agent flagged a
+            # referral or crisis indicators, so it lands in the admin review
+            # queue. Best-effort: never let a safety-logging failure break the
+            # user's response.
+            if pastoral_meta and settings.db_url:
+                await _record_safety_event(
+                    pastoral_meta, user, conversation_id, saved_message_id, sanitized_message
+                )
 
                 # Update conversation title if not set. Kept in its own
                 # try/except so a title-generation failure can't mask (or be

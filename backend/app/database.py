@@ -329,6 +329,36 @@ CREATE INDEX IF NOT EXISTS idx_analytics_events_event_type ON analytics_events(e
 CREATE INDEX IF NOT EXISTS idx_analytics_events_created_at ON analytics_events(created_at DESC);
 
 -- =========================================================================
+-- SAFETY EVENTS TABLE
+-- Persists crisis/vulnerability signals from the pastoral agent so a human
+-- can review them. A tool giving spiritual/emotional guidance has a duty of
+-- care: detection alone (shown transiently to the user) is not enough --
+-- these events are queryable and drive an admin safety-review queue.
+-- Nullable conversation/message FKs so an event is still recorded even when
+-- a chat isn't persisted.
+-- =========================================================================
+CREATE TABLE IF NOT EXISTS safety_events (
+    id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
+    user_id TEXT REFERENCES users(id) ON DELETE SET NULL,
+    conversation_id TEXT REFERENCES conversations(id) ON DELETE SET NULL,
+    message_id TEXT REFERENCES messages(id) ON DELETE SET NULL,
+    severity TEXT NOT NULL DEFAULT 'concern' CHECK (severity IN ('concern', 'crisis')),
+    requires_referral BOOLEAN DEFAULT FALSE,
+    indicators JSONB DEFAULT '[]',              -- crisis_indicators list from the pastoral agent
+    emotional_state TEXT,
+    message_excerpt TEXT,                       -- truncated user message for context
+    status TEXT NOT NULL DEFAULT 'open' CHECK (status IN ('open', 'reviewed', 'actioned')),
+    reviewed_by TEXT,                           -- admin email who reviewed
+    reviewed_at TIMESTAMPTZ,
+    created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_safety_events_user_id ON safety_events(user_id);
+-- Index: the admin queue -- open events, newest first
+CREATE INDEX IF NOT EXISTS idx_safety_events_status_created ON safety_events(status, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_safety_events_severity ON safety_events(severity);
+
+-- =========================================================================
 -- SAFE COLUMN MIGRATIONS (users table additions)
 -- Each block is idempotent -- safe to re-run on every deploy.
 -- =========================================================================
@@ -1443,6 +1473,127 @@ async def set_user_admin(email: str, is_admin: bool) -> bool:
         result = await conn.execute(
             "UPDATE users SET is_admin = $2, updated_at = NOW() WHERE LOWER(email) = LOWER($1)",
             email, is_admin
+        )
+        return result == "UPDATE 1"
+
+
+# ---------------------------------------------------------------------------
+# Safety Events (crisis / vulnerability review queue)
+# ---------------------------------------------------------------------------
+
+
+async def create_safety_event(
+    user_id: Optional[str],
+    conversation_id: Optional[str],
+    message_id: Optional[str],
+    severity: str,
+    requires_referral: bool,
+    indicators: Optional[list] = None,
+    emotional_state: Optional[str] = None,
+    message_excerpt: Optional[str] = None,
+) -> dict:
+    """Record a crisis/vulnerability signal for human review.
+
+    Called when the pastoral agent flags ``requires_human_referral`` or emits
+    crisis indicators. Persisting this (rather than only showing the user a
+    transient notice) is what makes the admin safety queue possible.
+
+    Args:
+        user_id: The user the event concerns (nullable for guests).
+        conversation_id: The conversation UUID (nullable).
+        message_id: The assistant message UUID (nullable).
+        severity: ``"concern"`` or ``"crisis"``.
+        requires_referral: Whether the pastoral agent recommended human referral.
+        indicators: List of crisis-indicator strings from the pastoral agent.
+        emotional_state: Free-text emotional state description.
+        message_excerpt: Truncated user message for reviewer context.
+
+    Returns:
+        A dict of the newly created safety event row.
+    """
+    async with get_connection() as conn:
+        row = await conn.fetchrow(
+            """
+            INSERT INTO safety_events
+                (user_id, conversation_id, message_id, severity, requires_referral,
+                 indicators, emotional_state, message_excerpt)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+            RETURNING id, user_id, conversation_id, message_id, severity,
+                      requires_referral, indicators, emotional_state, status, created_at
+            """,
+            user_id, conversation_id, message_id, severity, requires_referral,
+            indicators or [], emotional_state, message_excerpt,
+        )
+        return dict(row)
+
+
+async def list_safety_events(status: Optional[str] = "open", limit: int = 100, offset: int = 0) -> list[dict]:
+    """List safety events for the admin review queue, newest first.
+
+    Args:
+        status: Filter by status (``"open"``/``"reviewed"``/``"actioned"``), or
+            ``None`` for all statuses.
+        limit: Maximum events to return (clamped to 1-200).
+        offset: Pagination offset (clamped to >= 0).
+
+    Returns:
+        A list of safety event dicts joined with the user's email for context.
+    """
+    limit = max(1, min(limit, 200))
+    offset = max(0, offset)
+    async with get_connection() as conn:
+        if status:
+            rows = await conn.fetch(
+                """
+                SELECT s.*, u.email AS user_email
+                FROM safety_events s
+                LEFT JOIN users u ON u.id = s.user_id
+                WHERE s.status = $1
+                ORDER BY s.created_at DESC
+                LIMIT $2 OFFSET $3
+                """,
+                status, limit, offset,
+            )
+        else:
+            rows = await conn.fetch(
+                """
+                SELECT s.*, u.email AS user_email
+                FROM safety_events s
+                LEFT JOIN users u ON u.id = s.user_id
+                ORDER BY s.created_at DESC
+                LIMIT $1 OFFSET $2
+                """,
+                limit, offset,
+            )
+        return [dict(row) for row in rows]
+
+
+async def count_open_safety_events() -> int:
+    """Return the number of unreviewed (open) safety events."""
+    async with get_connection() as conn:
+        val = await conn.fetchval("SELECT COUNT(*) FROM safety_events WHERE status = 'open'")
+        return int(val or 0)
+
+
+async def review_safety_event(event_id: str, reviewed_by: str, status: str = "reviewed") -> bool:
+    """Mark a safety event as reviewed or actioned by an admin.
+
+    Args:
+        event_id: The safety event UUID.
+        reviewed_by: The admin email recording the review.
+        status: New status -- ``"reviewed"`` or ``"actioned"``.
+
+    Returns:
+        ``True`` if exactly one row was updated, ``False`` otherwise.
+    """
+    async with get_connection() as conn:
+        result = await conn.execute(
+            """
+            UPDATE safety_events
+            SET status = $2, reviewed_by = $3, reviewed_at = NOW()
+            WHERE id = $1
+            """,
+            event_id, status, reviewed_by,
         )
         return result == "UPDATE 1"
 

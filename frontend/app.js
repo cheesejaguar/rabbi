@@ -1276,6 +1276,7 @@ async function sendMessage(message) {
         const decoder = new TextDecoder();
         let fullResponse = '';
         let requiresHumanReferral = false;
+        let referralSeverity = 'concern';
         let buffer = ''; // Accumulates partial lines between read() calls
         let messageElement = null;
         let savedMessageId = null;
@@ -1316,6 +1317,11 @@ async function sendMessage(message) {
                             }
                         } else if (data.type === 'metadata') {
                             requiresHumanReferral = data.data.requires_human_referral;
+                            // Presence of explicit crisis indicators escalates the
+                            // notice from a gentle "talk to a rabbi" prompt to the
+                            // crisis-resources panel with concrete hotlines.
+                            const indicators = data.data.crisis_indicators;
+                            referralSeverity = (indicators && indicators.length) ? 'crisis' : 'concern';
                         } else if (data.type === 'token') {
                             if (!messageElement) {
                                 removeTypingIndicator();
@@ -1361,7 +1367,7 @@ async function sendMessage(message) {
         }
 
         if (requiresHumanReferral) {
-            showReferralNotice();
+            showReferralNotice(referralSeverity);
         } else {
             hideReferralNotice();
         }
@@ -1706,20 +1712,40 @@ function setLoading(loading) {
 }
 
 /**
- * @description Shows the human rabbi referral notice banner when the moral agent
- *              determines the user's question requires professional human guidance.
+ * @description Shows the human rabbi referral notice banner when the pastoral/moral
+ *              pipeline determines the user may benefit from human guidance. When
+ *              severity is 'crisis' (explicit crisis indicators were detected), the
+ *              crisis-resources panel with concrete hotlines (988, Crisis Text Line,
+ *              Jewish mental-health resources) is revealed and the message is adjusted.
+ * @param {'concern'|'crisis'} [severity='concern'] - The escalation level.
  * @returns {void}
  */
-function showReferralNotice() {
+function showReferralNotice(severity = 'concern') {
+    const crisisResources = document.getElementById('crisisResources');
+    const referralMessage = document.getElementById('referralMessage');
+    const isCrisis = severity === 'crisis';
+
+    if (referralMessage) {
+        referralMessage.textContent = isCrisis
+            ? "It sounds like you may be going through something really hard. You deserve support from someone who can be fully present with you."
+            : "This seems like something where speaking with a human rabbi or counselor could be really valuable.";
+    }
+    if (crisisResources) {
+        crisisResources.classList.toggle('hidden', !isCrisis);
+    }
+    referralNotice.classList.toggle('crisis', isCrisis);
     referralNotice.classList.remove('hidden');
 }
 
 /**
- * @description Hides the human rabbi referral notice banner.
+ * @description Hides the human rabbi referral notice banner and resets its crisis state.
  * @returns {void}
  */
 function hideReferralNotice() {
     referralNotice.classList.add('hidden');
+    referralNotice.classList.remove('crisis');
+    const crisisResources = document.getElementById('crisisResources');
+    if (crisisResources) crisisResources.classList.add('hidden');
 }
 
 /**

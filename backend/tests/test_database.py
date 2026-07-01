@@ -940,3 +940,76 @@ class TestPurchaseOperations:
             result = await fail_purchase("pi_nonexistent")
 
             assert result is None
+
+
+class TestSafetyEvents:
+    """Test safety-event (crisis review queue) database operations."""
+
+    @pytest.fixture
+    def mock_connection(self):
+        return AsyncMock()
+
+    @pytest.mark.asyncio
+    async def test_create_safety_event(self, mock_connection):
+        """Creating a safety event inserts and returns the row."""
+        mock_connection.fetchrow = AsyncMock(return_value={
+            "id": "se-1", "severity": "crisis", "requires_referral": True, "status": "open",
+        })
+        with patch('app.database.get_connection') as mock_ctx:
+            mock_ctx.return_value.__aenter__ = AsyncMock(return_value=mock_connection)
+            mock_ctx.return_value.__aexit__ = AsyncMock()
+
+            from app.database import create_safety_event
+            result = await create_safety_event(
+                user_id="u1", conversation_id="c1", message_id="m1",
+                severity="crisis", requires_referral=True,
+                indicators=["self-harm"], emotional_state="distress",
+                message_excerpt="...",
+            )
+            assert result["id"] == "se-1"
+            args = mock_connection.fetchrow.call_args.args
+            # severity and requires_referral passed positionally after the ids
+            assert "crisis" in args
+            assert True in args
+
+    @pytest.mark.asyncio
+    async def test_list_safety_events_open_filter(self, mock_connection):
+        """Listing with a status filter passes the status and clamps limit."""
+        mock_connection.fetch = AsyncMock(return_value=[{"id": "se-1"}])
+        with patch('app.database.get_connection') as mock_ctx:
+            mock_ctx.return_value.__aenter__ = AsyncMock(return_value=mock_connection)
+            mock_ctx.return_value.__aexit__ = AsyncMock()
+
+            from app.database import list_safety_events
+            result = await list_safety_events(status="open", limit=999, offset=0)
+            assert result[0]["id"] == "se-1"
+            args = mock_connection.fetch.call_args.args
+            assert args[1] == "open"      # status bound first
+            assert args[2] == 200         # limit clamped to 200
+
+    @pytest.mark.asyncio
+    async def test_count_open_safety_events(self, mock_connection):
+        """Open-count returns an int."""
+        mock_connection.fetchval = AsyncMock(return_value=3)
+        with patch('app.database.get_connection') as mock_ctx:
+            mock_ctx.return_value.__aenter__ = AsyncMock(return_value=mock_connection)
+            mock_ctx.return_value.__aexit__ = AsyncMock()
+
+            from app.database import count_open_safety_events
+            assert await count_open_safety_events() == 3
+
+    @pytest.mark.asyncio
+    async def test_review_safety_event(self, mock_connection):
+        """Reviewing updates status/reviewer and reports success."""
+        mock_connection.execute = AsyncMock(return_value="UPDATE 1")
+        with patch('app.database.get_connection') as mock_ctx:
+            mock_ctx.return_value.__aenter__ = AsyncMock(return_value=mock_connection)
+            mock_ctx.return_value.__aexit__ = AsyncMock()
+
+            from app.database import review_safety_event
+            ok = await review_safety_event("se-1", "admin@x.com", "reviewed")
+            assert ok is True
+            args = mock_connection.execute.call_args.args
+            assert args[1] == "se-1"
+            assert args[2] == "reviewed"
+            assert args[3] == "admin@x.com"

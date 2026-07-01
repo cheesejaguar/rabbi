@@ -45,7 +45,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="/static/styles.css?v=26">
+    <link rel="stylesheet" href="/static/styles.css?v=27">
 </head>
 <body>
     <div class="app-container">
@@ -283,10 +283,24 @@
 
                 <!-- Human Referral Notice - shown when the AI detects the user
                      may benefit from speaking with a human rabbi or counselor.
-                     Visibility toggled by the moral/pastoral pipeline agents. -->
+                     Visibility toggled by the moral/pastoral pipeline agents.
+                     In "crisis" severity the crisis-resources block is revealed
+                     with concrete hotlines. -->
                 <div class="referral-notice hidden" id="referralNotice">
                     <span class="referral-icon">&#x1F56F;</span>
-                    <p>This seems like something where speaking with a human rabbi or counselor could be really valuable.</p>
+                    <div class="referral-body">
+                        <p id="referralMessage">This seems like something where speaking with a human rabbi or counselor could be really valuable.</p>
+                        <!-- Crisis resources - only shown for crisis-severity signals -->
+                        <div class="crisis-resources hidden" id="crisisResources">
+                            <p class="crisis-resources-lead">If you're in distress or thinking about harming yourself, you don't have to carry it alone — help is available right now:</p>
+                            <ul class="crisis-resources-list">
+                                <li><strong>988 Suicide &amp; Crisis Lifeline</strong> — call or text <a href="tel:988">988</a> (US, 24/7)</li>
+                                <li><strong>Crisis Text Line</strong> — text <strong>HOME</strong> to <a href="sms:741741">741741</a></li>
+                                <li><strong>The Blue Dove Foundation</strong> — Jewish mental-health resources at <a href="https://thebluedovefoundation.org/" target="_blank" rel="noopener noreferrer">thebluedovefoundation.org</a></li>
+                                <li>If you are in immediate danger, please call your local emergency number (911 in the US).</li>
+                            </ul>
+                        </div>
+                    </div>
                 </div>
 
                 <footer class="chat-input-area">
@@ -588,6 +602,6 @@
          (https://js.stripe.com/v3/) is loaded dynamically by app.js
          when the purchase modal opens (PCI compliance requires loading
          from Stripe's CDN for card tokenization). -->
-    <script src="/static/app.js?v=27"></script>
+    <script src="/static/app.js?v=28"></script>
 </body>
 </html>
