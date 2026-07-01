@@ -114,24 +114,44 @@ class Settings(BaseSettings):
     session_secret_key: str = "change-me-in-production"
     workos_redirect_uri: str = "http://localhost:8613/auth/callback"
 
-    # Vercel deployment URL (automatically set by Vercel for preview deployments)
+    # Vercel deployment URL (automatically set by Vercel for preview deployments).
+    # This is unique PER DEPLOYMENT and changes on every push, even within the
+    # same branch/PR.
     vercel_url: str = ""
+
+    # Vercel's stable per-git-branch URL (e.g. the "-git-<branch>-" alias),
+    # which stays constant across every deployment on that branch. This is
+    # the URL actually surfaced in GitHub PR "Preview" links, so it's what
+    # users click through -- unlike vercel_url above.
+    vercel_branch_url: str = ""
 
     @property
     def effective_redirect_uri(self) -> str:
         """Compute the WorkOS OAuth redirect URI for the current environment.
 
-        For non-production environments where ``VERCEL_URL`` is set (i.e.,
-        Vercel preview deployments), the redirect URI is constructed from
-        the deployment URL. Otherwise falls back to the explicitly
+        For non-production environments, prefers ``VERCEL_BRANCH_URL`` (the
+        stable per-branch alias) over ``VERCEL_URL`` (the ephemeral
+        per-deployment URL that changes on every push). Using the
+        per-deployment URL here is a CSRF-cookie trap: users reach the app
+        via the stable branch URL (that's what PR preview links and repeat
+        visits use), but the OAuth ``state`` cookie set on that domain would
+        never be sent back if WorkOS redirected to a *different*,
+        deployment-specific domain -- surfacing as "Invalid state parameter"
+        on first login, which then appears to "fix itself" on retry only
+        because the failed callback lands the user on the deployment-
+        specific domain, and the next attempt round-trips entirely on that
+        same domain. Falls back to ``VERCEL_URL``, then to the explicitly
         configured ``workos_redirect_uri``.
 
         Returns:
             The full callback URL (e.g., ``https://<deploy>.vercel.app/auth/callback``).
         """
-        if not self.is_production and self.vercel_url:
-            # VERCEL_URL doesn't include protocol, add https://
-            return f"https://{self.vercel_url}/auth/callback"
+        if not self.is_production:
+            if self.vercel_branch_url:
+                # VERCEL_BRANCH_URL doesn't include protocol, add https://
+                return f"https://{self.vercel_branch_url}/auth/callback"
+            if self.vercel_url:
+                return f"https://{self.vercel_url}/auth/callback"
         return self.workos_redirect_uri
 
     @field_validator('session_secret_key')

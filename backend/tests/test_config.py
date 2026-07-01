@@ -260,7 +260,8 @@ class TestEffectiveRedirectUri:
             assert settings.effective_redirect_uri == "https://rebbe.dev/auth/callback"
 
     def test_uses_vercel_url_in_preview(self):
-        """Test that preview deployment uses VERCEL_URL."""
+        """Test that preview deployment falls back to VERCEL_URL when
+        VERCEL_BRANCH_URL isn't set."""
         env_vars = {
             "ENVIRONMENT": "preview",
             "WORKOS_REDIRECT_URI": "https://rebbe.dev/auth/callback",
@@ -269,6 +270,22 @@ class TestEffectiveRedirectUri:
         with patch.dict(os.environ, env_vars, clear=True):
             settings = Settings(_env_file=None)
             assert settings.effective_redirect_uri == "https://rebbe-preview-123.vercel.app/auth/callback"
+
+    def test_prefers_vercel_branch_url_over_vercel_url(self):
+        """VERCEL_BRANCH_URL (the stable per-branch alias users actually
+        click through PR preview links) must win over VERCEL_URL (the
+        ephemeral per-deployment URL that changes on every push) -- using
+        the wrong one causes the OAuth state cookie to be set on one domain
+        while WorkOS redirects the callback to a different one."""
+        env_vars = {
+            "ENVIRONMENT": "preview",
+            "WORKOS_REDIRECT_URI": "https://rebbe.dev/auth/callback",
+            "VERCEL_URL": "rabbi-a1b2c3d4-cheesejaguar.vercel.app",
+            "VERCEL_BRANCH_URL": "rabbi-git-my-branch-cheesejaguar.vercel.app",
+        }
+        with patch.dict(os.environ, env_vars, clear=True):
+            settings = Settings(_env_file=None)
+            assert settings.effective_redirect_uri == "https://rabbi-git-my-branch-cheesejaguar.vercel.app/auth/callback"
 
     def test_uses_vercel_url_in_development_with_vercel_url(self):
         """Test that development with VERCEL_URL uses dynamic redirect."""
