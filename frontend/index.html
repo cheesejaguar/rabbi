@@ -115,6 +115,16 @@
                         </svg>
                         Settings
                     </button>
+                    <!-- Admin dashboard link - shown only to administrators
+                         (toggled by app.js from the /auth/check is_admin flag;
+                         access is enforced server-side regardless) -->
+                    <a href="/admin" class="dropdown-item hidden" id="adminLink">
+                        <!-- Shield icon -->
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+                        </svg>
+                        Admin
+                    </a>
                     <div class="dropdown-divider"></div>
                     <a href="/auth/logout" class="dropdown-item dropdown-item-danger">
                         <!-- Logout door-arrow icon -->

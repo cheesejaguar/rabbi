@@ -65,6 +65,7 @@ from .security import (
 )
 from .conversations import router as conversations_router
 from .payments import router as payments_router
+from .admin import router as admin_router, require_admin
 from . import database as db
 from .dvar_torah import get_or_generate_dvar_torah
 
@@ -348,10 +349,11 @@ class AuthMiddleware(BaseHTTPMiddleware):
 # Add auth middleware (outermost -- runs first on every request)
 app.add_middleware(AuthMiddleware)
 
-# Include sub-routers for auth, conversations, and payments
+# Include sub-routers for auth, conversations, payments, and admin
 app.include_router(auth_router)
 app.include_router(conversations_router)
 app.include_router(payments_router)
+app.include_router(admin_router)
 
 
 # ---------------------------------------------------------------------------
@@ -1131,6 +1133,7 @@ async def chat_stream(request: Request, chat_request: ChatRequest):
         """
         full_response = ""
         metrics_data = None
+        pipeline_metadata = None
         try:
             # Emit session context so the client can associate this stream
             yield f"data: {json.dumps({'type': 'session', 'session_id': session_id, 'conversation_id': conversation_id})}\n\n"
@@ -1149,11 +1152,16 @@ async def chat_stream(request: Request, chat_request: ChatRequest):
                 # Capture pipeline metrics (timing, token counts, etc.)
                 elif event.get("type") == "metrics":
                     metrics_data = event.get("data", {})
+                # Capture pipeline context (crisis indicators, pastoral mode,
+                # sources) so it persists with the message. Without this, the
+                # admin crisis-review queue has nothing to query.
+                elif event.get("type") == "metadata":
+                    pipeline_metadata = event.get("data", {})
 
             # Save assistant response to database with metrics
             if conversation_id and user and settings.db_url and full_response:
-                # Include metrics in message metadata
-                metadata = metrics_data if metrics_data else {}
+                # Merge pipeline context and metrics into message metadata
+                metadata = {**(pipeline_metadata or {}), **(metrics_data or {})}
                 try:
                     message = await db.add_message(conversation_id, "assistant", full_response, metadata)
                     # Emit message_id so frontend can track feedback
@@ -1268,3 +1276,17 @@ if os.path.exists(frontend_path):
             directory.
         """
         return FileResponse(os.path.join(frontend_path, "index.html"))
+
+    @app.get("/admin")
+    async def serve_admin(admin: dict = Depends(require_admin)):
+        """Serve the admin dashboard page (admins only).
+
+        AuthMiddleware already requires a session for this path; the
+        ``require_admin`` dependency additionally enforces the admin role
+        so non-admin users get a 403 instead of the dashboard shell.
+
+        Returns:
+            FileResponse: The ``admin.html`` file from the frontend
+            directory.
+        """
+        return FileResponse(os.path.join(frontend_path, "admin.html"))

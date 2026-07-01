@@ -224,6 +224,20 @@ class Settings(BaseSettings):
         return v
 
     # -------------------------------------------------------------------
+    # Administration
+    # -------------------------------------------------------------------
+    # Comma-separated list of email addresses that are automatically
+    # granted administrator privileges. These users can access the
+    # /api/admin endpoints and the /admin dashboard. Additional admins
+    # can be promoted at runtime via POST /api/admin/users/{id}/role.
+    admin_emails: str = "cheesejaguar@gmail.com"
+
+    @property
+    def admin_email_list(self) -> list[str]:
+        """Return the configured admin emails as a normalized (lowercase) list."""
+        return [e.strip().lower() for e in self.admin_emails.split(",") if e.strip()]
+
+    # -------------------------------------------------------------------
     # Rate Limiting
     # -------------------------------------------------------------------
     rate_limit_per_minute: int = 30    # General API requests per minute per IP

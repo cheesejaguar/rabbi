@@ -63,13 +63,29 @@ The `RabbiOrchestrator` (`orchestrator.py`) coordinates this pipeline. If the mo
 - `POST /api/payments/webhook` - Handle Stripe webhook events (payment success/failure)
 - `POST /api/payments/verify-and-fulfill` - Client-side verification (non-production only)
 
+### Admin Endpoints (`admin.py`)
+
+Administrator-only endpoints for monitoring and moderation. Admin status comes from the `ADMIN_EMAILS` setting (comma-separated, defaults to the platform owner) or the `users.is_admin` flag granted at runtime; both are enforced by the `require_admin` dependency. Mutations and conversation views are recorded in `admin_audit_log`.
+
+- `GET /admin` - Admin dashboard UI (`frontend/admin.html`)
+- `GET /api/admin/overview` - Users, activity, revenue, error, feedback counters
+- `GET /api/admin/users` - Searchable user list; `POST .../{id}/credits` and `POST .../{id}/role` adjust credits / grant-revoke admin
+- `GET /api/admin/flagged` - Crisis / human-referral review queue (from message metadata)
+- `GET /api/admin/feedback` - Thumbs-up/down review queue with message excerpts
+- `GET /api/admin/errors` - Error log browser plus daily aggregates
+- `GET /api/admin/purchases` - Purchases across all users
+- `GET /api/admin/analytics` - Session/referrer/device/TTS stats
+- `GET /api/admin/costs` - Estimated LLM spend per day
+- `GET /api/admin/audit-log` - Trail of admin actions
+
 ### Database (`database.py`)
 
 PostgreSQL with asyncpg. Key tables:
-- `users` - User accounts with credits balance and stripe_customer_id
+- `users` - User accounts with credits balance, is_admin flag, and stripe_customer_id
 - `conversations` - Chat conversation metadata
 - `messages` - Individual messages in conversations
 - `purchases` - Credit purchase history with Stripe payment intent IDs
+- `admin_audit_log` - Immutable trail of privileged admin actions
 
 Schema auto-initializes on startup with advisory locks for concurrent safety.
 

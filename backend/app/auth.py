@@ -34,6 +34,7 @@ from typing import Optional
 import secrets
 
 from .config import get_settings
+from . import database as db
 
 logger = logging.getLogger(__name__)
 
@@ -351,6 +352,20 @@ async def callback(request: Request, code: str = None, state: str = None, error:
             "last_name": user.last_name,
         }
 
+        # Sync the user record at login. Best-effort: a database hiccup
+        # must not block sign-in. This also promotes ADMIN_EMAILS-listed
+        # accounts to administrator (see db.upsert_user).
+        if settings.db_url:
+            try:
+                await db.upsert_user(
+                    user_id=user.id,
+                    email=user.email or "",
+                    first_name=user.first_name,
+                    last_name=user.last_name,
+                )
+            except Exception as e:
+                logger.warning(f"Could not sync user record at login: {e}")
+
         # Create a signed session token embedding the user data.
         session_token = create_session_token(user_data)
 
@@ -477,6 +492,30 @@ async def logged_out():
     return HTMLResponse(content=html)
 
 
+async def _resolve_is_admin(user: dict) -> bool:
+    """Determine whether a session user has administrator access.
+
+    Config-listed admin emails are always admins (bootstrap path).
+    Otherwise the database ``is_admin`` flag is consulted; failures
+    fall back to non-admin so a DB outage never widens access.
+
+    Args:
+        user: The session user dict (must contain ``id`` and ``email``).
+
+    Returns:
+        ``True`` if the user is an administrator.
+    """
+    email = (user.get("email") or "").lower()
+    if email in settings.admin_email_list:
+        return True
+    if settings.db_url:
+        try:
+            return await db.is_user_admin(user["id"])
+        except Exception as e:
+            logger.warning(f"Could not check admin flag: {e}")
+    return False
+
+
 @router.get("/me")
 async def get_me(user: dict = Depends(require_auth)):
     """Return the authenticated user's profile information.
@@ -486,16 +525,19 @@ async def get_me(user: dict = Depends(require_auth)):
             ``require_auth`` dependency.
 
     Returns:
-        A JSON response containing the user profile fields.
+        A JSON response containing the user profile fields plus an
+        ``is_admin`` flag.
     """
-    return JSONResponse(content=user)
+    return JSONResponse(content={**user, "is_admin": await _resolve_is_admin(user)})
 
 
 @router.get("/check")
 async def check_auth(request: Request):
     """Check whether the current request is authenticated.
 
-    Used by the frontend to determine login state on page load.
+    Used by the frontend to determine login state on page load. The
+    ``is_admin`` flag lets the UI show the admin dashboard link;
+    authorization is still enforced server-side on every admin route.
 
     Args:
         request: The incoming FastAPI ``Request`` object.
@@ -507,5 +549,8 @@ async def check_auth(request: Request):
     """
     user = get_current_user(request)
     if user:
-        return JSONResponse(content={"authenticated": True, "user": user})
+        return JSONResponse(content={
+            "authenticated": True,
+            "user": {**user, "is_admin": await _resolve_is_admin(user)},
+        })
     return JSONResponse(content={"authenticated": False}, status_code=401)
