@@ -79,6 +79,17 @@ class Settings(BaseSettings):
         return email.strip().lower() in self.admin_email_list
 
     # -------------------------------------------------------------------
+    # Legal / Privacy
+    # -------------------------------------------------------------------
+    # Current Terms/Privacy version. Bumping this re-prompts every user for
+    # consent (their stored tos_version no longer matches). Date-stamped.
+    tos_version: str = "2026-07-01"
+    # How long to retain raw analytics/error rows before the retention purge
+    # removes them (days). Conversations are retained until the user deletes
+    # them or their account.
+    analytics_retention_days: int = 365
+
+    # -------------------------------------------------------------------
     # AI Gateway Selection
     # -------------------------------------------------------------------
     # Set GATEWAY=vercel (default) or GATEWAY=openrouter to choose which

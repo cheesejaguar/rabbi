@@ -45,7 +45,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="/static/styles.css?v=27">
+    <link rel="stylesheet" href="/static/styles.css?v=28">
 </head>
 <body>
     <div class="app-container">
@@ -477,6 +477,22 @@
                             </button>
                         </div>
                     </div>
+
+                    <!-- Privacy & data section - legal links + GDPR controls -->
+                    <div class="settings-section">
+                        <h2 class="settings-section-title">Privacy &amp; data</h2>
+                        <div class="settings-card">
+                            <div class="settings-row-description">
+                                Read our <a class="inline-link" href="/legal/terms" target="_blank" rel="noopener">Terms of Service</a>
+                                and <a class="inline-link" href="/legal/privacy" target="_blank" rel="noopener">Privacy Policy</a>.
+                                You control your data at any time:
+                            </div>
+                            <div class="settings-data-actions">
+                                <button class="secondary-btn" id="exportDataBtn">Export my data</button>
+                                <button class="danger-btn" id="deleteAccountBtn">Delete my account</button>
+                            </div>
+                        </div>
+                    </div>
                 </div>
             </div>
 
@@ -597,11 +613,40 @@
         </div>
     </div>
 
+    <!-- Consent modal - shown to logged-in users who haven't accepted the
+         current Terms/Privacy version. Blocks interaction until accepted. -->
+    <div class="modal-overlay hidden" id="consentModal" role="dialog" aria-modal="true" aria-labelledby="consentTitle">
+        <div class="modal-content consent-modal">
+            <h2 id="consentTitle" class="modal-title">Before we begin</h2>
+            <p class="consent-text">
+                rebbe.dev offers AI-generated guidance rooted in Jewish wisdom &mdash; it isn't a
+                substitute for a rabbi, therapist, or doctor, and it isn't binding
+                <em>psak halacha</em>. Your conversations are private and you can export or
+                delete them anytime.
+            </p>
+            <p class="consent-text">
+                By continuing you agree to our
+                <a class="inline-link" href="/legal/terms" target="_blank" rel="noopener">Terms of Service</a>
+                and <a class="inline-link" href="/legal/privacy" target="_blank" rel="noopener">Privacy Policy</a>.
+            </p>
+            <button class="primary-btn" id="consentAcceptBtn">I agree &mdash; continue</button>
+        </div>
+    </div>
+
+    <!-- Cookie consent banner - dismissed state persisted in localStorage. -->
+    <div class="cookie-banner hidden" id="cookieBanner">
+        <p>
+            We use essential cookies to keep you signed in and to keep the service secure.
+            See our <a class="inline-link" href="/legal/privacy" target="_blank" rel="noopener">Privacy Policy</a>.
+        </p>
+        <button class="secondary-btn" id="cookieDismissBtn">Got it</button>
+    </div>
+
     <!-- Main application script - handles all UI interactions, screen
          navigation, chat streaming, and payment flow. Stripe.js
          (https://js.stripe.com/v3/) is loaded dynamically by app.js
          when the purchase modal opens (PCI compliance requires loading
          from Stripe's CDN for card tokenization). -->
-    <script src="/static/app.js?v=28"></script>
+    <script src="/static/app.js?v=29"></script>
 </body>
 </html>

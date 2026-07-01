@@ -477,6 +477,70 @@ class TestAdminEndpoints:
         assert mock_review.call_args.args[0] == "se-1"
 
 
+class TestConsentAndAccount:
+    """Test consent capture and GDPR export/delete endpoints."""
+
+    def test_consent_status_reports_accepted_when_versions_match(self, client_and_mock):
+        client, _ = client_and_mock
+        import app.main as main_module
+        with patch.object(main_module.settings, 'database_url', 'postgresql://test/db'):
+            with patch.object(main_module.settings, 'tos_version', '2026-07-01'):
+                with patch('app.main.db.get_consent', new=AsyncMock(return_value={"tos_version": "2026-07-01"})):
+                    response = client.get("/api/consent")
+        assert response.status_code == 200
+        assert response.json()["accepted"] is True
+
+    def test_consent_status_reports_not_accepted_on_version_mismatch(self, client_and_mock):
+        client, _ = client_and_mock
+        import app.main as main_module
+        with patch.object(main_module.settings, 'database_url', 'postgresql://test/db'):
+            with patch.object(main_module.settings, 'tos_version', '2026-07-01'):
+                with patch('app.main.db.get_consent', new=AsyncMock(return_value={"tos_version": "2025-01-01"})):
+                    response = client.get("/api/consent")
+        assert response.status_code == 200
+        assert response.json()["accepted"] is False
+
+    def test_accept_consent_records_current_version(self, client_and_mock):
+        client, _ = client_and_mock
+        import app.main as main_module
+        with patch.object(main_module.settings, 'database_url', 'postgresql://test/db'):
+            with patch.object(main_module.settings, 'tos_version', '2026-07-01'):
+                with patch('app.main.db.record_consent', new=AsyncMock(return_value=True)) as mock_rec:
+                    response = client.post("/api/consent")
+        assert response.status_code == 200
+        assert response.json()["version"] == "2026-07-01"
+        mock_rec.assert_called_once_with("test-user-id", "2026-07-01")
+
+    def test_export_account_returns_attachment(self, client_and_mock):
+        client, _ = client_and_mock
+        import app.main as main_module
+        export = {"user": {"id": "test-user-id"}, "conversations": [], "purchases": [], "feedback": []}
+        with patch.object(main_module.settings, 'database_url', 'postgresql://test/db'):
+            with patch('app.main.db.export_user_data', new=AsyncMock(return_value=export)):
+                response = client.get("/api/account/export")
+        assert response.status_code == 200
+        assert "attachment" in response.headers.get("content-disposition", "")
+        assert response.json()["user"]["id"] == "test-user-id"
+
+    def test_delete_account_clears_session(self, client_and_mock):
+        client, _ = client_and_mock
+        import app.main as main_module
+        with patch.object(main_module.settings, 'database_url', 'postgresql://test/db'):
+            with patch('app.main.db.delete_user_account', new=AsyncMock(return_value=True)) as mock_del:
+                response = client.delete("/api/account")
+        assert response.status_code == 200
+        assert response.json()["deleted"] is True
+        mock_del.assert_called_once_with("test-user-id")
+
+    def test_legal_terms_page_is_public(self, client_and_mock):
+        """The Terms page must be reachable without authentication."""
+        client, _ = client_and_mock
+        response = client.get("/legal/terms")
+        # 200 if the file exists on disk (it does in-repo).
+        assert response.status_code == 200
+        assert "Terms of Service" in response.text
+
+
 class TestCORSMiddleware:
     """Test CORS middleware configuration."""
 

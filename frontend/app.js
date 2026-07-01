@@ -262,6 +262,9 @@ async function init() {
     // Setup event listeners immediately so UI is responsive
     setupEventListeners();
 
+    // Cookie-consent banner (dismissed state persisted in localStorage)
+    maybeShowCookieBanner();
+
     // Track session start (only once per browser session)
     if (!sessionStorage.getItem('sessionTracked')) {
         trackEvent('session_start', { new_session: true });
@@ -293,6 +296,10 @@ async function init() {
 
     // If the user was mid-prompt before logging in, restore their draft
     restorePendingDraft();
+
+    // Prompt for Terms/Privacy consent if the user hasn't accepted the
+    // current version (non-blocking to load; the modal gates further use).
+    checkConsent();
 
     await loadConversations();
 }
@@ -573,6 +580,126 @@ function hideLoginPrompt() {
     }
 }
 
+/* ============================================================
+ * CONSENT, COOKIES & ACCOUNT DATA (privacy / GDPR)
+ * ============================================================ */
+
+/**
+ * @description Checks whether the logged-in user has accepted the current Terms/Privacy
+ *              version and, if not, shows the blocking consent modal.
+ * @returns {Promise<void>}
+ * @async
+ */
+async function checkConsent() {
+    try {
+        const res = await fetch(`${API_BASE}/consent`, { credentials: 'include' });
+        if (!res.ok) return;
+        const data = await res.json();
+        if (!data.accepted) {
+            const modal = document.getElementById('consentModal');
+            if (modal) {
+                modal.classList.remove('hidden');
+                modal.classList.add('visible');
+            }
+        }
+    } catch (error) {
+        // Non-fatal: don't block the app if the consent check fails.
+        console.error('Consent check failed:', error);
+    }
+}
+
+/**
+ * @description Records the user's acceptance of the current Terms/Privacy and hides the modal.
+ * @returns {Promise<void>}
+ * @async
+ */
+async function acceptConsent() {
+    try {
+        const res = await fetch(`${API_BASE}/consent`, { method: 'POST', credentials: 'include' });
+        if (res.ok) {
+            const modal = document.getElementById('consentModal');
+            if (modal) {
+                modal.classList.remove('visible');
+                modal.classList.add('hidden');
+            }
+        } else {
+            showToast('Could not record your consent. Please try again.');
+        }
+    } catch (error) {
+        console.error('Consent submission failed:', error);
+        showToast('Could not record your consent. Please try again.');
+    }
+}
+
+/**
+ * @description Shows the cookie-consent banner unless the user has already dismissed it.
+ * @returns {void}
+ */
+function maybeShowCookieBanner() {
+    if (localStorage.getItem('cookieConsent') === 'dismissed') return;
+    const banner = document.getElementById('cookieBanner');
+    if (banner) banner.classList.remove('hidden');
+}
+
+/**
+ * @description Dismisses the cookie banner and persists the choice in localStorage.
+ * @returns {void}
+ */
+function dismissCookieBanner() {
+    localStorage.setItem('cookieConsent', 'dismissed');
+    const banner = document.getElementById('cookieBanner');
+    if (banner) banner.classList.add('hidden');
+}
+
+/**
+ * @description Downloads a full JSON export of the user's data (GDPR data portability).
+ * @returns {Promise<void>}
+ * @async
+ */
+async function handleExportData() {
+    try {
+        const res = await fetch(`${API_BASE}/account/export`, { credentials: 'include' });
+        if (!res.ok) { showToast('Could not export your data'); return; }
+        const blob = await res.blob();
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = 'rebbe-data-export.json';
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        URL.revokeObjectURL(url);
+        showToast('Your data export has downloaded');
+    } catch (error) {
+        console.error('Data export failed:', error);
+        showToast('Could not export your data');
+    }
+}
+
+/**
+ * @description Permanently deletes the user's account and all their data after confirmation,
+ *              then redirects to the logged-out page.
+ * @returns {Promise<void>}
+ * @async
+ */
+async function handleDeleteAccount() {
+    const confirmed = window.confirm(
+        'Permanently delete your account and all your conversations? This cannot be undone.'
+    );
+    if (!confirmed) return;
+    try {
+        const res = await fetch(`${API_BASE}/account`, { method: 'DELETE', credentials: 'include' });
+        if (res.ok) {
+            window.location.href = '/auth/logged-out';
+        } else {
+            showToast('Could not delete your account');
+        }
+    } catch (error) {
+        console.error('Account deletion failed:', error);
+        showToast('Could not delete your account');
+    }
+}
+
 /**
  * @description Derives a one- or two-character initials string from the user's name or email.
  *              Falls back to '?' if no identifying information is available.
@@ -687,6 +814,16 @@ function setupEventListeners() {
     // Profile form listeners
     bioInput.addEventListener('input', updateBioCharCount);
     saveProfileBtn.addEventListener('click', saveProfile);
+
+    // Consent, cookie banner, and account-data listeners
+    const consentAcceptBtn = document.getElementById('consentAcceptBtn');
+    if (consentAcceptBtn) consentAcceptBtn.addEventListener('click', acceptConsent);
+    const cookieDismissBtn = document.getElementById('cookieDismissBtn');
+    if (cookieDismissBtn) cookieDismissBtn.addEventListener('click', dismissCookieBanner);
+    const exportDataBtn = document.getElementById('exportDataBtn');
+    if (exportDataBtn) exportDataBtn.addEventListener('click', handleExportData);
+    const deleteAccountBtn = document.getElementById('deleteAccountBtn');
+    if (deleteAccountBtn) deleteAccountBtn.addEventListener('click', handleDeleteAccount);
 
     // Suggestion chips
     suggestionChips.forEach(chip => {

@@ -29,6 +29,7 @@ from fastapi import FastAPI, HTTPException, Request, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, RedirectResponse, StreamingResponse, JSONResponse
+from fastapi.encoders import jsonable_encoder
 from starlette.middleware.base import BaseHTTPMiddleware
 from slowapi import Limiter
 from slowapi.util import get_remote_address
@@ -300,13 +301,15 @@ class AuthMiddleware(BaseHTTPMiddleware):
         "/api/chat/stream",  # Allow guest free chat (handled in endpoint)
         "/api/greeting",  # Allow guests to see greeting
         "/api/dvar-torah",  # Weekly d'var Torah (public, cached)
+        "/legal/terms",  # Public legal pages (must be readable before signup)
+        "/legal/privacy",
         "/docs",
         "/openapi.json",
         "/redoc",
     }
 
     # Path prefixes that don't require authentication
-    PUBLIC_PREFIXES = ("/static/", "/auth/")
+    PUBLIC_PREFIXES = ("/static/", "/auth/", "/legal/")
 
     async def dispatch(self, request: Request, call_next):
         """Check authentication and either forward or reject the request.
@@ -630,6 +633,122 @@ async def update_profile(request: Request, profile_update: ProfileUpdate):
 
 
 # ---------------------------------------------------------------------------
+# Consent & Account (GDPR / data rights)
+# ---------------------------------------------------------------------------
+
+
+@app.get("/api/consent")
+@limiter.limit("60/minute")
+async def get_consent_status(request: Request):
+    """Return whether the authenticated user has accepted the current Terms.
+
+    Returns:
+        JSON with ``accepted`` (bool, True when their stored version matches
+        the current ``settings.tos_version``) and ``current_version``.
+
+    Raises:
+        HTTPException: 401 if not authenticated.
+    """
+    user = get_current_user(request)
+    if not user:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+
+    if not settings.db_url:
+        # No DB in dev -> treat as accepted so the app is usable locally.
+        return {"accepted": True, "current_version": settings.tos_version}
+
+    try:
+        consent = await db.get_consent(user["id"])
+        accepted = consent.get("tos_version") == settings.tos_version
+        return {"accepted": accepted, "current_version": settings.tos_version}
+    except Exception as e:
+        logger.error(f"Error reading consent: {e}")
+        # Fail open on read errors (don't lock the user out); they'll be
+        # re-prompted next load.
+        return {"accepted": True, "current_version": settings.tos_version}
+
+
+@app.post("/api/consent")
+@limiter.limit("30/minute")
+async def accept_consent(request: Request):
+    """Record the authenticated user's acceptance of the current Terms/Privacy.
+
+    Returns:
+        JSON ``{"accepted": True, "version": <current>}``.
+
+    Raises:
+        HTTPException: 401 if not authenticated, 503 if no database.
+    """
+    user = get_current_user(request)
+    if not user:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    if not settings.db_url:
+        raise HTTPException(status_code=503, detail="Database not configured")
+
+    try:
+        await db.record_consent(user["id"], settings.tos_version)
+        return {"accepted": True, "version": settings.tos_version}
+    except Exception as e:
+        logger.error(f"Error recording consent: {e}")
+        raise HTTPException(status_code=500, detail="Failed to record consent")
+
+
+@app.get("/api/account/export")
+@limiter.limit("5/minute")
+async def export_account(request: Request):
+    """Export all of the authenticated user's data (GDPR data portability).
+
+    Returns:
+        A JSON document with the user's profile, conversations+messages,
+        purchases, and feedback, as a downloadable attachment.
+
+    Raises:
+        HTTPException: 401 if not authenticated, 503 if no database.
+    """
+    user = get_current_user(request)
+    if not user:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    if not settings.db_url:
+        raise HTTPException(status_code=503, detail="Database not configured")
+
+    try:
+        data = await db.export_user_data(user["id"])
+        return JSONResponse(
+            content=jsonable_encoder(data),
+            headers={"Content-Disposition": "attachment; filename=rebbe-data-export.json"},
+        )
+    except Exception as e:
+        logger.error(f"Error exporting account data: {e}")
+        raise HTTPException(status_code=500, detail="Failed to export data")
+
+
+@app.delete("/api/account")
+@limiter.limit("5/minute")
+async def delete_account(request: Request):
+    """Delete the authenticated user's account and all their data (right to erasure).
+
+    Clears the session cookie on success so the user is logged out.
+
+    Raises:
+        HTTPException: 401 if not authenticated, 503 if no database.
+    """
+    user = get_current_user(request)
+    if not user:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    if not settings.db_url:
+        raise HTTPException(status_code=503, detail="Database not configured")
+
+    try:
+        await db.delete_user_account(user["id"])
+        response = JSONResponse(content={"deleted": True})
+        response.delete_cookie("session", path="/")
+        return response
+    except Exception as e:
+        logger.error(f"Error deleting account: {e}")
+        raise HTTPException(status_code=500, detail="Failed to delete account")
+
+
+# ---------------------------------------------------------------------------
 # Platform Administration
 #
 # Read-only monitoring endpoints gated by require_admin (403 for
@@ -786,6 +905,31 @@ async def admin_review_safety_event(request: Request, event_id: str, body: Safet
     except Exception as e:
         logger.error(f"Error reviewing safety event {event_id}: {e}")
         raise HTTPException(status_code=500, detail="Failed to review safety event")
+
+
+@app.post("/api/admin/purge-analytics")
+@limiter.limit("6/minute")
+async def admin_purge_analytics(request: Request):
+    """Delete analytics/error rows older than the retention window.
+
+    Intended to be triggered on a schedule (e.g. a Vercel Cron hitting this
+    endpoint with an admin session) or manually from the admin console.
+
+    Returns:
+        JSON with the number of rows purged per table.
+
+    Raises:
+        HTTPException: 401/403 for auth, 503 if no database is configured.
+    """
+    require_admin(request)
+    if not settings.db_url:
+        raise HTTPException(status_code=503, detail="Database not configured")
+    try:
+        purged = await db.purge_old_analytics(settings.analytics_retention_days)
+        return {"purged": purged, "retention_days": settings.analytics_retention_days}
+    except Exception as e:
+        logger.error(f"Error purging analytics: {e}")
+        raise HTTPException(status_code=500, detail="Failed to purge analytics")
 
 
 # ---------------------------------------------------------------------------
@@ -1514,3 +1658,13 @@ if os.path.exists(frontend_path):
             directory.
         """
         return FileResponse(os.path.join(frontend_path, "index.html"))
+
+    @app.get("/legal/terms")
+    async def serve_terms():
+        """Serve the public Terms of Service page (no auth required)."""
+        return FileResponse(os.path.join(frontend_path, "legal", "terms.html"))
+
+    @app.get("/legal/privacy")
+    async def serve_privacy():
+        """Serve the public Privacy Policy page (no auth required)."""
+        return FileResponse(os.path.join(frontend_path, "legal", "privacy.html"))

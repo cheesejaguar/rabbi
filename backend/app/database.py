@@ -393,6 +393,21 @@ BEGIN
     END IF;
 END $$;
 
+-- tos_accepted_at / tos_version: records the user's acceptance of the
+-- current Terms & Privacy Policy. When the stored version no longer matches
+-- settings.tos_version, the user is re-prompted for consent.
+DO $$
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns
+                   WHERE table_name = 'users' AND column_name = 'tos_accepted_at') THEN
+        ALTER TABLE users ADD COLUMN tos_accepted_at TIMESTAMPTZ;
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns
+                   WHERE table_name = 'users' AND column_name = 'tos_version') THEN
+        ALTER TABLE users ADD COLUMN tos_version TEXT;
+    END IF;
+END $$;
+
 -- =========================================================================
 -- PURCHASES TABLE
 -- Records every credit purchase. The lifecycle is:
@@ -1596,6 +1611,126 @@ async def review_safety_event(event_id: str, reviewed_by: str, status: str = "re
             event_id, status, reviewed_by,
         )
         return result == "UPDATE 1"
+
+
+# ---------------------------------------------------------------------------
+# Consent & Account (GDPR)
+# ---------------------------------------------------------------------------
+
+
+async def record_consent(user_id: str, version: str) -> bool:
+    """Record a user's acceptance of the current Terms & Privacy version.
+
+    Args:
+        user_id: The WorkOS user ID.
+        version: The ``settings.tos_version`` string being accepted.
+
+    Returns:
+        ``True`` if the user row was updated.
+    """
+    async with get_connection() as conn:
+        result = await conn.execute(
+            "UPDATE users SET tos_accepted_at = NOW(), tos_version = $2, updated_at = NOW() WHERE id = $1",
+            user_id, version,
+        )
+        return result == "UPDATE 1"
+
+
+async def get_consent(user_id: str) -> dict:
+    """Return the user's stored consent state.
+
+    Args:
+        user_id: The WorkOS user ID.
+
+    Returns:
+        A dict with ``tos_version`` (the version they last accepted, or None)
+        and ``tos_accepted_at``.
+    """
+    async with get_connection() as conn:
+        row = await conn.fetchrow(
+            "SELECT tos_version, tos_accepted_at FROM users WHERE id = $1",
+            user_id,
+        )
+        return dict(row) if row else {}
+
+
+async def export_user_data(user_id: str) -> dict:
+    """Assemble a full export of a user's data for GDPR/CCPA data-portability.
+
+    Args:
+        user_id: The WorkOS user ID.
+
+    Returns:
+        A dict with ``user``, ``conversations`` (each with its ``messages``),
+        ``purchases``, and ``feedback``.
+    """
+    async with get_connection() as conn:
+        user = await conn.fetchrow("SELECT * FROM users WHERE id = $1", user_id)
+        conversations = await conn.fetch(
+            "SELECT * FROM conversations WHERE user_id = $1 ORDER BY created_at", user_id,
+        )
+        convs = []
+        for c in conversations:
+            msgs = await conn.fetch(
+                "SELECT id, role, content, metadata, created_at FROM messages WHERE conversation_id = $1 ORDER BY created_at",
+                c["id"],
+            )
+            conv = dict(c)
+            conv["messages"] = [dict(m) for m in msgs]
+            convs.append(conv)
+        purchases = await conn.fetch("SELECT * FROM purchases WHERE user_id = $1 ORDER BY created_at", user_id)
+        feedback = await conn.fetch("SELECT * FROM feedback WHERE user_id = $1 ORDER BY created_at", user_id)
+        return {
+            "user": dict(user) if user else None,
+            "conversations": convs,
+            "purchases": [dict(p) for p in purchases],
+            "feedback": [dict(f) for f in feedback],
+        }
+
+
+async def delete_user_account(user_id: str) -> bool:
+    """Delete a user and all their data (GDPR right to erasure).
+
+    Relies on ``ON DELETE CASCADE`` from conversations/messages/feedback/
+    purchases and ``ON DELETE SET NULL`` for errors/analytics/safety events.
+
+    Args:
+        user_id: The WorkOS user ID.
+
+    Returns:
+        ``True`` if the user row was deleted.
+    """
+    async with get_connection() as conn:
+        result = await conn.execute("DELETE FROM users WHERE id = $1", user_id)
+        return result == "DELETE 1"
+
+
+async def purge_old_analytics(retention_days: int) -> dict:
+    """Delete analytics and error rows older than the retention window.
+
+    Args:
+        retention_days: Rows older than this many days are removed (min 1).
+
+    Returns:
+        A dict with the number of ``analytics_events`` and ``errors`` deleted.
+    """
+    retention_days = max(1, retention_days)
+    async with get_connection() as conn:
+        a = await conn.execute(
+            "DELETE FROM analytics_events WHERE created_at < NOW() - INTERVAL '1 day' * $1",
+            retention_days,
+        )
+        e = await conn.execute(
+            "DELETE FROM errors WHERE created_at < NOW() - INTERVAL '1 day' * $1",
+            retention_days,
+        )
+        # execute() returns e.g. "DELETE 42"; parse the trailing count.
+        def _count(tag: str) -> int:
+            try:
+                return int(tag.split()[-1])
+            except (ValueError, IndexError):
+                return 0
+        return {"analytics_events": _count(a), "errors": _count(e)}
 
 
 async def get_device_stats(days: int = 7) -> list[dict]:
