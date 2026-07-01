@@ -635,6 +635,19 @@ class TestCreateSponsorshipIntentEndpoint:
         assert response.status_code == 400
         assert "holiday" in response.json()["detail"].lower()
 
+    def test_whitespace_only_dedication_rejected(self, mock_user):
+        # Passes the raw min_length=2 check but trims to empty - must not
+        # create a PaymentIntent or a blank public dedication.
+        client, stack = self._client(mock_user)
+        with stack:
+            with patch('app.payments.stripe.PaymentIntent.create') as mock_intent:
+                response = client.post("/api/payments/create-sponsorship-intent", json={
+                    "tier_id": "chai", "dedication": "   ", "dedication_type": "memory",
+                })
+        assert response.status_code == 400
+        assert "empty" in response.json()["detail"].lower()
+        mock_intent.assert_not_called()
+
     def test_success_creates_intent_and_record(self, mock_user):
         client, stack = self._client(mock_user)
         with stack:

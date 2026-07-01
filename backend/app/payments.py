@@ -164,7 +164,11 @@ async def create_sponsorship_intent(request: Request, body: CreateSponsorshipReq
             detail="No weekly parsha this week (holiday reading) - sponsorships reopen next week."
         )
 
+    # Pydantic validates raw length, but a whitespace-only value would trim
+    # to an empty public dedication - revalidate after trimming.
     dedication = body.dedication.strip()
+    if len(dedication) < 2:
+        raise HTTPException(status_code=400, detail="Dedication cannot be empty")
 
     try:
         stripe_customer_id = await get_or_create_stripe_customer(user)

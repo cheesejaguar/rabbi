@@ -294,6 +294,32 @@ async function init() {
         showToast('Payment successful! Credits have been added to your account.');
     }
 
+    // Check for sponsorship success redirect (same redirect-based payment
+    // methods as above, but for d'var Torah dedications)
+    if (urlParams.get('sponsorship') === 'success') {
+        const paymentIntentId = urlParams.get('payment_intent');
+        window.history.replaceState({}, '', window.location.pathname);
+
+        // Best-effort immediate fulfillment (dev-only endpoint; production
+        // relies on webhooks, where this returns 404 and is safely ignored)
+        if (paymentIntentId) {
+            try {
+                await fetch(`${API_BASE}/payments/verify-and-fulfill`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ payment_intent_id: paymentIntentId }),
+                    credentials: 'include',
+                });
+            } catch (verifyError) {
+                console.error('Sponsorship verification error:', verifyError);
+            }
+        }
+
+        showToast("Thank you! Your d'var Torah dedication has been received.");
+        // Refresh so the new dedication appears once fulfillment lands
+        await loadDvarTorah(true);
+    }
+
     // If the user was mid-prompt before logging in, restore their draft
     restorePendingDraft();
 
@@ -842,12 +868,15 @@ async function loadGreeting() {
  * @description Fetches the weekly D'var Torah (Torah portion commentary) from the API.
  *              If the data is available and it is not a holiday week, caches the response
  *              and reveals the D'var Torah preview section on the welcome screen.
+ * @param {boolean} [fresh=false] - Bypass the HTTP cache (used after a new
+ *              sponsorship so the dedication appears without waiting out the
+ *              endpoint's Cache-Control window)
  * @returns {Promise<void>}
  * @async
  */
-async function loadDvarTorah() {
+async function loadDvarTorah(fresh = false) {
     try {
-        const response = await fetch(`${API_BASE}/dvar-torah`);
+        const response = await fetch(`${API_BASE}/dvar-torah`, fresh ? { cache: 'no-store' } : undefined);
         if (!response.ok) return;
 
         const data = await response.json();
