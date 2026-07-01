@@ -69,7 +69,7 @@ class Settings(BaseSettings):
     # -------------------------------------------------------------------
     # Model identifier in "<provider>/<model>" format, compatible with
     # both Vercel AI Gateway and OpenRouter.
-    llm_model: str = "anthropic/claude-sonnet-4-20250514"
+    llm_model: str = "anthropic/claude-sonnet-5"
 
     # -------------------------------------------------------------------
     # TTS Configuration (ElevenLabs)

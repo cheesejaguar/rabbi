@@ -28,10 +28,11 @@ from openai import OpenAI
 # ---------------------------------------------------------------------------
 
 # Approximate token costs per 1M tokens (in USD).
-# Covers Claude Sonnet 4 (current default), Claude 3.5 Sonnet, and Claude 3
-# Opus.  The "default" entry is used as a fallback for any unrecognised model
-# string so cost tracking never breaks.
+# Covers Claude Sonnet 5 (current default), Claude Sonnet 4, Claude 3.5
+# Sonnet, and Claude 3 Opus.  The "default" entry is used as a fallback for
+# any unrecognised model string so cost tracking never breaks.
 TOKEN_COSTS = {
+    "anthropic/claude-sonnet-5": {"input": 3.00, "output": 15.00},
     "anthropic/claude-sonnet-4-20250514": {"input": 3.00, "output": 15.00},
     "anthropic/claude-3-5-sonnet-20241022": {"input": 3.00, "output": 15.00},
     "anthropic/claude-3-opus-20240229": {"input": 15.00, "output": 75.00},
@@ -248,7 +249,7 @@ class BaseAgent(ABC):
     per-agent metrics on the shared context.
     """
 
-    def __init__(self, client: OpenAI, model: str = "anthropic/claude-sonnet-4-20250514"):
+    def __init__(self, client: OpenAI, model: str = "anthropic/claude-sonnet-5"):
         self.client = client
         self.model = model
         self.name = self.__class__.__name__

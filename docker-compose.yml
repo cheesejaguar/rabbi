@@ -14,7 +14,7 @@ services:
     # Environment variable overrides — these take precedence over .env values.
     # LLM_MODEL defaults to Claude Sonnet if not set in the host environment.
     environment:
-      - LLM_MODEL=${LLM_MODEL:-anthropic/claude-sonnet-4-20250514}
+      - LLM_MODEL=${LLM_MODEL:-anthropic/claude-sonnet-5}
     volumes:
       # Bind-mount the frontend directory read-only (:ro) so that HTML/CSS/JS
       # changes are reflected immediately without rebuilding the image.

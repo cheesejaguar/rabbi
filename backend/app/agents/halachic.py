@@ -151,7 +151,7 @@ class HalachicReasoningAgent(BaseAgent):
       - **Curiosity mode**: engage intellectually while remaining warm.
     """
 
-    def __init__(self, client, model: str = "anthropic/claude-sonnet-4-20250514",
+    def __init__(self, client, model: str = "anthropic/claude-sonnet-5",
                  retriever: Optional[TextRetriever] = None):
         super().__init__(client, model)
         self.retriever = retriever
