@@ -318,6 +318,62 @@ class TestChatStreamEndpoint:
         mock_refund.assert_not_called()
 
 
+class TestAdminEndpoints:
+    """Test /api/admin/* endpoints and require_admin gating.
+
+    The module-scoped test user (test@example.com) is not in the default
+    admin allowlist, so admin routes must reject it with 403. Admin access is
+    simulated by patching the shared settings singleton's admin_emails.
+    """
+
+    def test_overview_forbidden_for_non_admin(self, client_and_mock):
+        """An authenticated non-admin gets 403 from the admin overview."""
+        client, _ = client_and_mock
+        response = client.get("/api/admin/overview")
+        assert response.status_code == 403
+
+    def test_users_forbidden_for_non_admin(self, client_and_mock):
+        """An authenticated non-admin gets 403 from the admin user list."""
+        client, _ = client_and_mock
+        response = client.get("/api/admin/users")
+        assert response.status_code == 403
+
+    def test_overview_returns_stats_for_admin(self, client_and_mock):
+        """An admin gets the aggregated platform overview."""
+        client, _ = client_and_mock
+        import app.main as main_module
+        import app.auth as auth_module
+        # settings is a shared lru_cached singleton, so patching either
+        # module's reference flips admin status for both.
+        with patch.object(auth_module.settings, 'admin_emails', 'test@example.com'):
+            with patch.object(main_module.settings, 'database_url', 'postgresql://test/db'):
+                with patch('app.main.db.get_platform_stats', new=AsyncMock(return_value={'total_users': 5, 'revenue_cents': 1200})):
+                    with patch('app.main.db.get_error_stats', new=AsyncMock(return_value=[])):
+                        with patch('app.main.db.get_session_stats', new=AsyncMock(return_value={'unique_users': 3})):
+                            with patch('app.main.db.get_referrer_stats', new=AsyncMock(return_value=[])):
+                                response = client.get("/api/admin/overview")
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["stats"]["total_users"] == 5
+        assert data["stats"]["revenue_cents"] == 1200
+        assert data["window_days"] == 7
+
+    def test_users_list_returns_users_for_admin(self, client_and_mock):
+        """An admin gets the paginated user list."""
+        client, _ = client_and_mock
+        import app.main as main_module
+        import app.auth as auth_module
+        with patch.object(auth_module.settings, 'admin_emails', 'test@example.com'):
+            with patch.object(main_module.settings, 'database_url', 'postgresql://test/db'):
+                with patch('app.main.db.list_users', new=AsyncMock(return_value=[{'id': 'u1', 'email': 'a@b.com', 'is_admin': False}])):
+                    response = client.get("/api/admin/users")
+
+        assert response.status_code == 200
+        users = response.json()["users"]
+        assert users[0]["id"] == "u1"
+
+
 class TestCORSMiddleware:
     """Test CORS middleware configuration."""
 

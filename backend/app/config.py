@@ -18,6 +18,7 @@ per process (singleton pattern).
 
 import logging
 from functools import lru_cache
+from typing import Optional
 from urllib.parse import quote_plus
 from pydantic_settings import BaseSettings
 from pydantic import field_validator
@@ -47,6 +48,35 @@ class Settings(BaseSettings):
     def is_production(self) -> bool:
         """Return ``True`` when running in production (case-insensitive)."""
         return self.environment.lower() == "production"
+
+    # -------------------------------------------------------------------
+    # Platform Administration
+    # -------------------------------------------------------------------
+    # Comma-separated list of email addresses granted platform-admin
+    # privileges (set via the ADMIN_EMAILS env var). Matched
+    # case-insensitively. This config allowlist is the source of truth for
+    # who is an admin: the ``users.is_admin`` column is re-synced from it on
+    # every login, so an admin designation survives database resets and
+    # can't be self-granted by editing a user row.
+    admin_emails: str = "cheesejaguar@gmail.com"
+
+    @property
+    def admin_email_list(self) -> list[str]:
+        """Return the configured admin emails as a normalized (lowercased) list."""
+        return [e.strip().lower() for e in self.admin_emails.split(",") if e.strip()]
+
+    def is_admin_email(self, email: Optional[str]) -> bool:
+        """Return ``True`` if ``email`` is in the admin allowlist.
+
+        Args:
+            email: The email address to check (case-insensitive, may be None).
+
+        Returns:
+            ``True`` when the email is a configured platform admin.
+        """
+        if not email:
+            return False
+        return email.strip().lower() in self.admin_email_list
 
     # -------------------------------------------------------------------
     # AI Gateway Selection

@@ -138,6 +138,43 @@ def get_current_user(request: Request) -> Optional[dict]:
     return verify_session_token(token)
 
 
+def is_admin_user(user: Optional[dict]) -> bool:
+    """Return ``True`` if the given session user is a platform admin.
+
+    Admin status is derived from the configured allowlist
+    (``settings.admin_emails``) keyed on the user's email, so it does not
+    depend on a database round trip.
+
+    Args:
+        user: A session user dict (as returned by ``get_current_user``), or None.
+
+    Returns:
+        ``True`` when the user's email is a configured platform admin.
+    """
+    return bool(user) and settings.is_admin_email(user.get("email"))
+
+
+def require_admin(request: Request) -> dict:
+    """FastAPI dependency that enforces platform-admin access.
+
+    Args:
+        request: The incoming FastAPI ``Request`` object.
+
+    Returns:
+        The authenticated admin user dict.
+
+    Raises:
+        HTTPException: 401 if not authenticated, 403 if authenticated but
+            not a platform admin.
+    """
+    user = get_current_user(request)
+    if not user:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    if not is_admin_user(user):
+        raise HTTPException(status_code=403, detail="Admin access required")
+    return user
+
+
 # ---------------------------------------------------------------------------
 # Guest chat tracking
 # ---------------------------------------------------------------------------
@@ -507,5 +544,9 @@ async def check_auth(request: Request):
     """
     user = get_current_user(request)
     if user:
-        return JSONResponse(content={"authenticated": True, "user": user})
+        return JSONResponse(content={
+            "authenticated": True,
+            "user": user,
+            "is_admin": is_admin_user(user),
+        })
     return JSONResponse(content={"authenticated": False}, status_code=401)

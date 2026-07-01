@@ -53,6 +53,7 @@ from .auth import (
     router as auth_router,
     get_current_user,
     require_auth,
+    require_admin,
     get_guest_chats_used,
     create_guest_chat_cookie,
     GUEST_FREE_CHAT_LIMIT,
@@ -625,6 +626,89 @@ async def update_profile(request: Request, profile_update: ProfileUpdate):
     except Exception as e:
         logger.error(f"Error updating profile: {e}")
         raise HTTPException(status_code=500, detail="Failed to update profile")
+
+
+# ---------------------------------------------------------------------------
+# Platform Administration
+#
+# Read-only monitoring endpoints gated by require_admin (403 for
+# authenticated non-admins, 401 for anonymous requests). Admin status is
+# driven by the ADMIN_EMAILS allowlist. These surface data the platform
+# already collects (errors, analytics, purchases) but previously had no way
+# to view.
+# ---------------------------------------------------------------------------
+
+
+@app.get("/api/admin/overview")
+@limiter.limit("60/minute")
+async def admin_overview(request: Request, days: int = 7):
+    """Return a platform overview for the admin dashboard.
+
+    Combines top-line counters (users, conversations, messages, revenue)
+    with recent error, session, and referrer analytics.
+
+    Args:
+        request: The incoming HTTP request.
+        days: Look-back window for the time-bounded analytics (1-365).
+
+    Returns:
+        JSON dict with ``stats``, ``errors``, ``sessions``, ``referrers``,
+        and the ``window_days`` used.
+
+    Raises:
+        HTTPException: 401 if not authenticated, 403 if not an admin, 503 if
+            no database is configured.
+    """
+    require_admin(request)
+
+    if not settings.db_url:
+        raise HTTPException(status_code=503, detail="Database not configured")
+
+    try:
+        stats = await db.get_platform_stats()
+        errors = await db.get_error_stats(days=days)
+        sessions = await db.get_session_stats(days=days)
+        referrers = await db.get_referrer_stats(days=days)
+        return {
+            "window_days": max(1, min(days, 365)),
+            "stats": stats,
+            "errors": errors,
+            "sessions": sessions,
+            "referrers": referrers,
+        }
+    except Exception as e:
+        logger.error(f"Error building admin overview: {e}")
+        raise HTTPException(status_code=500, detail="Failed to load admin overview")
+
+
+@app.get("/api/admin/users")
+@limiter.limit("60/minute")
+async def admin_list_users(request: Request, limit: int = 50, offset: int = 0):
+    """List users for the admin console (most recently joined first).
+
+    Args:
+        request: The incoming HTTP request.
+        limit: Maximum users to return (1-200).
+        offset: Pagination offset (>= 0).
+
+    Returns:
+        JSON dict with a ``users`` list.
+
+    Raises:
+        HTTPException: 401 if not authenticated, 403 if not an admin, 503 if
+            no database is configured.
+    """
+    require_admin(request)
+
+    if not settings.db_url:
+        raise HTTPException(status_code=503, detail="Database not configured")
+
+    try:
+        users = await db.list_users(limit=limit, offset=offset)
+        return {"users": users}
+    except Exception as e:
+        logger.error(f"Error listing users for admin: {e}")
+        raise HTTPException(status_code=500, detail="Failed to list users")
 
 
 # ---------------------------------------------------------------------------

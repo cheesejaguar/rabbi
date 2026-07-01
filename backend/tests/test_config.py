@@ -315,6 +315,43 @@ class TestEffectiveRedirectUri:
             assert settings.effective_redirect_uri == "http://localhost:8613/auth/callback"
 
 
+class TestAdminEmails:
+    """Test the platform-admin allowlist configuration."""
+
+    def test_default_admin_is_cheesejaguar(self):
+        """The default allowlist designates cheesejaguar@gmail.com as admin."""
+        with patch.dict(os.environ, {}, clear=True):
+            settings = Settings(_env_file=None)
+            assert settings.admin_email_list == ["cheesejaguar@gmail.com"]
+            assert settings.is_admin_email("cheesejaguar@gmail.com") is True
+
+    def test_is_admin_email_is_case_insensitive(self):
+        """Admin matching ignores case and surrounding whitespace."""
+        with patch.dict(os.environ, {}, clear=True):
+            settings = Settings(_env_file=None)
+            assert settings.is_admin_email("  CheeseJaguar@Gmail.com ") is True
+            assert settings.is_admin_email("someone-else@example.com") is False
+            assert settings.is_admin_email(None) is False
+            assert settings.is_admin_email("") is False
+
+    def test_admin_emails_env_override_comma_separated(self):
+        """ADMIN_EMAILS accepts a comma-separated, mixed-case list."""
+        env_vars = {"ADMIN_EMAILS": "a@x.com, B@Y.com ,c@z.com"}
+        with patch.dict(os.environ, env_vars, clear=True):
+            settings = Settings(_env_file=None)
+            assert settings.admin_email_list == ["a@x.com", "b@y.com", "c@z.com"]
+            assert settings.is_admin_email("b@y.com") is True
+            # The default admin is replaced, not appended to.
+            assert settings.is_admin_email("cheesejaguar@gmail.com") is False
+
+    def test_admin_emails_empty_disables_all_admins(self):
+        """An empty ADMIN_EMAILS yields no admins."""
+        with patch.dict(os.environ, {"ADMIN_EMAILS": ""}, clear=True):
+            settings = Settings(_env_file=None)
+            assert settings.admin_email_list == []
+            assert settings.is_admin_email("anyone@example.com") is False
+
+
 class TestGetSettings:
     """Test get_settings function."""
 

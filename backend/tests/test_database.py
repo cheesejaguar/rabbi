@@ -147,6 +147,46 @@ class TestUserOperations:
             mock_connection.fetchrow.assert_called_once()
 
     @pytest.mark.asyncio
+    async def test_upsert_user_grants_admin_from_allowlist(self, mock_connection):
+        """An email on the admin allowlist is inserted with is_admin=True."""
+        mock_connection.fetchrow = AsyncMock(return_value={
+            "id": "admin-1", "email": "cheesejaguar@gmail.com", "is_admin": True,
+        })
+
+        with patch('app.database.get_connection') as mock_ctx:
+            mock_ctx.return_value.__aenter__ = AsyncMock(return_value=mock_connection)
+            mock_ctx.return_value.__aexit__ = AsyncMock()
+            with patch('app.database.get_settings') as mock_settings:
+                mock_settings.return_value.is_admin_email.return_value = True
+
+                from app.database import upsert_user
+                await upsert_user("admin-1", "cheesejaguar@gmail.com")
+
+                # is_admin is passed as the final positional arg to the INSERT.
+                args = mock_connection.fetchrow.call_args.args
+                assert args[-1] is True
+                mock_settings.return_value.is_admin_email.assert_called_once_with("cheesejaguar@gmail.com")
+
+    @pytest.mark.asyncio
+    async def test_upsert_user_non_admin_email_is_not_admin(self, mock_connection):
+        """An email not on the allowlist is inserted with is_admin=False."""
+        mock_connection.fetchrow = AsyncMock(return_value={
+            "id": "user-9", "email": "nobody@example.com", "is_admin": False,
+        })
+
+        with patch('app.database.get_connection') as mock_ctx:
+            mock_ctx.return_value.__aenter__ = AsyncMock(return_value=mock_connection)
+            mock_ctx.return_value.__aexit__ = AsyncMock()
+            with patch('app.database.get_settings') as mock_settings:
+                mock_settings.return_value.is_admin_email.return_value = False
+
+                from app.database import upsert_user
+                await upsert_user("user-9", "nobody@example.com")
+
+                args = mock_connection.fetchrow.call_args.args
+                assert args[-1] is False
+
+    @pytest.mark.asyncio
     async def test_get_user_returns_user(self, mock_connection):
         """Test getting an existing user."""
         mock_row = {

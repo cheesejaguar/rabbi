@@ -137,6 +137,7 @@ CREATE TABLE IF NOT EXISTS users (
     first_name TEXT,
     last_name TEXT,
     credits INTEGER DEFAULT 3,                 -- Chat credits remaining
+    is_admin BOOLEAN DEFAULT FALSE,            -- Platform administrator flag
     created_at TIMESTAMPTZ DEFAULT NOW(),
     updated_at TIMESTAMPTZ DEFAULT NOW()
 );
@@ -148,6 +149,16 @@ BEGIN
     IF NOT EXISTS (SELECT 1 FROM information_schema.columns
                    WHERE table_name = 'users' AND column_name = 'credits') THEN
         ALTER TABLE users ADD COLUMN credits INTEGER DEFAULT 3;
+    END IF;
+END $$;
+
+-- Safe migration: add is_admin column for databases created before the
+-- platform-admin system was introduced.
+DO $$
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns
+                   WHERE table_name = 'users' AND column_name = 'is_admin') THEN
+        ALTER TABLE users ADD COLUMN is_admin BOOLEAN DEFAULT FALSE;
     END IF;
 END $$;
 
@@ -433,6 +444,11 @@ async def upsert_user(user_id: str, email: str, first_name: str = None, last_nam
     New users receive 3 starting credits. On conflict (same ``id``), the
     email, name fields, and ``updated_at`` timestamp are refreshed.
 
+    The ``is_admin`` flag is re-synced from the configured admin allowlist
+    (``settings.admin_emails``) on every login, so platform-admin status is
+    always driven by config -- it can't be self-granted by editing a row and
+    it survives database resets.
+
     Args:
         user_id: The WorkOS user ID (used as primary key).
         email: The user's email address.
@@ -440,21 +456,24 @@ async def upsert_user(user_id: str, email: str, first_name: str = None, last_nam
         last_name: Optional last name.
 
     Returns:
-        A dict of the full user row including ``credits`` and timestamps.
+        A dict of the full user row including ``credits``, ``is_admin``, and
+        timestamps.
     """
+    is_admin = get_settings().is_admin_email(email)
     async with get_connection() as conn:
         row = await conn.fetchrow(
             """
-            INSERT INTO users (id, email, first_name, last_name, credits)
-            VALUES ($1, $2, $3, $4, 3)
+            INSERT INTO users (id, email, first_name, last_name, credits, is_admin)
+            VALUES ($1, $2, $3, $4, 3, $5)
             ON CONFLICT (id) DO UPDATE SET
                 email = EXCLUDED.email,
                 first_name = EXCLUDED.first_name,
                 last_name = EXCLUDED.last_name,
+                is_admin = EXCLUDED.is_admin,
                 updated_at = NOW()
-            RETURNING id, email, first_name, last_name, credits, created_at, updated_at
+            RETURNING id, email, first_name, last_name, credits, is_admin, created_at, updated_at
             """,
-            user_id, email, first_name, last_name
+            user_id, email, first_name, last_name, is_admin
         )
         return dict(row)
 
@@ -470,7 +489,7 @@ async def get_user(user_id: str) -> Optional[dict]:
     """
     async with get_connection() as conn:
         row = await conn.fetchrow(
-            "SELECT id, email, first_name, last_name, credits, created_at, updated_at FROM users WHERE id = $1",
+            "SELECT id, email, first_name, last_name, credits, is_admin, created_at, updated_at FROM users WHERE id = $1",
             user_id
         )
         return dict(row) if row else None
@@ -1339,6 +1358,93 @@ async def get_referrer_stats(days: int = 7) -> list[dict]:
             days
         )
         return [dict(row) for row in rows]
+
+
+# ---------------------------------------------------------------------------
+# Platform Administration
+# ---------------------------------------------------------------------------
+
+
+async def get_platform_stats() -> dict:
+    """Return top-line platform metrics for the admin overview.
+
+    Aggregates user, engagement, and revenue counters in a single round
+    trip so the admin dashboard can render an at-a-glance summary.
+
+    Returns:
+        A dict with ``total_users``, ``admin_users``, ``paying_users``,
+        ``total_conversations``, ``total_messages``, ``credits_outstanding``,
+        ``completed_purchases``, and ``revenue_cents`` (sum of completed
+        purchase amounts, in US cents).
+    """
+    async with get_connection() as conn:
+        row = await conn.fetchrow(
+            """
+            SELECT
+                (SELECT COUNT(*) FROM users) AS total_users,
+                (SELECT COUNT(*) FROM users WHERE is_admin) AS admin_users,
+                (SELECT COUNT(DISTINCT user_id) FROM purchases WHERE status = 'completed') AS paying_users,
+                (SELECT COUNT(*) FROM conversations) AS total_conversations,
+                (SELECT COUNT(*) FROM messages) AS total_messages,
+                (SELECT COALESCE(SUM(credits), 0) FROM users) AS credits_outstanding,
+                (SELECT COUNT(*) FROM purchases WHERE status = 'completed') AS completed_purchases,
+                (SELECT COALESCE(SUM(amount_cents), 0) FROM purchases WHERE status = 'completed') AS revenue_cents
+            """
+        )
+        return dict(row) if row else {}
+
+
+async def list_users(limit: int = 50, offset: int = 0) -> list[dict]:
+    """List users for the admin console, most recently joined first.
+
+    Args:
+        limit: Maximum users to return (clamped to 1-200).
+        offset: Pagination offset (clamped to >= 0).
+
+    Returns:
+        A list of user dicts including ``credits``, ``is_admin``, a
+        ``conversation_count``, and a ``total_spent_cents`` lifetime value.
+    """
+    limit = max(1, min(limit, 200))
+    offset = max(0, offset)
+    async with get_connection() as conn:
+        rows = await conn.fetch(
+            """
+            SELECT u.id, u.email, u.first_name, u.last_name, u.credits,
+                   u.is_admin, u.created_at,
+                   (SELECT COUNT(*) FROM conversations c WHERE c.user_id = u.id) AS conversation_count,
+                   (SELECT COALESCE(SUM(p.amount_cents), 0) FROM purchases p
+                    WHERE p.user_id = u.id AND p.status = 'completed') AS total_spent_cents
+            FROM users u
+            ORDER BY u.created_at DESC
+            LIMIT $1 OFFSET $2
+            """,
+            limit, offset
+        )
+        return [dict(row) for row in rows]
+
+
+async def set_user_admin(email: str, is_admin: bool) -> bool:
+    """Grant or revoke platform-admin status for a user by email.
+
+    Note that ``upsert_user`` re-syncs ``is_admin`` from the configured
+    allowlist on every login, so a durable admin designation should be made
+    in ``settings.admin_emails`` (the ADMIN_EMAILS env var); this helper is
+    for one-off adjustments without waiting for the user's next login.
+
+    Args:
+        email: The user's email address (matched case-insensitively).
+        is_admin: ``True`` to grant admin, ``False`` to revoke.
+
+    Returns:
+        ``True`` if exactly one user row was updated, ``False`` otherwise.
+    """
+    async with get_connection() as conn:
+        result = await conn.execute(
+            "UPDATE users SET is_admin = $2, updated_at = NOW() WHERE LOWER(email) = LOWER($1)",
+            email, is_admin
+        )
+        return result == "UPDATE 1"
 
 
 async def get_device_stats(days: int = 7) -> list[dict]:
