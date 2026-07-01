@@ -50,7 +50,7 @@ class RabbiOrchestrator:
         self,
         api_key: Optional[str] = None,
         base_url: str = "https://openrouter.ai/api/v1",
-        model: str = "anthropic/claude-sonnet-4-20250514",
+        model: str = "anthropic/claude-sonnet-5",
     ):
         """Initialise the orchestrator and instantiate all pipeline agents.
 
@@ -59,7 +59,7 @@ class RabbiOrchestrator:
                 provider.
             base_url: Base URL for the OpenAI-compatible API endpoint.
             model: Model identifier string (e.g.
-                ``"anthropic/claude-sonnet-4-20250514"``).
+                ``"anthropic/claude-sonnet-5"``).
         """
         self.client = OpenAI(
             api_key=api_key,

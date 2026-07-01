@@ -125,7 +125,7 @@ def _generate_dvar_torah(client: OpenAI, model: str, parsha_name: str, parsha_na
         client: An initialized ``OpenAI``-compatible API client (may point
             to OpenRouter or another gateway).
         model: The model identifier string (e.g.,
-            ``"anthropic/claude-sonnet-4-20250514"``).
+            ``"anthropic/claude-sonnet-5"``).
         parsha_name: The English transliteration of the parsha
             (e.g., ``"Bereshit"``).
         parsha_name_hebrew: The Hebrew name of the parsha for display

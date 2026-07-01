@@ -69,7 +69,7 @@ class Settings(BaseSettings):
     # -------------------------------------------------------------------
     # Model identifier in "<provider>/<model>" format, compatible with
     # both Vercel AI Gateway and OpenRouter.
-    llm_model: str = "anthropic/claude-sonnet-4-20250514"
+    llm_model: str = "anthropic/claude-sonnet-5"
 
     # -------------------------------------------------------------------
     # TTS Configuration (ElevenLabs)
@@ -195,6 +195,33 @@ class Settings(BaseSettings):
         "http://localhost:8613",
         "http://127.0.0.1:8613",
     ]
+
+    @field_validator('cors_origins')
+    @classmethod
+    def validate_cors_origins(cls, v, info):
+        """Reject a wildcard CORS origin in production.
+
+        The app is served with ``allow_credentials=True``, so allowing any
+        origin (``"*"``) in production would let any site make
+        credentialed (cookie-bearing) requests on behalf of a logged-in
+        user. Browsers already refuse to combine a wildcard origin with
+        credentialed requests, but this fails fast at startup instead of
+        relying on that behavior.
+
+        Args:
+            v: The configured list of allowed CORS origins.
+            info: Pydantic validation context containing other field values.
+
+        Returns:
+            The validated list of CORS origins.
+
+        Raises:
+            ValueError: If ``"*"`` is present while running in production.
+        """
+        env = info.data.get('environment', 'development') if info.data else 'development'
+        if env.lower() == 'production' and '*' in v:
+            raise ValueError("CORS_ORIGINS must not contain '*' in production")
+        return v
 
     # -------------------------------------------------------------------
     # Rate Limiting

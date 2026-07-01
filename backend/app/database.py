@@ -20,6 +20,7 @@ Typical usage::
 
 import asyncio
 import asyncpg
+import json
 from typing import Optional
 from contextlib import asynccontextmanager
 
@@ -30,6 +31,19 @@ from .config import get_settings
 # duplicate pools during the first cold-start.
 _pool: Optional[asyncpg.Pool] = None
 _pool_lock = asyncio.Lock()
+
+
+async def _init_connection(conn: asyncpg.Connection) -> None:
+    """Register a JSON/JSONB codec so JSONB columns round-trip as Python dicts.
+
+    Without this, asyncpg returns JSONB values as raw ``str`` and every
+    write/read site has to manually ``json.dumps``/``json.loads`` around
+    them. Registering the codec once per connection means callers can pass
+    and receive plain dicts directly.
+    """
+    await conn.set_type_codec(
+        'jsonb', encoder=json.dumps, decoder=json.loads, schema='pg_catalog', format='text'
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -74,6 +88,7 @@ async def get_pool() -> asyncpg.Pool:
                 min_size=1,   # Keep at least one warm connection
                 max_size=10,  # Upper bound for concurrent queries
                 command_timeout=60,
+                init=_init_connection,
             )
         return _pool
 
@@ -602,8 +617,10 @@ async def get_user_profile(user_id: str) -> Optional[dict]:
 async def update_user_profile(user_id: str, denomination: str = None, bio: str = None) -> bool:
     """Partially update a user's profile fields.
 
-    Only the provided (non-``None``) fields are updated. Builds a dynamic
-    SQL ``SET`` clause to avoid overwriting fields that weren't submitted.
+    Only the provided (non-``None``) fields are updated; ``COALESCE`` keeps
+    the existing column value for any field left as ``None``. The query
+    text is static (no dynamically-built SQL), so every value is always
+    passed as a bound parameter.
 
     Args:
         user_id: The WorkOS user ID.
@@ -614,31 +631,20 @@ async def update_user_profile(user_id: str, denomination: str = None, bio: str =
         ``True`` if the update affected exactly one row, ``False`` otherwise
         (e.g., no fields provided or user not found).
     """
+    if denomination is None and bio is None:
+        return False
+
     async with get_connection() as conn:
-        # Build dynamic update query based on what's provided
-        updates = []
-        params = [user_id]
-        param_idx = 2
-
-        if denomination is not None:
-            updates.append(f"denomination = ${param_idx}")
-            params.append(denomination)
-            param_idx += 1
-
-        if bio is not None:
-            updates.append(f"bio = ${param_idx}")
-            params.append(bio)
-            param_idx += 1
-
-        if not updates:
-            return False
-
-        query = f"""
+        result = await conn.execute(
+            """
             UPDATE users
-            SET {', '.join(updates)}, updated_at = NOW()
+            SET denomination = COALESCE($2, denomination),
+                bio = COALESCE($3, bio),
+                updated_at = NOW()
             WHERE id = $1
-        """
-        result = await conn.execute(query, *params)
+            """,
+            user_id, denomination, bio
+        )
         return result == "UPDATE 1"
 
 
@@ -875,9 +881,14 @@ async def list_conversations(user_id: str, limit: int = 50, offset: int = 0) -> 
     async with get_connection() as conn:
         rows = await conn.fetch(
             """
-            SELECT c.id, c.user_id, c.title, c.created_at, c.updated_at,
-                   (SELECT content FROM messages WHERE conversation_id = c.id ORDER BY created_at LIMIT 1) as first_message
+            SELECT c.id, c.user_id, c.title, c.created_at, c.updated_at, m.content AS first_message
             FROM conversations c
+            LEFT JOIN LATERAL (
+                SELECT content FROM messages
+                WHERE conversation_id = c.id
+                ORDER BY created_at
+                LIMIT 1
+            ) m ON true
             WHERE c.user_id = $1
             ORDER BY c.updated_at DESC
             LIMIT $2 OFFSET $3
@@ -951,7 +962,6 @@ async def add_message(conversation_id: str, role: str, content: str, metadata: d
         A dict of the newly created message row with ``metadata``
         deserialized back to a Python dict.
     """
-    import json
     async with get_connection() as conn:
         row = await conn.fetchrow(
             """
@@ -959,13 +969,9 @@ async def add_message(conversation_id: str, role: str, content: str, metadata: d
             VALUES ($1, $2, $3, $4)
             RETURNING id, conversation_id, role, content, metadata, created_at
             """,
-            conversation_id, role, content, json.dumps(metadata or {})
+            conversation_id, role, content, metadata or {}
         )
-        result = dict(row)
-        # Parse metadata back to dict
-        if result.get('metadata'):
-            result['metadata'] = json.loads(result['metadata']) if isinstance(result['metadata'], str) else result['metadata']
-        return result
+        return dict(row)
 
 
 async def get_messages(conversation_id: str, limit: int = 100) -> list[dict]:
@@ -979,7 +985,6 @@ async def get_messages(conversation_id: str, limit: int = 100) -> list[dict]:
         A list of message dicts ordered by ``created_at ASC``, with
         ``metadata`` deserialized from JSON.
     """
-    import json
     async with get_connection() as conn:
         rows = await conn.fetch(
             """
@@ -991,13 +996,7 @@ async def get_messages(conversation_id: str, limit: int = 100) -> list[dict]:
             """,
             conversation_id, limit
         )
-        messages = []
-        for row in rows:
-            msg = dict(row)
-            if msg.get('metadata'):
-                msg['metadata'] = json.loads(msg['metadata']) if isinstance(msg['metadata'], str) else msg['metadata']
-            messages.append(msg)
-        return messages
+        return [dict(row) for row in rows]
 
 
 async def generate_conversation_title(conversation_id: str) -> Optional[str]:
@@ -1135,7 +1134,6 @@ async def log_error(
     Returns:
         A dict of the newly created error row.
     """
-    import json
     async with get_connection() as conn:
         row = await conn.fetchrow(
             """
@@ -1144,7 +1142,7 @@ async def log_error(
             RETURNING id, user_id, conversation_id, error_type, error_message, created_at
             """,
             user_id, conversation_id, error_type, error_message, stack_trace,
-            json.dumps(request_context or {})
+            request_context or {}
         )
         return dict(row)
 
@@ -1273,7 +1271,6 @@ async def log_analytics_event(
     Returns:
         A dict of the newly created analytics event row.
     """
-    import json
     async with get_connection() as conn:
         row = await conn.fetchrow(
             """
@@ -1281,7 +1278,7 @@ async def log_analytics_event(
             VALUES ($1, $2, $3, $4, $5, $6, $7)
             RETURNING id, session_id, event_type, page_path, created_at
             """,
-            user_id, session_id, event_type, json.dumps(event_data or {}),
+            user_id, session_id, event_type, event_data or {},
             page_path, referrer, user_agent
         )
         return dict(row)
@@ -1450,7 +1447,6 @@ async def complete_dvar_torah_generation(row_id: str, content: str, metadata: di
         ``True`` if the row was updated, ``False`` if the row_id was
         not found.
     """
-    import json
     async with get_connection() as conn:
         result = await conn.execute(
             """
@@ -1458,7 +1454,7 @@ async def complete_dvar_torah_generation(row_id: str, content: str, metadata: di
             SET content = $2, generating = FALSE, metadata = $3
             WHERE id = $1
             """,
-            row_id, content, json.dumps(metadata or {})
+            row_id, content, metadata or {}
         )
         return result == "UPDATE 1"
 

@@ -12,7 +12,7 @@
 <head>
     <!-- ========== Charset & Viewport ========== -->
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="theme-color" content="#1a1a1a">
 
     <!-- ========== Favicons & Apple Web App ========== -->
@@ -94,8 +94,8 @@
                     <div class="user-details">
                         <span class="user-name" id="sidebarUserName">User</span>
                     </div>
-                    <!-- aria-label not present; toggle is labeled by visible "User" text -->
-                    <button class="user-menu-toggle" id="sidebarUserMenuToggle">
+                    <!-- aria-label provides accessible name for this icon-only button -->
+                    <button class="user-menu-toggle" id="sidebarUserMenuToggle" aria-label="User menu">
                         <!-- Vertical ellipsis (three dots) icon - opens user dropdown menu -->
                         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                             <circle cx="12" cy="12" r="1"></circle>
@@ -158,8 +158,21 @@
                         <svg class="greeting-icon" width="32" height="32" viewBox="0 0 600 700" fill="none" stroke="currentColor" stroke-width="40" stroke-linecap="round" stroke-linejoin="round">
                             <path d="M 47.631413,492.11477 552.36859,492.11491 300,54.999953 Z M 300,637.81981 552.36851,200.70493 47.631403,200.70481 Z"/>
                         </svg>
-                        <span class="greeting-text" id="greetingText">Shalom, how can I help?</span>
+                        <span class="greeting-text hidden" id="greetingText">Shalom, how can I help?</span>
+                        <span class="skeleton greeting-skeleton" id="greetingSkeleton"></span>
                     </h1>
+
+                    <!-- D'var Torah Skeleton - shown while loadDvarTorah() is in flight.
+                         Hidden once the fetch settles, regardless of outcome. -->
+                    <div class="dvar-torah-section" id="dvarTorahSkeleton">
+                        <div class="dvar-torah-card">
+                            <div class="dvar-torah-header">
+                                <span class="skeleton" style="width: 160px; height: 0.9em;"></span>
+                                <span class="skeleton" style="width: 80px; height: 0.9em;"></span>
+                            </div>
+                            <span class="skeleton" style="width: 100%; height: 2.6em;"></span>
+                        </div>
+                    </div>
 
                     <!-- D'var Torah Card - Weekly Torah portion preview
                          Populated by fetchGreeting() when the API returns dvar_torah data.
@@ -192,9 +205,11 @@
                             <!-- aria-label provides accessible name for this icon-only button -->
                             <button class="send-btn" id="sendBtn" aria-label="Send message">
                                 <!-- Upward arrow icon - submits the message -->
-                                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <svg class="send-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                                     <path d="M12 19V5M5 12l7-7 7 7"/>
                                 </svg>
+                                <!-- Loading spinner - shown in place of the icon while a response streams -->
+                                <span class="send-spinner"></span>
                             </button>
                         </div>
                     </div>
@@ -284,9 +299,11 @@
                         <!-- aria-label provides accessible name for this icon-only button -->
                         <button class="send-btn" id="chatSendBtn" aria-label="Send message">
                             <!-- Upward arrow icon - submits the follow-up message -->
-                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <svg class="send-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                                 <path d="M12 19V5M5 12l7-7 7 7"/>
                             </svg>
+                            <!-- Loading spinner - shown in place of the icon while a response streams -->
+                            <span class="send-spinner"></span>
                         </button>
                     </div>
                 </footer>
@@ -326,7 +343,7 @@
                                 </div>
                                 <div class="settings-row-content">
                                     <span class="settings-row-label">Credits Remaining</span>
-                                    <span class="settings-row-value" id="creditsValue">Loading...</span>
+                                    <span class="settings-row-value skeleton settings-value-skeleton" id="creditsValue"></span>
                                 </div>
                             </div>
                             <div class="settings-row-description">
@@ -358,7 +375,7 @@
                                 </div>
                                 <div class="settings-row-content">
                                     <span class="settings-row-label">Name</span>
-                                    <span class="settings-row-value" id="settingsUserName">-</span>
+                                    <span class="settings-row-value skeleton settings-value-skeleton" id="settingsUserName"></span>
                                 </div>
                             </div>
                             <div class="settings-divider"></div>
@@ -372,7 +389,7 @@
                                 </div>
                                 <div class="settings-row-content">
                                     <span class="settings-row-label">Email</span>
-                                    <span class="settings-row-value" id="settingsUserEmail">-</span>
+                                    <span class="settings-row-value skeleton settings-value-skeleton" id="settingsUserEmail"></span>
                                 </div>
                             </div>
                             <div class="settings-divider"></div>
@@ -384,7 +401,7 @@
                                     </svg>
                                 </div>
                                 <div class="settings-row-content">
-                                    <span class="settings-row-label">Denomination</span>
+                                    <label class="settings-row-label" for="denominationSelect">Denomination</label>
                                     <!-- Denomination select - these option values map to backend
                                          DenominationConfig entries defined in
                                          backend/app/agents/denominations.py. Each value configures
@@ -424,7 +441,7 @@
                                     </svg>
                                 </div>
                                 <div class="settings-row-content">
-                                    <span class="settings-row-label">Bio</span>
+                                    <label class="settings-row-label" for="bioInput">Bio</label>
                                     <div class="bio-input-container">
                                         <textarea class="settings-textarea" id="bioInput" maxlength="200" rows="3" placeholder="Tell us about yourself..."></textarea>
                                         <span class="char-count"><span id="bioCharCount">0</span>/200</span>
@@ -534,7 +551,9 @@
 
             <div class="modal-footer" id="modalFooter">
                 <button class="purchase-btn" id="submitPayment" disabled>
-                    Pay Now
+                    <!-- Loading spinner - shown alongside the button text while processing -->
+                    <span class="purchase-spinner hidden"></span>
+                    <span class="btn-text">Pay Now</span>
                 </button>
                 <p class="payment-secure">
                     <!-- Lock icon - visual trust indicator for secure payments -->

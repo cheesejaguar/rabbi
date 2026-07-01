@@ -1,5 +1,6 @@
 """Tests for main.py - FastAPI endpoints."""
 
+import asyncio
 import pytest
 import sys
 from unittest.mock import patch, Mock, AsyncMock, MagicMock
@@ -173,6 +174,148 @@ class TestChatEndpoint:
 
         assert response.status_code == 500
         assert "error" in response.json()["detail"].lower()
+
+
+class TestChatStreamEndpoint:
+    """Test /api/chat/stream endpoint - credit handling and error safety.
+
+    ``StreamingResponse`` always returns HTTP 200; success/failure is
+    signalled inside the SSE body via ``{"type": "..."}`` events, so these
+    tests assert on ``response.text`` rather than the status code.
+    """
+
+    async def _token_stream(self, tokens=("Hello",)):
+        for t in tokens:
+            yield {"type": "token", "data": t}
+
+    def test_credit_check_failure_fails_closed(self, client_and_mock):
+        """If consume_credit() raises, the chat must be blocked, not given away for free."""
+        client, mock_orch = client_and_mock
+        mock_orch.process_message_stream = lambda **kwargs: self._token_stream()
+
+        import app.main as main_module
+        with patch.object(main_module.settings, 'database_url', 'postgresql://test/db'):
+            with patch('app.main.db.get_user_profile', new=AsyncMock(return_value=None)):
+                with patch(
+                    'app.main.db.consume_credit',
+                    new=AsyncMock(side_effect=RuntimeError("db unavailable")),
+                ) as mock_consume:
+                    response = client.post("/api/chat/stream", json={"message": "Hello"})
+
+        assert response.status_code == 200
+        body = response.text
+        assert '"type": "error"' in body
+        # The orchestrator must never have been reached - no token events emitted.
+        assert '"type": "token"' not in body
+        mock_consume.assert_called_once()
+
+    def test_no_credits_remaining_blocks_chat(self, client_and_mock):
+        """Existing behavior: a False return from consume_credit blocks the chat."""
+        client, mock_orch = client_and_mock
+        mock_orch.process_message_stream = lambda **kwargs: self._token_stream()
+
+        import app.main as main_module
+        with patch.object(main_module.settings, 'database_url', 'postgresql://test/db'):
+            with patch('app.main.db.get_user_profile', new=AsyncMock(return_value=None)):
+                with patch('app.main.db.consume_credit', new=AsyncMock(return_value=False)):
+                    response = client.post("/api/chat/stream", json={"message": "Hello"})
+
+        assert response.status_code == 200
+        body = response.text
+        assert "No credits remaining" in body
+        assert '"type": "token"' not in body
+
+    def test_successful_credit_consumption_allows_chat(self, client_and_mock):
+        """A credit is consumed and the orchestrator stream is delivered."""
+        client, mock_orch = client_and_mock
+        mock_orch.process_message_stream = lambda **kwargs: self._token_stream(("Shalom",))
+
+        import app.main as main_module
+        with patch.object(main_module.settings, 'database_url', 'postgresql://test/db'):
+            with patch('app.main.db.get_user_profile', new=AsyncMock(return_value=None)):
+                with patch('app.main.db.consume_credit', new=AsyncMock(return_value=True)):
+                    with patch('app.main.db.add_message', new=AsyncMock(return_value=None)):
+                        with patch('app.main.db.get_conversation', new=AsyncMock(return_value=None)):
+                            response = client.post("/api/chat/stream", json={"message": "Hello"})
+
+        assert response.status_code == 200
+        body = response.text
+        assert '"type": "token"' in body
+        assert "Shalom" in body
+
+    def test_stream_failure_refunds_consumed_credit(self, client_and_mock):
+        """If a credit was consumed but the pipeline then fails, refund it."""
+        client, mock_orch = client_and_mock
+
+        async def _failing_stream(**kwargs):
+            raise RuntimeError("pipeline exploded")
+            yield  # pragma: no cover - makes this an async generator
+
+        mock_orch.process_message_stream = _failing_stream
+
+        import app.main as main_module
+        with patch.object(main_module.settings, 'database_url', 'postgresql://test/db'):
+            with patch('app.main.db.get_user_profile', new=AsyncMock(return_value=None)):
+                with patch('app.main.db.consume_credit', new=AsyncMock(return_value=True)):
+                    with patch('app.main.db.add_credits', new=AsyncMock(return_value=5)) as mock_refund:
+                        with patch('app.main.db.log_error', new=AsyncMock(return_value=None)):
+                            response = client.post("/api/chat/stream", json={"message": "Hello"})
+
+        assert response.status_code == 200
+        assert '"type": "error"' in response.text
+        # No raw exception text should leak into the SSE payload.
+        assert "pipeline exploded" not in response.text
+        mock_refund.assert_called_once_with("test-user-id", 1)
+
+    def test_client_disconnect_refunds_credit_when_no_tokens_sent(self, client_and_mock):
+        """CancelledError (client abort / the 90s frontend watchdog) is a
+        BaseException, not an Exception, so it needs its own handler to
+        refund a consumed credit rather than silently dropping it.
+
+        Starlette closes the connection as soon as the generator raises, so
+        the client never observes the exception itself - only the server-side
+        refund call is directly observable here.
+        """
+        client, mock_orch = client_and_mock
+
+        async def _cancelled_stream(**kwargs):
+            raise asyncio.CancelledError()
+            yield  # pragma: no cover - makes this an async generator
+
+        mock_orch.process_message_stream = _cancelled_stream
+
+        import app.main as main_module
+        with patch.object(main_module.settings, 'database_url', 'postgresql://test/db'):
+            with patch('app.main.db.get_user_profile', new=AsyncMock(return_value=None)):
+                with patch('app.main.db.consume_credit', new=AsyncMock(return_value=True)):
+                    with patch('app.main.db.add_credits', new=AsyncMock(return_value=5)) as mock_refund:
+                        response = client.post("/api/chat/stream", json={"message": "Hello"})
+
+        assert response.status_code == 200
+        assert '"type": "token"' not in response.text
+        mock_refund.assert_called_once_with("test-user-id", 1)
+
+    def test_client_disconnect_does_not_refund_after_partial_response(self, client_and_mock):
+        """If some assistant content was already delivered before the client
+        disconnected, the user got value for the credit - don't refund."""
+        client, mock_orch = client_and_mock
+
+        async def _cancelled_after_token_stream(**kwargs):
+            yield {"type": "token", "data": "Shalom"}
+            raise asyncio.CancelledError()
+
+        mock_orch.process_message_stream = _cancelled_after_token_stream
+
+        import app.main as main_module
+        with patch.object(main_module.settings, 'database_url', 'postgresql://test/db'):
+            with patch('app.main.db.get_user_profile', new=AsyncMock(return_value=None)):
+                with patch('app.main.db.consume_credit', new=AsyncMock(return_value=True)):
+                    with patch('app.main.db.add_credits', new=AsyncMock(return_value=5)) as mock_refund:
+                        response = client.post("/api/chat/stream", json={"message": "Hello"})
+
+        assert response.status_code == 200
+        assert '"type": "token"' in response.text
+        mock_refund.assert_not_called()
 
 
 class TestCORSMiddleware:

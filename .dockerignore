@@ -1,0 +1,57 @@
+# .dockerignore for rebbe.dev
+# Keeps the Docker build context small and avoids leaking local dev
+# artifacts / secrets into the image. Mirrors the relevant parts of
+# .gitignore, adapted for what the Dockerfile actually needs to COPY
+# (backend/, frontend/, library/, pyproject.toml, uv.lock).
+
+# Git
+.git
+.gitignore
+
+# Python virtual environments
+.venv
+venv
+env/
+ENV/
+
+# Byte-compiled / cache files
+__pycache__/
+*.py[codz]
+*.pyc
+*$py.class
+.mypy_cache/
+.ruff_cache/
+
+# Test artifacts (excluded from the image; tests run in CI, not in the
+# runtime container)
+backend/tests
+.pytest_cache/
+.coverage
+.coverage.*
+coverage.xml
+htmlcov/
+.hypothesis/
+.tox/
+.nox/
+
+# Environment / secrets — never bake these into an image
+.env
+.env.*
+!.env.example
+
+# CI / editor / misc project tooling not needed at runtime
+.github
+.claude
+.vscode/
+.idea/
+
+# Docs (not needed at runtime; README.md is kept in case build tooling
+# reads it, e.g. hatchling's readme field in pyproject.toml)
+CONTRIBUTING.md
+
+# Node artifacts, if ever introduced
+node_modules
+
+# Misc local artifacts
+transcripts
+*.log

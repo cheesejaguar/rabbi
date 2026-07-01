@@ -14,7 +14,7 @@ services:
     # Environment variable overrides — these take precedence over .env values.
     # LLM_MODEL defaults to Claude Sonnet if not set in the host environment.
     environment:
-      - LLM_MODEL=${LLM_MODEL:-anthropic/claude-sonnet-4-20250514}
+      - LLM_MODEL=${LLM_MODEL:-anthropic/claude-sonnet-5}
     volumes:
       # Bind-mount the frontend directory read-only (:ro) so that HTML/CSS/JS
       # changes are reflected immediately without rebuilding the image.
@@ -22,3 +22,16 @@ services:
     # Automatically restart the container unless it was explicitly stopped.
     # Handles transient failures without manual intervention.
     restart: unless-stopped
+    # Periodically probe the existing health endpoint so `docker compose ps`
+    # and orchestration tooling can tell when the app is actually serving
+    # traffic, not just that the process has started.
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/health')"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+    # Resource limits (plain Compose keys, not swarm deploy.resources, since
+    # this project is run via `docker compose up`, not `docker stack deploy`).
+    mem_limit: 1g
+    cpus: 1.0

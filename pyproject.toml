@@ -36,6 +36,7 @@ dev = [
     "pytest-asyncio>=0.24.0",
     "pytest-cov>=6.1.1",
     "pytest-mock>=3.14.0",
+    "ruff>=0.8.0",
 ]
 
 [build-system]
@@ -52,6 +53,7 @@ dev-dependencies = [
     "pytest-asyncio>=0.24.0",
     "pytest-cov>=6.1.1",
     "pytest-mock>=3.14.0",
+    "ruff>=0.8.0",
 ]
 
 # Pytest configuration — controls test discovery and execution behavior
@@ -78,3 +80,12 @@ exclude_lines = [                      # Lines matching these patterns are ignor
     "def __repr__",
     "raise NotImplementedError",
 ]
+
+# Ruff configuration — kept intentionally minimal (default rule set only) so
+# CI linting doesn't immediately flag hundreds of pre-existing style issues
+# across the codebase. line-length is set higher than the Black-style default
+# of 88 because several agent modules contain long string literals (halachic
+# source text, prompts) that legitimately exceed that width.
+[tool.ruff]
+line-length = 120
+target-version = "py311"               # Matches requires-python = ">=3.11"

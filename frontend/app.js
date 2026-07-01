@@ -113,6 +113,8 @@ const welcomeScreen = document.getElementById('welcomeScreen');
 const chatScreen = document.getElementById('chatScreen');
 /** @type {HTMLElement} */
 const greetingText = document.getElementById('greetingText');
+/** @type {HTMLElement} Skeleton placeholder shown while the greeting is loading */
+const greetingSkeleton = document.getElementById('greetingSkeleton');
 /** @type {HTMLTextAreaElement} Welcome screen message textarea */
 const messageInput = document.getElementById('messageInput');
 /** @type {HTMLButtonElement} Welcome screen send button */
@@ -181,6 +183,8 @@ const saveProfileBtn = document.getElementById('saveProfileBtn');
 // --- D'var Torah elements ---
 /** @type {HTMLElement} */
 const dvarTorahSection = document.getElementById('dvarTorahSection');
+/** @type {HTMLElement} Skeleton placeholder shown while the d'var Torah preview is loading */
+const dvarTorahSkeleton = document.getElementById('dvarTorahSkeleton');
 /** @type {HTMLElement} */
 const dvarTorahParsha = document.getElementById('dvarTorahParsha');
 /** @type {HTMLElement} */
@@ -356,9 +360,9 @@ function updateUserUI() {
     const initials = getInitials(firstName, lastName, email);
 
     // Update sidebar user info
-    sidebarUserAvatar.textContent = initials;
+    updateTextWithFade(sidebarUserAvatar, initials);
     sidebarUserAvatar.style.fontSize = '';  // Reset font size from logged-out state
-    sidebarUserName.textContent = fullName;
+    updateTextWithFade(sidebarUserName, fullName);
 
     // Restore logged-in dropdown content
     sidebarDropdown.innerHTML = `
@@ -588,6 +592,26 @@ function getInitials(firstName, lastName, email) {
     return '?';
 }
 
+/**
+ * @description Briefly fades out an element's text, swaps its textContent, then fades it
+ *              back in, using the shared --transition-fast token instead of an instant
+ *              swap. Used for small pieces of UI chrome (credits balance, sidebar user
+ *              name/avatar) whose values can change after the initial page load.
+ * @param {HTMLElement} el - The element whose text should be updated
+ * @param {string} newText - The new text content to display
+ * @returns {void}
+ */
+function updateTextWithFade(el, newText) {
+    if (!el) return;
+    if (el.textContent === newText) return; // No visible change, skip the animation
+
+    el.classList.add('text-fade-out');
+    setTimeout(() => {
+        el.textContent = newText;
+        el.classList.remove('text-fade-out');
+    }, 150);
+}
+
 /* ============================================================
  * EVENT LISTENERS
  * Central registration of all DOM event listeners. Called once
@@ -619,6 +643,11 @@ function setupEventListeners() {
 
     // New chat button
     newChatBtn.addEventListener('click', startNewConversation);
+
+    // Conversation list - single delegated listener handles item clicks, menu
+    // button toggles, and delete button clicks for all rows, including rows
+    // added by future re-renders (see handleConversationsListClick).
+    conversationsList.addEventListener('click', handleConversationsListClick);
 
     // User menu in sidebar - entire profile area is clickable.
     // The dropdown is positioned absolutely above the profile element using
@@ -784,6 +813,12 @@ async function loadGreeting() {
     } catch (error) {
         console.error('Failed to load greeting:', error);
         greetingText.textContent = 'Shalom, how can I help?';
+    } finally {
+        // Reveal the greeting text and hide its skeleton placeholder now that
+        // the fetch has settled (success or failure both resolve to the same
+        // fallback text, so this always ends with the greeting visible).
+        greetingText.classList.remove('hidden');
+        if (greetingSkeleton) greetingSkeleton.classList.add('hidden');
     }
 }
 
@@ -814,6 +849,11 @@ async function loadDvarTorah() {
         dvarTorahSection.classList.remove('hidden');
     } catch (error) {
         console.error('Failed to load d\'var Torah:', error);
+    } finally {
+        // Hide the skeleton placeholder once the fetch settles, regardless of
+        // whether the preview card ended up being shown (e.g. holiday weeks
+        // intentionally have no d'var Torah card).
+        if (dvarTorahSkeleton) dvarTorahSkeleton.classList.add('hidden');
     }
 }
 
@@ -861,11 +901,20 @@ function hideDvarTorah() {
  * @async
  */
 async function loadConversations() {
+    renderConversationsSkeleton();
     try {
         const response = await fetch(`${API_BASE}/conversations`);
         if (response.ok) {
             const data = await response.json();
             conversations = data.conversations || [];
+            renderConversationsList();
+        } else {
+            // fetch() only rejects on network failures, not HTTP error status
+            // codes - a 401/500 response lands here, not in the catch block.
+            // Without this branch the skeleton rows rendered above would stay
+            // in place indefinitely since nothing ever replaces them.
+            console.error('Failed to load conversations:', response.status);
+            conversations = [];
             renderConversationsList();
         }
     } catch (error) {
@@ -876,11 +925,25 @@ async function loadConversations() {
 }
 
 /**
+ * @description Renders 3-4 skeleton row placeholders into the sidebar conversation list
+ *              while loadConversations() is fetching, replaced by real rows (or the
+ *              empty state) once the fetch settles.
+ * @returns {void}
+ */
+function renderConversationsSkeleton() {
+    conversationsList.innerHTML = Array.from({ length: 4 }, () =>
+        '<div class="skeleton skeleton-row"></div>'
+    ).join('');
+}
+
+/**
  * @description Renders the sidebar conversation list from the in-memory conversations array.
  *              Each item includes a clickable title to load the conversation and a three-dot
  *              context menu with a delete option. The context menu dropdown is positioned
  *              using getBoundingClientRect() relative to the menu button so it works
- *              correctly inside the scrollable sidebar.
+ *              correctly inside the scrollable sidebar. Click handling is delegated to a
+ *              single listener attached once in setupEventListeners() (see
+ *              handleConversationsListClick) rather than re-attached on every render.
  * @returns {void}
  */
 function renderConversationsList() {
@@ -911,48 +974,56 @@ function renderConversationsList() {
             </div>
         </div>
     `).join('');
+}
 
-    // Add click handlers for conversation items
-    conversationsList.querySelectorAll('.conversation-item').forEach(item => {
-        item.addEventListener('click', (e) => {
-            // Don't load conversation if clicking menu
-            if (e.target.closest('.conversation-menu')) return;
-            loadConversation(item.dataset.id);
+/**
+ * @description Single delegated click handler for the sidebar conversation list, attached
+ *              once to #conversationsList in setupEventListeners() instead of re-attaching
+ *              fresh listeners to every item/button on each renderConversationsList() call.
+ *              Uses event.target.closest() to figure out which element was clicked (item,
+ *              menu button, or delete button) and dispatches to the same logic the old
+ *              per-item listeners used, preserving behavior exactly.
+ * @param {MouseEvent} e
+ * @returns {void}
+ */
+function handleConversationsListClick(e) {
+    // Delete button inside a dropdown takes priority over the menu button/item.
+    const deleteBtn = e.target.closest('[data-delete-id]');
+    if (deleteBtn && deleteBtn.classList.contains('dropdown-item')) {
+        e.stopPropagation();
+        const convId = deleteBtn.dataset.deleteId;
+        deleteConversation(convId);
+        return;
+    }
+
+    // Three-dot menu button toggles its associated dropdown.
+    const menuBtn = e.target.closest('.conversation-menu-btn');
+    if (menuBtn) {
+        e.stopPropagation();
+        e.preventDefault();
+        const dropdown = menuBtn.parentElement.querySelector('.conversation-dropdown');
+
+        // Close all other dropdowns first
+        document.querySelectorAll('.conversation-dropdown').forEach(d => {
+            if (d !== dropdown) d.classList.add('hidden');
         });
-    });
 
-    // Add click handlers for menu buttons
-    conversationsList.querySelectorAll('.conversation-menu-btn').forEach(btn => {
-        btn.addEventListener('click', (e) => {
-            e.stopPropagation();
-            e.preventDefault();
-            const dropdown = btn.parentElement.querySelector('.conversation-dropdown');
-
-            // Close all other dropdowns first
-            document.querySelectorAll('.conversation-dropdown').forEach(d => {
-                if (d !== dropdown) d.classList.add('hidden');
-            });
-
-            if (dropdown) {
-                // Position the fixed dropdown relative to button
-                const rect = btn.getBoundingClientRect();
-                dropdown.style.top = `${rect.bottom + 4}px`;
-                dropdown.style.left = `${rect.right - 140}px`; // Align to right edge
-                dropdown.classList.toggle('hidden');
-            }
-        });
-    });
-
-    // Add click handlers for delete buttons
-    conversationsList.querySelectorAll('[data-delete-id]').forEach(btn => {
-        if (btn.classList.contains('dropdown-item')) {
-            btn.addEventListener('click', (e) => {
-                e.stopPropagation();
-                const convId = btn.dataset.deleteId;
-                deleteConversation(convId);
-            });
+        if (dropdown) {
+            // Position the fixed dropdown relative to button
+            const rect = menuBtn.getBoundingClientRect();
+            dropdown.style.top = `${rect.bottom + 4}px`;
+            dropdown.style.left = `${rect.right - 140}px`; // Align to right edge
+            dropdown.classList.toggle('hidden');
         }
-    });
+        return;
+    }
+
+    // Clicking anywhere else in a conversation item (but not its menu) loads it.
+    const item = e.target.closest('.conversation-item');
+    if (item) {
+        if (e.target.closest('.conversation-menu')) return;
+        loadConversation(item.dataset.id);
+    }
 }
 
 /**
@@ -1099,6 +1170,7 @@ async function sendFromWelcome() {
     // Clear welcome input
     messageInput.value = '';
     sendBtn.disabled = true;
+    sendBtn.classList.add('loading');
 
     // Send the message
     sendMessage(message);
@@ -1143,6 +1215,8 @@ function sendFromChat() {
  *              - "metadata": Contains requires_human_referral flag from the moral agent
  *              - "token": A text chunk to append to the streaming response
  *              - "message_saved": The server-assigned message ID after persistence
+ *              - "message_save_failed": Persistence failed - feedback buttons are
+ *                hidden for this message since there's no message_id to attach them to
  *              - "error": An error from the pipeline (e.g., "guest_limit_reached")
  *
  * @param {string} message - The user's message text to send
@@ -1168,6 +1242,14 @@ async function sendMessage(message) {
     setLoading(true);
     showTypingIndicator();
 
+    // Guard against a hung backend: abort the request if no response starts
+    // arriving within ~90 seconds. Cleared as soon as the stream starts
+    // receiving data below, so a slow-but-working multi-second stream is
+    // never killed mid-stream.
+    const abortController = new AbortController();
+    const timeoutId = setTimeout(() => abortController.abort(), 90000);
+    let streamStarted = false;
+
     try {
         const response = await fetch(`${API_BASE}/chat/stream`, {
             method: 'POST',
@@ -1180,6 +1262,7 @@ async function sendMessage(message) {
                 session_id: sessionId,
                 conversation_id: currentConversationId,
             }),
+            signal: abortController.signal,
         });
 
         if (!response.ok) {
@@ -1196,10 +1279,20 @@ async function sendMessage(message) {
         let buffer = ''; // Accumulates partial lines between read() calls
         let messageElement = null;
         let savedMessageId = null;
+        let messageSaveFailed = false;
 
         while (true) {
             const { done, value } = await reader.read();
             if (done) break;
+
+            // The stream has started producing data - the timeout has done its
+            // job of guarding against a hung connection, so cancel it now.
+            // A slow-but-working stream (several seconds, per the multi-agent
+            // pipeline) must not be killed once tokens are flowing.
+            if (!streamStarted) {
+                streamStarted = true;
+                clearTimeout(timeoutId);
+            }
 
             // Append decoded text to the buffer and split on newlines.
             // The last element (possibly incomplete) is kept in the buffer
@@ -1232,6 +1325,8 @@ async function sendMessage(message) {
                             updateStreamingMessage(messageElement, fullResponse);
                         } else if (data.type === 'message_saved') {
                             savedMessageId = data.message_id;
+                        } else if (data.type === 'message_save_failed') {
+                            messageSaveFailed = true;
                         } else if (data.type === 'error') {
                             if (data.message === 'guest_limit_reached') {
                                 // Guest has used their free chat - remove the user message we just added
@@ -1259,7 +1354,7 @@ async function sendMessage(message) {
         }
 
         if (messageElement) {
-            finalizeStreamingMessage(messageElement, fullResponse, savedMessageId);
+            finalizeStreamingMessage(messageElement, fullResponse, savedMessageId, messageSaveFailed);
         } else {
             removeTypingIndicator();
             throw new Error('No response received');
@@ -1288,10 +1383,21 @@ async function sendMessage(message) {
         removeTypingIndicator();
         const streamingMsg = document.getElementById('streamingMessage');
         if (streamingMsg) streamingMsg.remove();
-        addMessage('assistant',
-            "I'm having trouble responding right now. Please try again in a moment."
-        );
+
+        if (error.name === 'AbortError') {
+            // The 90-second watchdog timeout fired because no data ever
+            // started arriving - distinct message so the user knows to retry
+            // rather than assuming a generic failure.
+            addMessage('assistant',
+                "Request timed out, please try again."
+            );
+        } else {
+            addMessage('assistant',
+                "I'm having trouble responding right now. Please try again in a moment."
+            );
+        }
     } finally {
+        clearTimeout(timeoutId);
         setLoading(false);
     }
 }
@@ -1467,9 +1573,12 @@ function updateStreamingMessage(messageElement, content) {
  * @param {HTMLElement} messageElement - The streaming message container to finalize
  * @param {string} content - The complete response text
  * @param {string|null} [messageId=null] - Server-assigned message ID for feedback tracking
+ * @param {boolean} [saveFailed=false] - True if the server reported the message
+ *              could not be persisted (feedback buttons are hidden in this case
+ *              rather than shown non-functional)
  * @returns {void}
  */
-function finalizeStreamingMessage(messageElement, content, messageId = null) {
+function finalizeStreamingMessage(messageElement, content, messageId = null, saveFailed = false) {
     const contentDiv = messageElement.querySelector('.message-content');
     contentDiv.innerHTML = formatMarkdown(content);
     contentDiv.classList.remove('streaming');
@@ -1481,7 +1590,7 @@ function finalizeStreamingMessage(messageElement, content, messageId = null) {
 
     // Add action buttons if not already added
     if (!messageElement.querySelector('.message-actions')) {
-        const actionsDiv = createMessageActions(content, messageId);
+        const actionsDiv = createMessageActions(content, messageId, saveFailed);
         messageElement.appendChild(actionsDiv);
     }
 
@@ -1509,11 +1618,17 @@ const agentPhases = [
 let phaseInterval = null;
 /** @type {number} Index into agentPhases for the currently displayed phase */
 let currentPhaseIndex = 0;
+/** @type {number|null} Interval ID for the elapsed-time ticker */
+let elapsedInterval = null;
+/** @type {number|null} Timestamp (ms) when the typing indicator was shown */
+let typingStartTime = null;
 
 /**
  * @description Shows an animated typing indicator that cycles through the four agent
  *              pipeline phases every 2.5 seconds with a fade transition. The indicator
- *              includes three animated dots alongside the phase text.
+ *              includes three animated dots alongside the phase text, plus a ticking
+ *              elapsed-time readout so users have a sense of progress while the
+ *              multi-agent backend pipeline runs (which can take several seconds).
  * @returns {void}
  */
 function showTypingIndicator() {
@@ -1523,7 +1638,8 @@ function showTypingIndicator() {
 
     const indicator = document.createElement('div');
     indicator.className = 'message-content typing-indicator';
-    indicator.innerHTML = `<div class="thinking-phase"><span class="phase-text">${agentPhases[0].phrase}</span><div class="phase-dots"><span></span><span></span><span></span></div></div>`;
+    indicator.setAttribute('aria-live', 'polite');
+    indicator.innerHTML = `<div class="thinking-phase"><span class="phase-text">${agentPhases[0].phrase}</span><span class="phase-elapsed" id="phaseElapsed">0s</span><div class="phase-dots"><span></span><span></span><span></span></div></div>`;
 
     typing.appendChild(indicator);
     chatMessages.appendChild(typing);
@@ -1534,17 +1650,29 @@ function showTypingIndicator() {
         currentPhaseIndex = (currentPhaseIndex + 1) % agentPhases.length;
         const phaseText = document.querySelector('.phase-text');
         if (phaseText) {
-            phaseText.style.opacity = '0';
+            phaseText.classList.add('fading');
             setTimeout(() => {
                 phaseText.textContent = agentPhases[currentPhaseIndex].phrase;
-                phaseText.style.opacity = '1';
+                phaseText.classList.remove('fading');
             }, 150);
         }
     }, 2500);
+
+    // Ticking elapsed-time readout, incremented every second from when the
+    // indicator was first shown until the response completes or is removed.
+    typingStartTime = Date.now();
+    elapsedInterval = setInterval(() => {
+        const phaseElapsed = document.getElementById('phaseElapsed');
+        if (phaseElapsed && typingStartTime) {
+            const seconds = Math.floor((Date.now() - typingStartTime) / 1000);
+            phaseElapsed.textContent = `${seconds}s`;
+        }
+    }, 1000);
 }
 
 /**
- * @description Removes the typing indicator from the DOM and clears the phase rotation interval.
+ * @description Removes the typing indicator from the DOM and clears the phase rotation
+ *              and elapsed-time timers.
  * @returns {void}
  */
 function removeTypingIndicator() {
@@ -1552,6 +1680,11 @@ function removeTypingIndicator() {
         clearInterval(phaseInterval);
         phaseInterval = null;
     }
+    if (elapsedInterval) {
+        clearInterval(elapsedInterval);
+        elapsedInterval = null;
+    }
+    typingStartTime = null;
     const typing = document.getElementById('typingIndicator');
     if (typing) {
         typing.remove();
@@ -1567,6 +1700,8 @@ function removeTypingIndicator() {
 function setLoading(loading) {
     isLoading = loading;
     chatSendBtn.disabled = loading || !chatInput.value.trim();
+    chatSendBtn.classList.toggle('loading', loading);
+    sendBtn.classList.toggle('loading', loading);
     loadingIndicator.classList.toggle('hidden', !loading);
 }
 
@@ -1618,7 +1753,9 @@ function startNewConversation() {
     messageInput.value = '';
     chatInput.value = '';
     sendBtn.disabled = true;
+    sendBtn.classList.remove('loading');
     chatSendBtn.disabled = true;
+    chatSendBtn.classList.remove('loading');
 
     // Close mobile sidebar
     closeSidebarMobile();
@@ -1666,7 +1803,9 @@ async function showSettings() {
         const lastName = currentUser.last_name || '';
         const fullName = [firstName, lastName].filter(Boolean).join(' ') || 'User';
         settingsUserName.textContent = fullName;
+        settingsUserName.classList.remove('skeleton', 'settings-value-skeleton');
         settingsUserEmail.textContent = currentUser.email || '-';
+        settingsUserEmail.classList.remove('skeleton', 'settings-value-skeleton');
     }
 
     // Load credits and profile in parallel
@@ -1697,25 +1836,39 @@ function hideSettings() {
  * @async
  */
 async function loadCredits() {
-    creditsValue.textContent = 'Loading...';
-    creditsValue.classList.remove('credits-value');
+    // Only show the skeleton placeholder for the initial load. When this
+    // function is called again later (e.g. refreshing the balance after a
+    // purchase), the value already on screen should crossfade to the new
+    // one via updateTextWithFade() instead of flashing back to a skeleton.
+    const isInitialLoad = creditsValue.textContent.trim() === '';
+    if (isInitialLoad) {
+        creditsValue.classList.remove('credits-value');
+        creditsValue.classList.add('skeleton', 'settings-value-skeleton');
+    }
 
     try {
         const response = await fetch(`${API_BASE}/credits`);
+        // Remove the skeleton before the fade helper runs so the crossfade is
+        // visible immediately rather than being masked behind the skeleton
+        // block for the duration of its 150ms transition.
+        creditsValue.classList.remove('skeleton', 'settings-value-skeleton');
+
         if (response.ok) {
             const data = await response.json();
             if (data.unlimited) {
-                creditsValue.textContent = 'Unlimited';
+                updateTextWithFade(creditsValue, 'Unlimited');
+                creditsValue.classList.remove('credits-value');
             } else {
-                creditsValue.textContent = data.credits;
+                updateTextWithFade(creditsValue, String(data.credits));
                 creditsValue.classList.add('credits-value');
             }
         } else {
-            creditsValue.textContent = 'Error loading';
+            updateTextWithFade(creditsValue, 'Error loading');
         }
     } catch (error) {
         console.error('Failed to load credits:', error);
-        creditsValue.textContent = 'Error loading';
+        creditsValue.classList.remove('skeleton', 'settings-value-skeleton');
+        updateTextWithFade(creditsValue, 'Error loading');
     }
 }
 
@@ -1804,9 +1957,12 @@ function updateBioCharCount() {
  *              content and ID as data attributes on the container for use by handlers.
  * @param {string} content - The message text (used for copy and TTS)
  * @param {string|null} messageId - Server-assigned message ID (used for feedback API calls)
+ * @param {boolean} [saveFailed=false] - True if the server reported this message could not
+ *              be persisted; thumbs up/down are omitted since there's no message_id to
+ *              attach feedback to (copy/speak still work since they don't need one)
  * @returns {HTMLElement} The action buttons container div
  */
-function createMessageActions(content, messageId) {
+function createMessageActions(content, messageId, saveFailed = false) {
     const actionsDiv = document.createElement('div');
     actionsDiv.className = 'message-actions';
 
@@ -1824,6 +1980,7 @@ function createMessageActions(content, messageId) {
                 <path d="M19.07 4.93a10 10 0 0 1 0 14.14"/>
             </svg>
         </button>
+        ${saveFailed ? '' : `
         <button class="action-btn thumbs-up-btn" title="Good response" data-action="thumbs_up">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                 <path d="M14 9V5a3 3 0 0 0-3-3l-4 9v11h11.28a2 2 0 0 0 2-1.7l1.38-9a2 2 0 0 0-2-2.3zM7 22H4a2 2 0 0 1-2-2v-7a2 2 0 0 1 2-2h3"/>
@@ -1833,7 +1990,7 @@ function createMessageActions(content, messageId) {
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                 <path d="M10 15v4a3 3 0 0 0 3 3l4-9V2H5.72a2 2 0 0 0-2 1.7l-1.38 9a2 2 0 0 0 2 2.3zm7-13h2.67A2.31 2.31 0 0 1 22 4v7a2.31 2.31 0 0 1-2.33 2H17"/>
             </svg>
-        </button>
+        </button>`}
     `;
 
     // Store content for copy/speak
@@ -2173,6 +2330,22 @@ function showToast(message) {
  * ============================================================ */
 
 /**
+ * @description Updates the "Pay Now" button's label and spinner visibility. Centralizes
+ *              the text/spinner swap so every stage of the payment flow (processing,
+ *              adding credits, error recovery) stays visually consistent.
+ * @param {string} text - The label to display inside the button
+ * @param {boolean} [showSpinner=false] - Whether to show the inline loading spinner
+ * @returns {void}
+ */
+function setPurchaseButtonState(text, showSpinner = false) {
+    if (!submitPayment) return;
+    const btnText = submitPayment.querySelector('.btn-text');
+    const spinner = submitPayment.querySelector('.purchase-spinner');
+    if (btnText) btnText.textContent = text;
+    if (spinner) spinner.classList.toggle('hidden', !showSpinner);
+}
+
+/**
  * @description Registers click handlers for the payment modal: open/close buttons,
  *              backdrop click to close, package card selection, and payment submit.
  * @returns {void}
@@ -2269,7 +2442,7 @@ function resetModalState() {
     // Reset button
     if (submitPayment) {
         submitPayment.disabled = true;
-        submitPayment.textContent = 'Pay Now';
+        setPurchaseButtonState('Pay Now', false);
     }
 
     // Reset package selection
@@ -2417,7 +2590,7 @@ async function handlePaymentSubmit() {
     if (!stripe || !elements || !submitPayment) return;
 
     submitPayment.disabled = true;
-    submitPayment.textContent = 'Processing...';
+    setPurchaseButtonState('Processing...', true);
 
     try {
         const { error, paymentIntent } = await stripe.confirmPayment({
@@ -2431,10 +2604,10 @@ async function handlePaymentSubmit() {
         if (error) {
             showPaymentErrorMessage(error.message);
             submitPayment.disabled = false;
-            submitPayment.textContent = 'Pay Now';
+            setPurchaseButtonState('Pay Now', false);
         } else if (paymentIntent && paymentIntent.status === 'succeeded') {
             // Payment succeeded - try to verify and fulfill immediately (non-production only)
-            submitPayment.textContent = 'Adding credits...';
+            setPurchaseButtonState('Adding credits...', true);
 
             // Attempt client-side verification and fulfillment. This is a non-production
             // convenience path; in production, Stripe webhooks handle fulfillment and
@@ -2489,7 +2662,7 @@ async function handlePaymentSubmit() {
         console.error('Payment error:', err);
         showPaymentErrorMessage('An unexpected error occurred.');
         submitPayment.disabled = false;
-        submitPayment.textContent = 'Pay Now';
+        setPurchaseButtonState('Pay Now', false);
     }
 }
 
