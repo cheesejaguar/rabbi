@@ -2,7 +2,6 @@
 
 import pytest
 from unittest.mock import patch, AsyncMock, MagicMock
-import json
 
 
 class TestDatabasePool:
@@ -39,6 +38,10 @@ class TestDatabasePool:
                 # Verify SSL mode is added
                 call_args = mock_create.call_args
                 assert "sslmode=require" in call_args[0][0]
+                # Verify the JSONB type codec initializer is registered so
+                # JSONB columns round-trip as plain dicts.
+                from app.database import _init_connection
+                assert call_args.kwargs["init"] is _init_connection
 
     @pytest.mark.asyncio
     async def test_get_pool_reuses_existing_pool(self):
@@ -179,6 +182,86 @@ class TestUserOperations:
 
             assert result is None
 
+    @pytest.mark.asyncio
+    async def test_update_user_profile_denomination_only(self, mock_connection):
+        """Test updating only the denomination field."""
+        mock_connection.execute = AsyncMock(return_value="UPDATE 1")
+
+        with patch('app.database.get_connection') as mock_ctx:
+            mock_ctx.return_value.__aenter__ = AsyncMock(return_value=mock_connection)
+            mock_ctx.return_value.__aexit__ = AsyncMock()
+
+            from app.database import update_user_profile
+            result = await update_user_profile("user-123", denomination="conservative")
+
+            assert result is True
+            args = mock_connection.execute.call_args.args
+            # user_id, denomination, bio - bio left as None so COALESCE keeps it
+            assert args[1] == "user-123"
+            assert args[2] == "conservative"
+            assert args[3] is None
+
+    @pytest.mark.asyncio
+    async def test_update_user_profile_bio_only(self, mock_connection):
+        """Test updating only the bio field."""
+        mock_connection.execute = AsyncMock(return_value="UPDATE 1")
+
+        with patch('app.database.get_connection') as mock_ctx:
+            mock_ctx.return_value.__aenter__ = AsyncMock(return_value=mock_connection)
+            mock_ctx.return_value.__aexit__ = AsyncMock()
+
+            from app.database import update_user_profile
+            result = await update_user_profile("user-123", bio="Just exploring.")
+
+            assert result is True
+            args = mock_connection.execute.call_args.args
+            assert args[2] is None
+            assert args[3] == "Just exploring."
+
+    @pytest.mark.asyncio
+    async def test_update_user_profile_both_fields(self, mock_connection):
+        """Test updating both denomination and bio in one call."""
+        mock_connection.execute = AsyncMock(return_value="UPDATE 1")
+
+        with patch('app.database.get_connection') as mock_ctx:
+            mock_ctx.return_value.__aenter__ = AsyncMock(return_value=mock_connection)
+            mock_ctx.return_value.__aexit__ = AsyncMock()
+
+            from app.database import update_user_profile
+            result = await update_user_profile("user-123", denomination="reform", bio="Hi there.")
+
+            assert result is True
+            args = mock_connection.execute.call_args.args
+            assert args[2] == "reform"
+            assert args[3] == "Hi there."
+
+    @pytest.mark.asyncio
+    async def test_update_user_profile_no_fields_returns_false(self, mock_connection):
+        """Test that providing neither field is a no-op and does not hit the DB."""
+        with patch('app.database.get_connection') as mock_ctx:
+            mock_ctx.return_value.__aenter__ = AsyncMock(return_value=mock_connection)
+            mock_ctx.return_value.__aexit__ = AsyncMock()
+
+            from app.database import update_user_profile
+            result = await update_user_profile("user-123")
+
+            assert result is False
+            mock_connection.execute.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_update_user_profile_no_matching_row(self, mock_connection):
+        """Test that a non-existent user results in False."""
+        mock_connection.execute = AsyncMock(return_value="UPDATE 0")
+
+        with patch('app.database.get_connection') as mock_ctx:
+            mock_ctx.return_value.__aenter__ = AsyncMock(return_value=mock_connection)
+            mock_ctx.return_value.__aexit__ = AsyncMock()
+
+            from app.database import update_user_profile
+            result = await update_user_profile("nonexistent", denomination="orthodox")
+
+            assert result is False
+
 
 class TestConversationOperations:
     """Test conversation database operations."""
@@ -265,6 +348,23 @@ class TestConversationOperations:
             assert len(result) == 2
             assert result[0]["id"] == "conv-1"
             assert result[1]["id"] == "conv-2"
+
+    @pytest.mark.asyncio
+    async def test_list_conversations_uses_lateral_join_for_first_message(self, mock_connection):
+        """Test that the first-message lookup uses a LATERAL join (not a per-row
+        correlated subquery) and still limits to one message per conversation."""
+        mock_connection.fetch = AsyncMock(return_value=[])
+
+        with patch('app.database.get_connection') as mock_ctx:
+            mock_ctx.return_value.__aenter__ = AsyncMock(return_value=mock_connection)
+            mock_ctx.return_value.__aexit__ = AsyncMock()
+
+            from app.database import list_conversations
+            await list_conversations("user-123")
+
+            query_text = mock_connection.fetch.call_args.args[0]
+            assert "LATERAL" in query_text.upper()
+            assert "LIMIT 1" in query_text.upper()
 
     @pytest.mark.asyncio
     async def test_list_conversations_with_pagination(self, mock_connection):
@@ -369,14 +469,20 @@ class TestMessageOperations:
 
     @pytest.mark.asyncio
     async def test_add_message_with_metadata(self, mock_connection):
-        """Test adding a message with metadata."""
+        """Test adding a message with metadata.
+
+        The mocked connection returns ``metadata`` as a dict, matching what
+        asyncpg actually hands back once the JSONB type codec (registered in
+        ``get_pool``) decodes it -- ``add_message`` itself does no manual
+        JSON parsing.
+        """
         metadata = {"key": "value"}
         mock_row = {
             "id": "msg-123",
             "conversation_id": "conv-123",
             "role": "assistant",
             "content": "Response",
-            "metadata": json.dumps(metadata),
+            "metadata": metadata,
             "created_at": "2024-01-01T00:00:00Z",
         }
         mock_connection.fetchrow = AsyncMock(return_value=mock_row)
@@ -389,13 +495,17 @@ class TestMessageOperations:
             result = await add_message("conv-123", "assistant", "Response", metadata)
 
             assert result["metadata"] == metadata
+            # The dict is passed straight through to conn.fetchrow - no
+            # manual json.dumps - since the codec handles encoding.
+            call_args = mock_connection.fetchrow.call_args.args
+            assert call_args[-1] == metadata
 
     @pytest.mark.asyncio
     async def test_get_messages(self, mock_connection):
         """Test getting messages for a conversation."""
         mock_rows = [
-            {"id": "msg-1", "conversation_id": "conv-123", "role": "user", "content": "Hello", "metadata": "{}", "created_at": "2024-01-01T00:00:00Z"},
-            {"id": "msg-2", "conversation_id": "conv-123", "role": "assistant", "content": "Hi there!", "metadata": "{}", "created_at": "2024-01-01T00:00:01Z"},
+            {"id": "msg-1", "conversation_id": "conv-123", "role": "user", "content": "Hello", "metadata": {}, "created_at": "2024-01-01T00:00:00Z"},
+            {"id": "msg-2", "conversation_id": "conv-123", "role": "assistant", "content": "Hi there!", "metadata": {}, "created_at": "2024-01-01T00:00:01Z"},
         ]
         mock_connection.fetch = AsyncMock(return_value=mock_rows)
 

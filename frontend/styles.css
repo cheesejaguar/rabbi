@@ -598,6 +598,13 @@ body {
     .sidebar.open .sidebar-toggle {
         display: flex;
     }
+
+    /* Bump the conversation three-dot menu button up from 28x28px to a
+     * 36x36px touch target for better usability on mobile. */
+    .conversation-menu-btn {
+        width: 36px;
+        height: 36px;
+    }
 }
 
 /* ============================================================
@@ -607,6 +614,14 @@ body {
  * ============================================================ */
 .hidden {
     display: none !important; /* !important ensures override of any display value */
+}
+
+/* Momentary fade used by updateTextWithFade() in app.js when swapping small
+ * pieces of text in place (credits balance, sidebar user name/avatar) so the
+ * change doesn't pop instantly. */
+.text-fade-out {
+    opacity: 0;
+    transition: opacity var(--transition-fast);
 }
 
 /* ============================================================
@@ -696,6 +711,13 @@ body {
         opacity: 0.8;
         transform: scale(1.05);
     }
+}
+
+/* Skeleton placeholder shown in place of the greeting text while
+ * loadGreeting() is in flight. Sized to roughly match the text it replaces. */
+.greeting-skeleton {
+    width: 240px;
+    height: 1.2em;
 }
 
 /* ============================================================
@@ -798,6 +820,31 @@ body {
     opacity: 0.5;
     cursor: not-allowed;
     transform: none;
+}
+
+/* --- Send Button Spinner ---
+ * Shown in place of the arrow icon while a response is streaming.
+ * Hidden by default (display: none); .send-btn.loading reveals it and
+ * hides the arrow icon instead. Uses the same border-based CSS spinner
+ * technique as .saving-spinner (see Buy Credits & Save Profile Buttons
+ * section) for visual consistency. */
+.send-spinner {
+    display: none;
+    width: 16px;
+    height: 16px;
+    border: 2px solid rgba(255, 255, 255, 0.4);
+    border-top-color: transparent; /* Creates the spinning gap */
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+}
+
+/* When loading, hide the arrow icon and show the spinner in its place */
+.send-btn.loading .send-icon {
+    display: none;
+}
+
+.send-btn.loading .send-spinner {
+    display: inline-block;
 }
 
 /* ============================================================
@@ -1406,12 +1453,64 @@ body {
 
 /* ============================================================
  * 14. LOADING & TYPING INDICATORS
- * Two indicator styles:
+ * Three indicator styles:
  * 1. Loading indicator: fixed pill at bottom of viewport
  *    with bouncing dots (shown during initial API call).
  * 2. Typing indicator: inline message bubble with phase text
  *    and bouncing dots (shown during multi-agent pipeline).
+ * 3. Skeleton/shimmer placeholders: block-shaped placeholders
+ *    shown while content (greeting, d'var Torah, settings,
+ *    conversation list) is still loading.
  * ============================================================ */
+
+/* --- Skeleton / Shimmer Loaders ---
+ * Generic placeholder blocks used anywhere content is fetched
+ * asynchronously. Apply `.skeleton` plus a sizing class (or inline
+ * width/height) to a <div>. The shimmer sweeps left-to-right using a
+ * moving gradient highlight against the tertiary background color.
+ * Respects prefers-reduced-motion by falling back to a static,
+ * subtly lighter background instead of an animated sweep. */
+.skeleton {
+    display: block;
+    border-radius: var(--radius-sm);
+    background: linear-gradient(
+        90deg,
+        var(--bg-tertiary) 25%,
+        var(--border-light) 50%,
+        var(--bg-tertiary) 75%
+    );
+    background-size: 200% 100%;
+    animation: shimmer 1.5s ease-in-out infinite;
+}
+
+/* --- shimmer Animation ---
+ * Sweeps the gradient highlight across the skeleton block to
+ * suggest content is actively loading. */
+@keyframes shimmer {
+    0% {
+        background-position: 200% 0;
+    }
+    100% {
+        background-position: -200% 0;
+    }
+}
+
+/* Reduced-motion fallback: a static, subtly lighter block instead of
+ * an animated sweep. Combined with the global reduced-motion rule
+ * (section 18) which also collapses the animation duration itself. */
+@media (prefers-reduced-motion: reduce) {
+    .skeleton {
+        background: var(--bg-tertiary);
+        animation: none;
+    }
+}
+
+/* --- Skeleton Row (conversation list placeholder rows) --- */
+.skeleton-row {
+    height: 36px;
+    margin: 4px 0;
+    border-radius: var(--radius-sm);
+}
 
 /* --- Global Loading Indicator (fixed position) --- */
 .loading-indicator {
@@ -1481,7 +1580,23 @@ body {
     color: var(--text-secondary);
     font-size: 0.9rem;
     font-style: italic;
-    transition: opacity 0.15s ease; /* Smooth text swap between phases */
+    transition: opacity var(--transition-fast); /* Smooth text swap between phases */
+}
+
+/* Applied via JS instead of setting .style.opacity directly, so the
+ * crossfade stays driven by the CSS token above rather than an inline style. */
+.phase-text.fading {
+    opacity: 0;
+}
+
+/* --- Elapsed Time Readout ---
+ * Small ticking counter next to the phase text so users have a sense
+ * of progress during the multi-agent pipeline, which can take several
+ * seconds. Updated every second via setInterval in showTypingIndicator(). */
+.phase-elapsed {
+    color: var(--text-muted);
+    font-size: 0.8rem;
+    font-variant-numeric: tabular-nums; /* Prevents width jitter as digits change */
 }
 
 .phase-dots {
@@ -1742,6 +1857,13 @@ body {
 .settings-row-value {
     font-size: 0.95rem;
     color: var(--text-secondary);
+}
+
+/* Skeleton sizing for settings row values (credits, name, email) while
+ * their initial fetch (loadCredits/loadProfile/showSettings) is in flight. */
+.settings-value-skeleton {
+    width: 90px;
+    height: 1em;
 }
 
 /* Credits balance - emphasized with gold color and larger font */
@@ -2018,6 +2140,10 @@ body {
 
 .package-card:hover {
     border-color: var(--border-light);
+    /* Lift + shadow on hover, matching the established card-hover pattern
+     * used by .suggestion-chip:hover elsewhere in the app. */
+    transform: translateY(-2px);
+    box-shadow: var(--shadow-md);
 }
 
 /* Selected package: gold border with semi-transparent gold background tint */
@@ -2102,6 +2228,10 @@ body {
     font-weight: 600;
     cursor: pointer;
     transition: all var(--transition-fast);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
 }
 
 .purchase-btn:hover:not(:disabled) {
@@ -2111,6 +2241,20 @@ body {
 .purchase-btn:disabled {
     opacity: 0.5;
     cursor: not-allowed;
+}
+
+/* --- Purchase Button Spinner ---
+ * Shown alongside the button text while a payment is processing.
+ * Uses the same border-based CSS spinner technique as .saving-spinner
+ * and .send-spinner for visual consistency across the app. */
+.purchase-spinner {
+    display: inline-block;
+    width: 14px;
+    height: 14px;
+    border: 2px solid var(--bg-primary);
+    border-top-color: transparent; /* Creates the spinning gap */
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
 }
 
 /* "Secure payment" text with lock icon below the purchase button */

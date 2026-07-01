@@ -170,10 +170,10 @@ async def create_payment_intent(request: Request, body: CreateIntentRequest):
 
     except stripe.error.StripeError as e:
         logger.error(f"Stripe error creating payment intent: {e}")
-        raise HTTPException(status_code=500, detail=f"Stripe error: {str(e)}")
+        raise HTTPException(status_code=500, detail="Payment processing error. Please try again or contact support.")
     except Exception as e:
         logger.error(f"Error creating payment intent: {e}")
-        raise HTTPException(status_code=500, detail=f"Payment error: {str(e)}")
+        raise HTTPException(status_code=500, detail="Payment processing error. Please try again or contact support.")
 
 
 @router.post("/verify-and-fulfill")
@@ -254,10 +254,10 @@ async def verify_and_fulfill(request: Request, body: VerifyPaymentRequest):
         raise  # Re-raise HTTP exceptions as-is
     except stripe.error.StripeError as e:
         logger.error(f"Stripe error verifying payment: {e}")
-        raise HTTPException(status_code=500, detail=f"Verification error: {str(e)}")
+        raise HTTPException(status_code=500, detail="Payment verification error. Please try again or contact support.")
     except Exception as e:
         logger.error(f"Error verifying payment: {e}")
-        raise HTTPException(status_code=500, detail=f"Verification error: {str(e)}")
+        raise HTTPException(status_code=500, detail="Payment verification error. Please try again or contact support.")
 
 
 @router.post("/webhook")

@@ -286,6 +286,7 @@ async def login(request: Request, popup: int = 0):
 
 
 @router.get("/callback")
+@limiter.limit("10/minute")
 async def callback(request: Request, code: str = None, state: str = None, error: str = None):
     """Handle the SSO callback from WorkOS after user authentication.
 
@@ -394,7 +395,8 @@ async def callback(request: Request, code: str = None, state: str = None, error:
         return response
 
     except Exception as e:
-        raise HTTPException(status_code=400, detail=f"Authentication failed: {str(e)}")
+        logger.error(f"Authentication callback failed: {e}")
+        raise HTTPException(status_code=400, detail="Authentication failed. Please try signing in again.")
 
 
 @router.get("/logout")

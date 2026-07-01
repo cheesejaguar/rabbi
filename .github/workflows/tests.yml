@@ -26,6 +26,15 @@ jobs:
       - name: Install dependencies
         run: uv sync --dev
 
+      # There are ~46 pre-existing lint findings on the codebase today
+      # (mostly unused imports in tests, plus a few unused locals and
+      # import-order issues). continue-on-error is intentional for now so
+      # this step is visible in CI without blocking merges on an unrelated
+      # cleanup; flip to false once the existing findings are triaged/fixed.
+      - name: Lint with ruff
+        run: uv run ruff check backend/
+        continue-on-error: true
+
       - name: Run tests with coverage
         run: |
           uv run pytest backend/tests/ \
@@ -34,6 +43,16 @@ jobs:
             --cov-report=xml \
             --cov-fail-under=60 \
             -v
+
+      # pip-audit scans installed dependencies for known vulnerabilities.
+      # continue-on-error is intentional: this is being introduced for
+      # visibility first so findings can be triaged (e.g. false positives,
+      # transitive deps with no fix available yet) before it's allowed to
+      # block merges. Flip this to false once the initial findings are
+      # reviewed and either fixed or explicitly accepted/ignored.
+      - name: Audit dependencies with pip-audit
+        run: uvx pip-audit
+        continue-on-error: true
 
       - name: Upload coverage report
         uses: actions/upload-artifact@v4

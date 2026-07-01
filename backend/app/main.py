@@ -1092,17 +1092,25 @@ async def chat_stream(request: Request, chat_request: ChatRequest):
         except Exception as e:
             logger.warning(f"Could not get user profile: {e}")
 
-    # Check and consume credit before processing (only for logged-in users)
+    # Check and consume credit before processing (only for logged-in users).
+    # Fail closed on any error so a DB hiccup can't be used to bypass the
+    # credit system - block the chat rather than silently letting it proceed.
+    credit_consumed = False
     if user and settings.db_url:
         try:
             has_credit = await db.consume_credit(user["id"])
-            if not has_credit:
-                return StreamingResponse(
-                    iter([f"data: {json.dumps({'type': 'error', 'message': 'No credits remaining. Please contact support.'})}\n\n"]),
-                    media_type="text/event-stream",
-                )
         except Exception as e:
             logger.warning(f"Could not check credits: {e}")
+            return StreamingResponse(
+                iter([f"data: {json.dumps({'type': 'error', 'message': 'Unable to verify your credits right now. Please try again in a moment.'})}\n\n"]),
+                media_type="text/event-stream",
+            )
+        if not has_credit:
+            return StreamingResponse(
+                iter([f"data: {json.dumps({'type': 'error', 'message': 'No credits remaining. Please contact support.'})}\n\n"]),
+                media_type="text/event-stream",
+            )
+        credit_consumed = True
 
     # Save user message to database if conversation_id provided
     if conversation_id and user and settings.db_url:
@@ -1143,26 +1151,45 @@ async def chat_stream(request: Request, chat_request: ChatRequest):
 
             # Save assistant response to database with metrics
             if conversation_id and user and settings.db_url and full_response:
+                # Include metrics in message metadata
+                metadata = metrics_data if metrics_data else {}
                 try:
-                    # Include metrics in message metadata
-                    metadata = metrics_data if metrics_data else {}
                     message = await db.add_message(conversation_id, "assistant", full_response, metadata)
                     # Emit message_id so frontend can track feedback
                     if message and message.get("id"):
                         yield f"data: {json.dumps({'type': 'message_saved', 'message_id': message['id']})}\n\n"
-                    # Update conversation title if not set
+                except Exception as e:
+                    logger.warning(f"Could not save assistant message: {e}")
+                    # Let the frontend know feedback (thumbs up/down) isn't
+                    # available for this message rather than silently offering
+                    # buttons that will fail.
+                    yield f"data: {json.dumps({'type': 'message_save_failed'})}\n\n"
+
+                # Update conversation title if not set. Kept in its own
+                # try/except so a title-generation failure can't mask (or be
+                # masked by) an assistant-message-save failure above.
+                try:
                     conv = await db.get_conversation(conversation_id, user["id"])
                     if conv and not conv.get("title"):
                         title = await db.generate_conversation_title(conversation_id)
                         if title:
                             await db.update_conversation(conversation_id, user["id"], title)
                 except Exception as e:
-                    logger.warning(f"Could not save assistant message: {e}")
+                    logger.warning(f"Could not update conversation title: {e}")
 
             # Send done event
             yield f"data: {json.dumps({'type': 'done'})}\n\n"
 
         except Exception as e:
+            # Best-effort refund: if a credit was consumed for this request but
+            # the response never completed successfully, give it back rather
+            # than charging the user for a failed chat.
+            if credit_consumed and user and settings.db_url:
+                try:
+                    await db.add_credits(user["id"], 1)
+                except Exception as refund_error:
+                    logger.warning(f"Could not refund credit after stream failure: {refund_error}")
+
             # Log error to database
             if settings.db_url:
                 try:
@@ -1175,7 +1202,8 @@ async def chat_stream(request: Request, chat_request: ChatRequest):
                     )
                 except Exception:
                     pass
-            yield f"data: {json.dumps({'type': 'error', 'message': str(e)})}\n\n"
+            logger.error(f"Chat stream error: {e}")
+            yield f"data: {json.dumps({'type': 'error', 'message': 'Something went wrong while generating a response. Please try again.'})}\n\n"
 
     response = StreamingResponse(
         event_generator(),

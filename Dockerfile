@@ -37,6 +37,16 @@ ENV PATH="/app/.venv/bin:$PATH"
 # Build the RAG index at image build time so it's ready when the container starts
 RUN python -m backend.app.agents.rag
 
+# Create a non-root user and hand off ownership of the app directory. This is
+# done after the RAG index build and all COPY steps (which need root to write
+# into /app) so the resulting image still runs as root during the build but
+# drops privileges before the application actually starts. The app only reads
+# rag_index.json.gz at runtime (via gzip.open in read mode), so it never needs
+# to write into /app after this point.
+RUN groupadd -r appuser && useradd -r -g appuser -d /app -s /sbin/nologin appuser \
+    && chown -R appuser:appuser /app
+USER appuser
+
 # Expose the port uvicorn listens on inside the container
 EXPOSE 8000
 

@@ -57,6 +57,26 @@ class TestSettings:
             # Should allow localhost for development
             assert "http://localhost:8613" in settings.cors_origins
 
+    def test_cors_wildcard_rejected_in_production(self):
+        """Test that a wildcard CORS origin fails validation in production."""
+        env_vars = {
+            "ENVIRONMENT": "production",
+            "SESSION_SECRET_KEY": "a-very-secure-session-secret-key-for-testing-production",
+            "CORS_ORIGINS": '["*"]',
+        }
+        with patch.dict(os.environ, env_vars, clear=True):
+            with pytest.raises(Exception):
+                Settings(_env_file=None)
+
+    def test_cors_wildcard_allowed_outside_production(self):
+        """Test that a wildcard CORS origin is still permitted in development."""
+        env_vars = {
+            "CORS_ORIGINS": '["*"]',
+        }
+        with patch.dict(os.environ, env_vars, clear=True):
+            settings = Settings(_env_file=None)
+            assert settings.cors_origins == ["*"]
+
     def test_gateway_vercel_default(self):
         """Test that Vercel gateway is used by default."""
         env_vars = {
