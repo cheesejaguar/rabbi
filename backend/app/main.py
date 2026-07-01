@@ -28,7 +28,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI, HTTPException, Request, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse, RedirectResponse, StreamingResponse, JSONResponse
+from fastapi.responses import FileResponse, RedirectResponse, StreamingResponse, JSONResponse, Response
 from starlette.middleware.base import BaseHTTPMiddleware
 from slowapi import Limiter
 from slowapi.util import get_remote_address
@@ -68,6 +68,7 @@ from .payments import router as payments_router
 from .admin import router as admin_router, require_admin
 from . import database as db
 from .dvar_torah import get_or_generate_dvar_torah
+from .jewish_calendar import get_calendar_status
 
 # ---------------------------------------------------------------------------
 # App Configuration & Middleware
@@ -289,6 +290,9 @@ class AuthMiddleware(BaseHTTPMiddleware):
 
     # Paths that don't require authentication (exact match)
     PUBLIC_PATHS = {
+        "/",  # Public landing page for visitors / app for signed-in users
+        "/robots.txt",
+        "/sitemap.xml",
         "/auth/login",
         "/auth/callback",
         "/auth/check",
@@ -299,6 +303,7 @@ class AuthMiddleware(BaseHTTPMiddleware):
         "/api/chat/stream",  # Allow guest free chat (handled in endpoint)
         "/api/greeting",  # Allow guests to see greeting
         "/api/dvar-torah",  # Weekly d'var Torah (public, cached)
+        "/api/calendar-status",  # Shabbat/yom tov awareness (public)
         "/docs",
         "/openapi.json",
         "/redoc",
@@ -422,18 +427,59 @@ async def get_dvar_torah(request: Request):
             is_holiday_week=True,
         )
 
+    # Attach completed sponsorship dedications for this parsha week
+    sponsors = []
+    if settings.db_url:
+        try:
+            sponsors = await db.list_parsha_sponsors(result["parsha_name"], result["hebrew_year"])
+        except Exception as e:
+            logger.warning(f"Could not load sponsors: {e}")
+
     response = DvarTorahResponse(
         parsha_name=result["parsha_name"],
         parsha_name_hebrew=result["parsha_name_hebrew"],
         hebrew_year=result["hebrew_year"],
         content=result["content"],
         is_holiday_week=False,
+        sponsors=sponsors,
     )
 
     return JSONResponse(
         content=response.model_dump(),
-        headers={"Cache-Control": "public, max-age=3600"},
+        headers={"Cache-Control": "public, max-age=300"},
     )
+
+
+@app.get("/api/calendar-status")
+@limiter.limit("60/minute")
+async def calendar_status(request: Request, client_time: str = None):
+    """Report whether it is currently Shabbat or a yom tov for the client.
+
+    Shabbat depends on the *user's* local time, which the server cannot
+    know, so the client passes its local clock as an ISO-8601 string
+    (e.g. ``2026-07-03T17:30``). Falls back to server time when absent.
+    The computation is a respectful approximation ("around sundown"),
+    never a halachic ruling.
+
+    Args:
+        request: The incoming HTTP request (used by the rate limiter).
+        client_time: The client's local datetime, ISO-8601, no timezone.
+
+    Returns:
+        JSON with ``is_shabbat``, ``is_erev_shabbat``, ``is_yom_tov``,
+        ``is_erev_yom_tov``, ``holiday_name``, and a display ``message``
+        (``None`` on ordinary weekdays).
+    """
+    from datetime import datetime
+    local_now = None
+    if client_time:
+        try:
+            local_now = datetime.fromisoformat(client_time[:19])
+        except ValueError:
+            pass
+    if local_now is None:
+        local_now = datetime.now()
+    return JSONResponse(content=get_calendar_status(local_now))
 
 
 # ---------------------------------------------------------------------------
@@ -1268,14 +1314,44 @@ if os.path.exists(frontend_path):
     app.mount("/static", StaticFiles(directory=frontend_path), name="static")
 
     @app.get("/")
-    async def serve_frontend():
-        """Serve the single-page frontend application (index.html).
+    async def serve_frontend(request: Request):
+        """Serve the app to signed-in users, the public landing page to visitors.
+
+        Signed-in users go straight to the chat application. Anonymous
+        visitors (including search-engine crawlers) get a crawlable
+        marketing page describing the product, instead of the previous
+        redirect to a bare login screen.
 
         Returns:
-            FileResponse: The main ``index.html`` file from the frontend
-            directory.
+            FileResponse: ``index.html`` (app) or ``landing.html`` (public).
         """
-        return FileResponse(os.path.join(frontend_path, "index.html"))
+        if get_current_user(request):
+            return FileResponse(os.path.join(frontend_path, "index.html"))
+        return FileResponse(os.path.join(frontend_path, "landing.html"))
+
+    @app.get("/robots.txt", include_in_schema=False)
+    async def robots_txt():
+        """Serve crawler directives: index the public site, not the API."""
+        content = (
+            "User-agent: *\n"
+            "Allow: /\n"
+            "Disallow: /api/\n"
+            "Disallow: /admin\n"
+            "Disallow: /auth/\n"
+            f"\nSitemap: {settings.public_base_url}/sitemap.xml\n"
+        )
+        return Response(content=content, media_type="text/plain")
+
+    @app.get("/sitemap.xml", include_in_schema=False)
+    async def sitemap_xml():
+        """Serve a minimal sitemap for the public landing page."""
+        content = (
+            '<?xml version="1.0" encoding="UTF-8"?>\n'
+            '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n'
+            f"  <url><loc>{settings.public_base_url}/</loc><changefreq>weekly</changefreq></url>\n"
+            "</urlset>\n"
+        )
+        return Response(content=content, media_type="application/xml")
 
     @app.get("/admin")
     async def serve_admin(admin: dict = Depends(require_admin)):

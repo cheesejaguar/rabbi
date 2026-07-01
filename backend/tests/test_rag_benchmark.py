@@ -681,16 +681,16 @@ REAL_BENCHMARK_QUERIES = [
         top_k=5,
     ),
 
-    # Hebrew queries: TF-IDF on Hebrew is challenging because:
-    #  - Common terms (אלהים, ישראל) appear across many texts
-    #  - Tanakh texts include cantillation marks/nikud (בְּרֵאשִׁ֖ית ≠ בראשית)
-    #    so plain Hebrew queries match commentary/midrash better than Tanakh itself
-    # These queries document that limitation while still verifying retrieval works.
+    # Hebrew queries: the tokenizer strips nikud/cantillation and normalizes
+    # final letters, so plain (unpointed) Hebrew queries now match the
+    # pointed Tanakh text directly in addition to citing commentary/midrash.
+    # Common terms (אלהים, ישראל) still appear across many texts, so top
+    # results legitimately include midrash quoting the verse.
     BenchmarkQuery(
         query="בראשית ברא אלהים השמים הארץ",
-        description="Genesis 1:1 Hebrew (finds citing texts)",
-        expected_titles=set(),  # Won't match nikud-laden Tanakh text directly
-        expected_categories=set(),
+        description="Genesis 1:1 Hebrew (matches pointed Tanakh text)",
+        expected_titles={"Genesis"},
+        expected_categories={"Tanakh"},
         min_results=1,
         top_k=5,
     ),

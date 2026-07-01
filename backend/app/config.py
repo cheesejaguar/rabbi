@@ -43,6 +43,9 @@ class Settings(BaseSettings):
     # Environment: "development" or "production"
     environment: str = "development"
 
+    # Canonical public URL used in robots.txt / sitemap.xml links.
+    public_base_url: str = "https://rebbe.dev"
+
     @property
     def is_production(self) -> bool:
         """Return ``True`` when running in production (case-insensitive)."""

@@ -161,10 +161,12 @@ HALACHIC ANALYSIS:
 - Boundaries: {hl.non_negotiable_boundaries}
 """
 
+        history_info = self._format_history(context)
+
         messages = [
             {
                 "role": "user",
-                "content": f"""ORIGINAL USER QUESTION:
+                "content": f"""{history_info}ORIGINAL USER QUESTION:
 {context.user_message}
 
 {pastoral_info}

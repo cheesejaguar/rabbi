@@ -88,6 +88,7 @@
         <button data-tab="feedback">Feedback</button>
         <button data-tab="errors">Errors</button>
         <button data-tab="purchases">Purchases</button>
+        <button data-tab="sponsorships">Sponsorships</button>
         <button data-tab="analytics">Analytics</button>
         <button data-tab="audit">Audit log</button>
     </nav>
@@ -161,6 +162,7 @@
             else if (currentTab === 'feedback') await renderFeedback();
             else if (currentTab === 'errors') await renderErrors();
             else if (currentTab === 'purchases') await renderPurchases();
+            else if (currentTab === 'sponsorships') await renderSponsorships();
             else if (currentTab === 'analytics') await renderAnalytics();
             else if (currentTab === 'audit') await renderAudit();
         } catch (err) {
@@ -183,6 +185,7 @@
             ['Credits outstanding', o.credits_outstanding],
             ['Revenue (total)', fmtCents(o.revenue_cents_total), 'gold'],
             ['Revenue (30d)', fmtCents(o.revenue_cents_30d), 'gold'],
+            ['Sponsorships', fmtCents(o.sponsorship_revenue_cents_total), 'gold'],
             ['LLM spend (30d est.)', '$' + totalCost.toFixed(2)],
             ['Errors (24h)', o.errors_24h, o.errors_24h > 0 ? 'red' : ''],
             ['Errors (7d)', o.errors_7d],
@@ -348,6 +351,21 @@
                 <td>${fmtCents(p.amount_cents)}</td>
                 <td><span class="pill ${p.status === 'completed' ? 'green' : p.status === 'failed' ? 'red' : 'gray'}">${esc(p.status)}</span></td>
             </tr>`).join('') + '</table>' : '<div class="empty">No purchases yet.</div>');
+    }
+
+    // ---------------------------------------------------------- sponsorships
+    async function renderSponsorships() {
+        const { sponsorships } = await api('/api/admin/sponsorships?limit=100');
+        content.innerHTML = '<div class="section-title">D\'var Torah sponsorships</div>' +
+            (sponsorships.length ? '<table><tr><th>When</th><th>Sponsor</th><th>Dedication</th><th>Parsha</th><th>Amount</th><th>Status</th></tr>' +
+            sponsorships.map(s => `<tr>
+                <td class="muted">${fmtDate(s.created_at)}</td>
+                <td>${esc(s.user_email)}</td>
+                <td>${esc(s.dedication_type)}: ${esc(s.dedication)}</td>
+                <td>${esc(s.parsha_name)} ${esc(s.hebrew_year)}</td>
+                <td>${fmtCents(s.amount_cents)}</td>
+                <td><span class="pill ${s.status === 'completed' ? 'green' : s.status === 'failed' ? 'red' : 'gray'}">${esc(s.status)}</span></td>
+            </tr>`).join('') + '</table>' : '<div class="empty">No sponsorships yet.</div>');
     }
 
     // ------------------------------------------------------------- analytics

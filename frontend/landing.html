@@ -1,0 +1,223 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>rebbe.dev — Torah wisdom and guidance, with heart</title>
+    <meta name="description" content="An AI study companion for Jewish life: ask questions of Torah, halacha, and meaning, and get thoughtful, source-grounded guidance from a progressive Modern Orthodox perspective. Guidance, not psak — and never a substitute for your rabbi.">
+    <link rel="canonical" href="https://rebbe.dev/">
+    <meta name="theme-color" content="#1a1a1a">
+    <link rel="icon" type="image/x-icon" href="/static/favicon.ico">
+    <link rel="apple-touch-icon" href="/static/apple-touch-icon.png">
+
+    <!-- Open Graph / social sharing -->
+    <meta property="og:type" content="website">
+    <meta property="og:url" content="https://rebbe.dev/">
+    <meta property="og:title" content="rebbe.dev — Torah wisdom and guidance, with heart">
+    <meta property="og:description" content="Ask questions of Torah, halacha, and meaning. Thoughtful, source-grounded answers from a progressive Modern Orthodox perspective.">
+    <meta property="og:image" content="https://rebbe.dev/static/og-image.png">
+    <meta name="twitter:card" content="summary_large_image">
+
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@type": "WebApplication",
+      "name": "rebbe.dev",
+      "url": "https://rebbe.dev/",
+      "applicationCategory": "EducationalApplication",
+      "description": "An AI Torah study companion offering source-grounded guidance on Jewish law, practice, and meaning from a progressive Modern Orthodox perspective.",
+      "offers": {"@type": "Offer", "price": "0", "priceCurrency": "USD", "description": "Free to try; credit packages available."}
+    }
+    </script>
+
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            font-family: 'Inter', -apple-system, sans-serif;
+            background: #1a1a1a; color: #e8e8e8; line-height: 1.65;
+        }
+        a { color: #d4a853; text-decoration: none; }
+        .container { max-width: 880px; margin: 0 auto; padding: 0 24px; }
+        header {
+            display: flex; align-items: center; justify-content: space-between;
+            padding: 20px 24px; max-width: 980px; margin: 0 auto;
+        }
+        .brand { display: flex; align-items: center; gap: 10px; font-weight: 600; font-size: 1.05rem; color: #e8e8e8; }
+        .brand svg { color: #d4a853; }
+        .btn {
+            display: inline-block; background: #d4a853; color: #1a1a1a;
+            padding: 12px 28px; border-radius: 12px; font-weight: 600;
+            transition: all 0.15s ease;
+        }
+        .btn:hover { background: #e4bc6a; transform: translateY(-1px); }
+        .btn.ghost { background: none; color: #d4a853; border: 1px solid rgba(212,168,83,0.5); }
+        .btn.ghost:hover { background: rgba(212,168,83,0.1); }
+        .hero { text-align: center; padding: 72px 24px 56px; }
+        .hero h1 { font-size: clamp(1.9rem, 5vw, 3rem); line-height: 1.2; margin-bottom: 18px; }
+        .hero h1 em { color: #d4a853; font-style: normal; }
+        .hero p.lede { color: #b8b8b8; font-size: 1.1rem; max-width: 620px; margin: 0 auto 30px; }
+        .hero .cta-row { display: flex; gap: 14px; justify-content: center; flex-wrap: wrap; }
+        .hero .try-note { margin-top: 14px; color: #808080; font-size: 0.85rem; }
+        section { padding: 44px 0; }
+        section h2 { font-size: 1.5rem; margin-bottom: 22px; text-align: center; }
+        .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 16px; }
+        .card {
+            background: #232323; border: 1px solid #2e2e2e; border-radius: 14px; padding: 22px;
+        }
+        .card h3 { font-size: 1rem; margin-bottom: 8px; color: #d4a853; }
+        .card p { color: #b0b0b0; font-size: 0.92rem; }
+        .trust { background: #202020; border-top: 1px solid #2a2a2a; border-bottom: 1px solid #2a2a2a; }
+        .trust .inner { max-width: 700px; margin: 0 auto; }
+        .trust p { color: #b8b8b8; margin-bottom: 14px; }
+        .trust p strong { color: #e8e8e8; }
+        .faq details {
+            background: #232323; border: 1px solid #2e2e2e; border-radius: 12px;
+            padding: 16px 20px; margin-bottom: 10px;
+        }
+        .faq summary { cursor: pointer; font-weight: 500; }
+        .faq details p { color: #b0b0b0; margin-top: 10px; font-size: 0.93rem; }
+        .pricing-note { text-align: center; color: #b0b0b0; max-width: 560px; margin: 0 auto; }
+        .pricing-note strong { color: #d4a853; }
+        footer {
+            border-top: 1px solid #2a2a2a; padding: 28px 24px; text-align: center;
+            color: #808080; font-size: 0.85rem;
+        }
+        footer p { margin-bottom: 6px; }
+    </style>
+</head>
+<body>
+    <header>
+        <div class="brand">
+            <svg width="26" height="26" viewBox="0 0 600 700" fill="none" stroke="currentColor" stroke-width="40" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M 47.631413,492.11477 552.36859,492.11491 300,54.999953 Z M 300,637.81981 552.36851,200.70493 47.631403,200.70481 Z"/>
+            </svg>
+            rebbe.dev
+        </div>
+        <a class="btn ghost" href="/auth/login">Sign in</a>
+    </header>
+
+    <main>
+        <div class="hero">
+            <h1>Torah wisdom and guidance,<br><em>with heart</em></h1>
+            <p class="lede">
+                Ask questions of Torah, halacha, and Jewish life — and get thoughtful,
+                source-grounded answers that honor both the tradition and the person asking.
+                From a progressive Modern Orthodox perspective.
+            </p>
+            <div class="cta-row">
+                <a class="btn" href="/auth/login">Ask your first question</a>
+            </div>
+            <p class="try-note">Free to try — no payment required to start.</p>
+        </div>
+
+        <div class="container">
+            <section>
+                <h2>How it works</h2>
+                <div class="cards">
+                    <div class="card">
+                        <h3>Listens first</h3>
+                        <p>Before answering, the system considers <i>how</i> to respond — whether
+                        you're learning, struggling, or simply curious — and adjusts its tone
+                        and care accordingly.</p>
+                    </div>
+                    <div class="card">
+                        <h3>Grounded in the sources</h3>
+                        <p>Answers draw on a library of Tanakh, Mishnah, Talmud, Midrash,
+                        Rambam, Shulchan Aruch, and more — with citations shown so you can
+                        check every claim.</p>
+                    </div>
+                    <div class="card">
+                        <h3>The full landscape</h3>
+                        <p>Halacha is presented as a living conversation: majority views,
+                        minority opinions, and the principles underneath — never a single
+                        verdict pretending to be the only one.</p>
+                    </div>
+                    <div class="card">
+                        <h3>Dignity as a rule</h3>
+                        <p>Every response passes an ethical check: an answer that shames or
+                        harms the person asking is treated as a wrong answer, however
+                        technically correct.</p>
+                    </div>
+                </div>
+            </section>
+        </div>
+
+        <section class="trust">
+            <div class="container inner">
+                <h2>What this is — and what it isn't</h2>
+                <p><strong>This is guidance, not psak.</strong> rebbe.dev is an AI study
+                companion. It does not issue halachic rulings, and it will regularly point
+                you toward a rabbi who knows you personally for questions that deserve one.</p>
+                <p><strong>It is not therapy.</strong> If you're going through something
+                serious, it will encourage you to speak with a human — a rabbi, a counselor,
+                or a mental-health professional.</p>
+                <p><strong>It shows its sources.</strong> Citations that were checked against
+                the text library are marked as verified, so you can tell what was retrieved
+                from primary sources and what comes from the model's general knowledge.</p>
+                <p><strong>It rests when you do.</strong> On Shabbat and yom tov the site
+                gently notes the day — the conversation will be here after havdalah.</p>
+            </div>
+        </section>
+
+        <div class="container">
+            <section>
+                <h2>A d'var Torah every week</h2>
+                <p class="pricing-note">
+                    Each week brings an original teaching on the parsha — and you can
+                    <strong>sponsor the week's learning</strong> in memory or in honor of a
+                    loved one, in the tradition of dedicated Torah study.
+                </p>
+            </section>
+
+            <section>
+                <h2>Simple, honest pricing</h2>
+                <p class="pricing-note">
+                    Try it free. When you're ready for more, credit packages start at
+                    <strong>$1</strong> — enough for ten thoughtful conversations. No
+                    subscription required.
+                </p>
+            </section>
+
+            <section class="faq">
+                <h2>Questions people ask</h2>
+                <details>
+                    <summary>Is this a replacement for my rabbi?</summary>
+                    <p>No — and it will tell you so itself. Think of it as a knowledgeable
+                    study partner available at 2am: a starting point for deeper exploration,
+                    not a final word. For psak, lifecycle decisions, or anything weighty, it
+                    consistently recommends a rabbi who knows you.</p>
+                </details>
+                <details>
+                    <summary>What perspective does it answer from?</summary>
+                    <p>A progressive Modern Orthodox framework, presented pluralistically. You
+                    can also set your own denomination in your profile, and the sources and
+                    framing adapt accordingly.</p>
+                </details>
+                <details>
+                    <summary>Where do the answers come from?</summary>
+                    <p>A four-stage reasoning pipeline over a library of Jewish primary texts.
+                    Sources are cited with each answer, and citations that match passages
+                    retrieved from the library are marked verified.</p>
+                </details>
+                <details>
+                    <summary>Is my conversation private?</summary>
+                    <p>Conversations are stored to your private account so you can return to
+                    them, and are never shared publicly.</p>
+                </details>
+            </section>
+
+            <section style="text-align:center;">
+                <a class="btn" href="/auth/login">Start a conversation</a>
+            </section>
+        </div>
+    </main>
+
+    <footer>
+        <p>rebbe.dev — guidance, not psak. Not a substitute for a rabbi who knows you personally, nor for professional care.</p>
+        <p>May your learning bring light.</p>
+    </footer>
+</body>
+</html>

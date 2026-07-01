@@ -247,10 +247,12 @@ CRITICAL: This person may need human support. Ensure your response:
             if config:
                 audience_desc = " Adapt your tone and source selection based on the audience context provided above."
 
+        history_info = self._format_history(context)
+
         messages = [
             {
                 "role": "user",
-                "content": f"""ORIGINAL USER MESSAGE:
+                "content": f"""{history_info}ORIGINAL USER MESSAGE:
 {context.user_message}
 
 {pastoral_info}
@@ -260,7 +262,7 @@ CRITICAL: This person may need human support. Ensure your response:
 {denomination_guidance}
 {user_bio_info}
 
-Craft a warm, authentic response as a Hasidic rebbe.{audience_desc} Focus on their actual question — let your tone and source choices reflect their background silently, without explicitly mentioning or acknowledging it.
+Craft a warm, authentic response as a Hasidic rebbe.{audience_desc} Focus on their actual question — let your tone and source choices reflect their background silently, without explicitly mentioning or acknowledging it. If the conversation history shows earlier turns, treat this as a continuing conversation and don't re-greet or repeat yourself.
 
 Do not use headers, bullet points, or formatting. Write as if speaking directly to the person."""
             }
@@ -358,10 +360,12 @@ CRITICAL: This person may need human support. Ensure your response:
             if config:
                 audience_desc = " Adapt your tone and source selection based on the audience context provided above."
 
+        history_info = self._format_history(context)
+
         messages = [
             {
                 "role": "user",
-                "content": f"""ORIGINAL USER MESSAGE:
+                "content": f"""{history_info}ORIGINAL USER MESSAGE:
 {context.user_message}
 
 {pastoral_info}
@@ -371,7 +375,7 @@ CRITICAL: This person may need human support. Ensure your response:
 {denomination_guidance}
 {user_bio_info}
 
-Craft a warm, authentic response as a Hasidic rebbe.{audience_desc} Focus on their actual question — let your tone and source choices reflect their background silently, without explicitly mentioning or acknowledging it.
+Craft a warm, authentic response as a Hasidic rebbe.{audience_desc} Focus on their actual question — let your tone and source choices reflect their background silently, without explicitly mentioning or acknowledging it. If the conversation history shows earlier turns, treat this as a continuing conversation and don't re-greet or repeat yourself.
 
 Do not use headers, bullet points, or formatting. Write as if speaking directly to the person."""
             }

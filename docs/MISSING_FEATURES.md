@@ -9,14 +9,29 @@ Severity: **critical** = blocks being a trustworthy paid service ·
 **high** = major value/retention/ops gap · **medium** = meaningful improvement ·
 **low** = polish. Effort: S / M / L.
 
-> **Addressed on this branch (`claude/missing-features-admin-tools`):** admin
-> role with `ADMIN_EMAILS` bootstrap (cheesejaguar@gmail.com is the default
-> administrator), `/api/admin/*` endpoints (overview, users, credit grants,
-> role management, crisis queue, feedback queue, error browser, purchases,
-> analytics, LLM cost stats, audit log), the `/admin` dashboard UI, an
-> `admin_audit_log` table, user sync + admin promotion at login, and
-> persistence of pipeline metadata (crisis flags, sources) with each saved
-> message. Everything else below remains open.
+> **Addressed on this branch (`claude/missing-features-admin-tools`):**
+>
+> *Admin round:* admin role with `ADMIN_EMAILS` bootstrap
+> (cheesejaguar@gmail.com is the default administrator), `/api/admin/*`
+> endpoints (overview, users, credit grants, role management, crisis queue,
+> feedback queue, error browser, purchases, sponsorships, analytics, LLM cost
+> stats, audit log), the `/admin` dashboard UI, an `admin_audit_log` table,
+> user sync + admin promotion at login, and persistence of pipeline metadata
+> (crisis flags, sources) with each saved message.
+>
+> *Trust & domain round:* citations now shown in the chat UI and verified
+> against retrieved library passages (verified chips vs. general-knowledge
+> citations); conversation history passed to all four agents (follow-ups keep
+> context); Hebrew nikud/cantillation stripped and final letters normalized in
+> RAG tokenization with the index rebuilt (unpointed queries now match Tanakh);
+> full markdown rendering (headings, lists, blockquotes, paragraphs, inline
+> code) with escaped d'var Torah rendering; public SEO landing page at `/` for
+> logged-out visitors plus `robots.txt`/`sitemap.xml`; Shabbat/yom tov
+> awareness via pyluach (`/api/calendar-status` + dismissible banner); and a
+> tzedakah sponsorship flow — chai-multiple tiers, dedications shown with the
+> weekly d'var Torah, webhook fulfillment, and an admin view.
+>
+> Everything else below remains open.
 
 ---
 

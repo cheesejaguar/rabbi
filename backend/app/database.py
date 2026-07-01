@@ -406,6 +406,32 @@ CREATE INDEX IF NOT EXISTS idx_purchases_stripe_payment_intent_id ON purchases(s
 CREATE INDEX IF NOT EXISTS idx_purchases_status ON purchases(status);
 
 -- =========================================================================
+-- SPONSORSHIPS TABLE
+-- Tzedakah-style dedications: users sponsor the week's d'var Torah
+-- ("in memory of...", "in honor of..."). Completed dedications are shown
+-- publicly alongside the commentary for that parsha and Hebrew year.
+-- Lifecycle mirrors purchases: pending -> completed | failed | refunded.
+-- =========================================================================
+CREATE TABLE IF NOT EXISTS sponsorships (
+    id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
+    user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    stripe_payment_intent_id TEXT UNIQUE NOT NULL,
+    amount_cents INTEGER NOT NULL,
+    dedication TEXT NOT NULL,                        -- e.g. "in memory of Sarah bat Avraham"
+    dedication_type TEXT NOT NULL DEFAULT 'general'
+        CHECK (dedication_type IN ('memory', 'honor', 'refuah', 'gratitude', 'general')),
+    parsha_name TEXT NOT NULL,                       -- The sponsored week's parsha
+    hebrew_year INTEGER NOT NULL,
+    status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'completed', 'failed', 'refunded')),
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    completed_at TIMESTAMPTZ
+);
+
+CREATE INDEX IF NOT EXISTS idx_sponsorships_parsha ON sponsorships(parsha_name, hebrew_year);
+CREATE INDEX IF NOT EXISTS idx_sponsorships_intent ON sponsorships(stripe_payment_intent_id);
+CREATE INDEX IF NOT EXISTS idx_sponsorships_status ON sponsorships(status);
+
+-- =========================================================================
 -- D'VAR TORAH CACHE TABLE
 -- Caches AI-generated weekly Torah commentaries keyed by (parsha, year).
 -- The 'generating' flag implements optimistic locking so only one
@@ -1673,6 +1699,8 @@ async def admin_get_overview() -> dict:
                 (SELECT COALESCE(SUM(amount_cents), 0) FROM purchases
                   WHERE status = 'completed' AND completed_at > NOW() - INTERVAL '30 days') AS revenue_cents_30d,
                 (SELECT COUNT(*) FROM purchases WHERE status = 'completed') AS purchases_completed,
+                (SELECT COALESCE(SUM(amount_cents), 0) FROM sponsorships WHERE status = 'completed') AS sponsorship_revenue_cents_total,
+                (SELECT COUNT(*) FROM sponsorships WHERE status = 'completed') AS sponsorships_completed,
                 (SELECT COUNT(*) FROM errors WHERE created_at > NOW() - INTERVAL '24 hours') AS errors_24h,
                 (SELECT COUNT(*) FROM errors WHERE created_at > NOW() - INTERVAL '7 days') AS errors_7d,
                 (SELECT COUNT(*) FROM feedback WHERE feedback_type = 'thumbs_up'
@@ -1942,5 +1970,134 @@ async def admin_list_audit_log(limit: int = 50, offset: int = 0) -> list[dict]:
             LIMIT $1 OFFSET $2
             """,
             limit, offset
+        )
+        return [dict(row) for row in rows]
+
+
+# ---------------------------------------------------------------------------
+# Sponsorships (tzedakah dedications)
+# ---------------------------------------------------------------------------
+
+
+async def create_sponsorship(
+    user_id: str,
+    stripe_payment_intent_id: str,
+    amount_cents: int,
+    dedication: str,
+    dedication_type: str,
+    parsha_name: str,
+    hebrew_year: int
+) -> dict:
+    """Insert a new sponsorship record with ``status='pending'``.
+
+    Called when the Stripe PaymentIntent is created, before payment is
+    confirmed. Transitions to ``completed`` or ``failed`` via the webhook.
+
+    Args:
+        user_id: The sponsoring user's WorkOS ID.
+        stripe_payment_intent_id: The Stripe PaymentIntent ID (unique).
+        amount_cents: Sponsorship amount in US cents.
+        dedication: The public dedication text.
+        dedication_type: One of memory/honor/refuah/gratitude/general.
+        parsha_name: The sponsored week's parsha.
+        hebrew_year: The Hebrew calendar year.
+
+    Returns:
+        A dict of the newly created sponsorship row.
+    """
+    async with get_connection() as conn:
+        row = await conn.fetchrow(
+            """
+            INSERT INTO sponsorships (user_id, stripe_payment_intent_id, amount_cents,
+                                      dedication, dedication_type, parsha_name, hebrew_year)
+            VALUES ($1, $2, $3, $4, $5, $6, $7)
+            RETURNING id, user_id, stripe_payment_intent_id, amount_cents, dedication,
+                      dedication_type, parsha_name, hebrew_year, status, created_at
+            """,
+            user_id, stripe_payment_intent_id, amount_cents,
+            dedication, dedication_type, parsha_name, hebrew_year
+        )
+        return dict(row)
+
+
+async def complete_sponsorship(stripe_payment_intent_id: str) -> Optional[dict]:
+    """Mark a sponsorship as completed (idempotent, safe for webhook retries).
+
+    Args:
+        stripe_payment_intent_id: The Stripe PaymentIntent ID.
+
+    Returns:
+        A dict of the sponsorship row, or ``None`` if not found.
+    """
+    async with get_connection() as conn:
+        row = await conn.fetchrow(
+            """
+            UPDATE sponsorships
+            SET status = 'completed',
+                completed_at = COALESCE(completed_at, NOW())
+            WHERE stripe_payment_intent_id = $1
+            RETURNING id, user_id, stripe_payment_intent_id, amount_cents, dedication,
+                      dedication_type, parsha_name, hebrew_year, status, created_at, completed_at
+            """,
+            stripe_payment_intent_id
+        )
+        return dict(row) if row else None
+
+
+async def fail_sponsorship(stripe_payment_intent_id: str) -> Optional[dict]:
+    """Transition a sponsorship to ``failed`` status (unless already completed)."""
+    async with get_connection() as conn:
+        row = await conn.fetchrow(
+            """
+            UPDATE sponsorships
+            SET status = 'failed'
+            WHERE stripe_payment_intent_id = $1 AND status = 'pending'
+            RETURNING id, user_id, stripe_payment_intent_id, status
+            """,
+            stripe_payment_intent_id
+        )
+        return dict(row) if row else None
+
+
+async def list_parsha_sponsors(parsha_name: str, hebrew_year: int) -> list[dict]:
+    """List completed dedications for a parsha week (public display).
+
+    Args:
+        parsha_name: English transliterated parsha name.
+        hebrew_year: The Hebrew calendar year.
+
+    Returns:
+        A list of dicts with ``dedication`` and ``dedication_type``,
+        oldest first (first sponsor shown first).
+    """
+    async with get_connection() as conn:
+        rows = await conn.fetch(
+            """
+            SELECT dedication, dedication_type
+            FROM sponsorships
+            WHERE parsha_name = $1 AND hebrew_year = $2 AND status = 'completed'
+            ORDER BY completed_at ASC
+            LIMIT 20
+            """,
+            parsha_name, hebrew_year
+        )
+        return [dict(row) for row in rows]
+
+
+async def admin_list_sponsorships(status: str = None, limit: int = 50, offset: int = 0) -> list[dict]:
+    """List sponsorships across all users with sponsor emails, newest first."""
+    async with get_connection() as conn:
+        rows = await conn.fetch(
+            """
+            SELECT s.id, s.user_id, u.email AS user_email, s.stripe_payment_intent_id,
+                   s.amount_cents, s.dedication, s.dedication_type, s.parsha_name,
+                   s.hebrew_year, s.status, s.created_at, s.completed_at
+            FROM sponsorships s
+            JOIN users u ON u.id = s.user_id
+            WHERE $3::text IS NULL OR s.status = $3
+            ORDER BY s.created_at DESC
+            LIMIT $1 OFFSET $2
+            """,
+            limit, offset, status
         )
         return [dict(row) for row in rows]

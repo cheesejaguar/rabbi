@@ -315,6 +315,23 @@ async def list_purchases(
         raise HTTPException(status_code=500, detail="Failed to list purchases")
 
 
+@router.get("/sponsorships")
+async def list_sponsorships(
+    admin: dict = Depends(require_admin),
+    status: Optional[str] = Query(None, pattern="^(pending|completed|failed|refunded)$"),
+    limit: int = Query(50, ge=1, le=200),
+    offset: int = Query(0, ge=0),
+):
+    """List d'var Torah sponsorships across all users."""
+    _require_db()
+    try:
+        sponsorships = await db.admin_list_sponsorships(status=status, limit=limit, offset=offset)
+        return {"sponsorships": sponsorships}
+    except Exception as e:
+        logger.error(f"Error listing sponsorships: {e}")
+        raise HTTPException(status_code=500, detail="Failed to list sponsorships")
+
+
 @router.get("/analytics")
 async def get_analytics(
     admin: dict = Depends(require_admin),

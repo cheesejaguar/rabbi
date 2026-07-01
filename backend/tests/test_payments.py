@@ -549,3 +549,172 @@ class TestHandlePaymentFailed:
             await handle_payment_failed(payment_intent)
 
             mock_db.fail_purchase.assert_called_once_with("pi_test123")
+
+
+class TestSponsorshipTiersEndpoint:
+    """Test GET /api/payments/sponsorship-tiers endpoint."""
+
+    def test_returns_tiers_and_parsha(self):
+        with patch('app.payments.get_current_user', return_value=None):
+            with patch('app.payments.get_current_parsha', return_value={
+                "parsha_name": "Bereshit", "parsha_name_hebrew": "בראשית", "hebrew_year": 5787,
+            }):
+                from app.payments import router
+                from fastapi import FastAPI
+                from fastapi.testclient import TestClient
+
+                app = FastAPI()
+                app.include_router(router)
+                client = TestClient(app)
+                response = client.get("/api/payments/sponsorship-tiers")
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["tiers"]["chai"]["amount_cents"] == 1800
+        assert data["tiers"]["tenfold_chai"]["amount_cents"] == 18000
+        assert data["parsha"]["parsha_name"] == "Bereshit"
+
+
+class TestCreateSponsorshipIntentEndpoint:
+    """Test POST /api/payments/create-sponsorship-intent endpoint."""
+
+    @pytest.fixture
+    def mock_user(self):
+        return {
+            "id": "user-123",
+            "email": "test@example.com",
+            "first_name": "Test",
+            "last_name": "User",
+        }
+
+    def _client(self, user, parsha="present"):
+        """Build a test client with patched auth/settings/parsha."""
+        from contextlib import ExitStack
+        stack = ExitStack()
+        stack.enter_context(patch('app.payments.get_current_user', return_value=user))
+        mock_settings = stack.enter_context(patch('app.payments.settings'))
+        mock_settings.stripe_secret_key = "sk_test_xxx"
+        mock_settings.stripe_publishable_key = "pk_test_xxx"
+        mock_settings.db_url = "postgresql://test"
+        mock_settings.is_production = False
+        parsha_value = None if parsha is None else {
+            "parsha_name": "Bereshit", "parsha_name_hebrew": "בראשית", "hebrew_year": 5787,
+        }
+        stack.enter_context(patch('app.payments.get_current_parsha', return_value=parsha_value))
+
+        from app.payments import router
+        from fastapi import FastAPI
+        from fastapi.testclient import TestClient
+
+        app = FastAPI()
+        app.include_router(router)
+        return TestClient(app), stack
+
+    def test_requires_auth(self):
+        client, stack = self._client(None)
+        with stack:
+            response = client.post("/api/payments/create-sponsorship-intent", json={
+                "tier_id": "chai", "dedication": "Sarah bat Avraham", "dedication_type": "memory",
+            })
+        assert response.status_code == 401
+
+    def test_invalid_tier_rejected(self, mock_user):
+        client, stack = self._client(mock_user)
+        with stack:
+            response = client.post("/api/payments/create-sponsorship-intent", json={
+                "tier_id": "bogus", "dedication": "Sarah bat Avraham", "dedication_type": "memory",
+            })
+        assert response.status_code == 400
+
+    def test_holiday_week_rejected(self, mock_user):
+        client, stack = self._client(mock_user, parsha=None)
+        with stack:
+            response = client.post("/api/payments/create-sponsorship-intent", json={
+                "tier_id": "chai", "dedication": "Sarah bat Avraham", "dedication_type": "memory",
+            })
+        assert response.status_code == 400
+        assert "holiday" in response.json()["detail"].lower()
+
+    def test_success_creates_intent_and_record(self, mock_user):
+        client, stack = self._client(mock_user)
+        with stack:
+            with patch('app.payments.get_or_create_stripe_customer', new_callable=AsyncMock,
+                       return_value="cus_test123"):
+                with patch('app.payments.stripe.PaymentIntent.create') as mock_intent:
+                    mock_intent.return_value = MagicMock(id="pi_sponsor1", client_secret="secret_xyz")
+                    with patch('app.payments.stripe.CustomerSession.create') as mock_session:
+                        mock_session.return_value = MagicMock(client_secret="cs_secret")
+                        with patch('app.payments.db.create_sponsorship', new_callable=AsyncMock) as mock_create:
+                            response = client.post("/api/payments/create-sponsorship-intent", json={
+                                "tier_id": "double_chai",
+                                "dedication": "  Sarah bat Avraham  ",
+                                "dedication_type": "memory",
+                            })
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["client_secret"] == "secret_xyz"
+        assert data["parsha"]["parsha_name"] == "Bereshit"
+
+        # PaymentIntent tagged as a sponsorship for webhook dispatch
+        intent_kwargs = mock_intent.call_args.kwargs
+        assert intent_kwargs["amount"] == 3600
+        assert intent_kwargs["metadata"]["type"] == "sponsorship"
+
+        # Pending sponsorship row recorded with trimmed dedication
+        create_kwargs = mock_create.await_args.kwargs
+        assert create_kwargs["dedication"] == "Sarah bat Avraham"
+        assert create_kwargs["dedication_type"] == "memory"
+        assert create_kwargs["amount_cents"] == 3600
+        assert create_kwargs["parsha_name"] == "Bereshit"
+        assert create_kwargs["hebrew_year"] == 5787
+
+
+class TestSponsorshipWebhookDispatch:
+    """Test that webhook handlers route sponsorship payments correctly."""
+
+    @pytest.mark.asyncio
+    async def test_succeeded_sponsorship_completes_sponsorship_not_purchase(self):
+        payment_intent = {"id": "pi_sponsor1", "metadata": {"type": "sponsorship"}}
+
+        with patch('app.payments.db') as mock_db:
+            mock_db.complete_sponsorship = AsyncMock(return_value={
+                "parsha_name": "Bereshit", "status": "completed",
+            })
+            mock_db.complete_purchase = AsyncMock()
+
+            from app.payments import handle_payment_succeeded
+            await handle_payment_succeeded(payment_intent)
+
+            mock_db.complete_sponsorship.assert_called_once_with("pi_sponsor1")
+            mock_db.complete_purchase.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_succeeded_purchase_still_completes_purchase(self):
+        payment_intent = {"id": "pi_test123", "metadata": {"user_id": "u1"}}
+
+        with patch('app.payments.db') as mock_db:
+            mock_db.complete_purchase = AsyncMock(return_value={
+                "status": "completed", "credits_purchased": 10,
+            })
+            mock_db.complete_sponsorship = AsyncMock()
+
+            from app.payments import handle_payment_succeeded
+            await handle_payment_succeeded(payment_intent)
+
+            mock_db.complete_purchase.assert_called_once_with("pi_test123")
+            mock_db.complete_sponsorship.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_failed_sponsorship_marks_sponsorship_failed(self):
+        payment_intent = {"id": "pi_sponsor1", "metadata": {"type": "sponsorship"}}
+
+        with patch('app.payments.db') as mock_db:
+            mock_db.fail_sponsorship = AsyncMock(return_value={"status": "failed"})
+            mock_db.fail_purchase = AsyncMock()
+
+            from app.payments import handle_payment_failed
+            await handle_payment_failed(payment_intent)
+
+            mock_db.fail_sponsorship.assert_called_once_with("pi_sponsor1")
+            mock_db.fail_purchase.assert_not_called()
