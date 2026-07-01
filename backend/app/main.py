@@ -19,6 +19,7 @@ This module defines the main FastAPI application, including:
 # Imports
 # ---------------------------------------------------------------------------
 
+import asyncio
 import uuid
 import json
 import httpx
@@ -1179,6 +1180,23 @@ async def chat_stream(request: Request, chat_request: ChatRequest):
 
             # Send done event
             yield f"data: {json.dumps({'type': 'done'})}\n\n"
+
+        except asyncio.CancelledError:
+            # The client disconnected or aborted the request (e.g. the
+            # frontend's 90s watchdog timeout, a closed tab, or a dropped
+            # connection). CancelledError is a BaseException, not a subclass
+            # of Exception, so it bypasses the `except Exception` branch
+            # below and must be handled here or a consumed credit would
+            # never be refunded. Only refund if no assistant content was
+            # actually delivered yet - a user who received a partial
+            # response got some value for the credit even if the connection
+            # then dropped. Re-raise so cancellation still propagates.
+            if credit_consumed and not full_response and user and settings.db_url:
+                try:
+                    await db.add_credits(user["id"], 1)
+                except Exception as refund_error:
+                    logger.warning(f"Could not refund credit after client disconnect: {refund_error}")
+            raise
 
         except Exception as e:
             # Best-effort refund: if a credit was consumed for this request but

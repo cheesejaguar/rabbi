@@ -908,6 +908,14 @@ async function loadConversations() {
             const data = await response.json();
             conversations = data.conversations || [];
             renderConversationsList();
+        } else {
+            // fetch() only rejects on network failures, not HTTP error status
+            // codes - a 401/500 response lands here, not in the catch block.
+            // Without this branch the skeleton rows rendered above would stay
+            // in place indefinitely since nothing ever replaces them.
+            console.error('Failed to load conversations:', response.status);
+            conversations = [];
+            renderConversationsList();
         }
     } catch (error) {
         console.error('Failed to load conversations:', error);
