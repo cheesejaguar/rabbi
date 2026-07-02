@@ -415,6 +415,37 @@ class BaseAgent(ABC):
         context.total_latency_ms += metrics.latency_ms
         context.total_estimated_cost_usd += metrics.estimated_cost_usd
 
+    def _format_history(self, context: AgentContext, max_messages: int = 6,
+                        max_chars: int = 500) -> str:
+        """Format recent conversation history for inclusion in a prompt.
+
+        Follow-up questions ("what about the lenient view you mentioned?")
+        are meaningless without the preceding turns, so every agent that
+        reasons about the user's question should include this block.
+
+        Args:
+            context: The shared pipeline context.
+            max_messages: How many trailing messages to include.
+            max_chars: Per-message truncation limit.
+
+        Returns:
+            A labeled multi-line block, or an empty string when there is
+            no history.
+        """
+        if not context.conversation_history:
+            return ""
+        lines = []
+        for msg in context.conversation_history[-max_messages:]:
+            role = "User" if msg.get("role") == "user" else "Rebbe"
+            content = (msg.get("content") or "").strip()
+            if len(content) > max_chars:
+                content = content[:max_chars] + "..."
+            lines.append(f"{role}: {content}")
+        return (
+            "CONVERSATION SO FAR (the current message may refer back to this):\n"
+            + "\n".join(lines) + "\n"
+        )
+
     def _build_messages(self, context: AgentContext, additional_context: str = "") -> list[dict]:
         """Build the message list for an LLM API call.
 

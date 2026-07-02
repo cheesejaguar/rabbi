@@ -52,24 +52,47 @@ The `RabbiOrchestrator` (`orchestrator.py`) coordinates this pipeline. If the mo
 
 ### API Endpoints (`main.py`)
 
+- `GET /` - App for signed-in users; public SEO landing page (`frontend/landing.html`) for visitors
 - `GET /api/health` - Health check
 - `GET /api/greeting` - Initial greeting message
 - `POST /api/chat` - Main chat endpoint (processes through full pipeline)
+- `GET /api/dvar-torah` - Weekly d'var Torah with sponsor dedications
+- `GET /api/calendar-status` - Shabbat/yom tov status for the client's local time (`jewish_calendar.py`)
+- `GET /robots.txt`, `GET /sitemap.xml` - Crawler surface
 
 ### Payment Endpoints (`payments.py`)
 
 - `GET /api/payments/packages` - Available credit packages (10 for $1, 25 for $2)
 - `POST /api/payments/create-intent` - Create Stripe PaymentIntent and CustomerSession
-- `POST /api/payments/webhook` - Handle Stripe webhook events (payment success/failure)
+- `GET /api/payments/sponsorship-tiers` - D'var Torah sponsorship tiers (chai multiples)
+- `POST /api/payments/create-sponsorship-intent` - Sponsor the week's d'var Torah with a dedication
+- `POST /api/payments/webhook` - Handle Stripe webhook events; dispatches purchases vs sponsorships via `metadata.type`
 - `POST /api/payments/verify-and-fulfill` - Client-side verification (non-production only)
+
+### Admin Endpoints (`admin.py`)
+
+Administrator-only endpoints for monitoring and moderation. Admin status comes from the `ADMIN_EMAILS` setting (comma-separated, defaults to the platform owner) or the `users.is_admin` flag granted at runtime; both are enforced by the `require_admin` dependency. Mutations and conversation views are recorded in `admin_audit_log`.
+
+- `GET /admin` - Admin dashboard UI (`frontend/admin.html`)
+- `GET /api/admin/overview` - Users, activity, revenue, error, feedback counters
+- `GET /api/admin/users` - Searchable user list; `POST .../{id}/credits` and `POST .../{id}/role` adjust credits / grant-revoke admin
+- `GET /api/admin/flagged` - Crisis / human-referral review queue (from message metadata)
+- `GET /api/admin/feedback` - Thumbs-up/down review queue with message excerpts
+- `GET /api/admin/errors` - Error log browser plus daily aggregates
+- `GET /api/admin/purchases` - Purchases across all users
+- `GET /api/admin/analytics` - Session/referrer/device/TTS stats
+- `GET /api/admin/costs` - Estimated LLM spend per day
+- `GET /api/admin/audit-log` - Trail of admin actions
 
 ### Database (`database.py`)
 
 PostgreSQL with asyncpg. Key tables:
-- `users` - User accounts with credits balance and stripe_customer_id
+- `users` - User accounts with credits balance, is_admin flag, and stripe_customer_id
 - `conversations` - Chat conversation metadata
 - `messages` - Individual messages in conversations
 - `purchases` - Credit purchase history with Stripe payment intent IDs
+- `sponsorships` - D'var Torah dedications (tzedakah) tied to a parsha/Hebrew year
+- `admin_audit_log` - Immutable trail of privileged admin actions
 
 Schema auto-initializes on startup with advisory locks for concurrent safety.
 

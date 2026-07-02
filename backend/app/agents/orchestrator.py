@@ -239,6 +239,8 @@ Please re-analyze with special attention to:
             hl = context.halachic_landscape
             response["metadata"]["sources_cited"] = hl.sources_cited
             response["metadata"]["principles"] = hl.underlying_principles
+            # Structured citations annotated with library verification
+            response["metadata"]["sources"] = context.metadata.get("sources", [])
 
         response["metadata"]["rag_used"] = context.metadata.get("rag_used", False)
 
@@ -320,6 +322,8 @@ Please re-analyze with special attention to:
             hl = context.halachic_landscape
             metadata["sources_cited"] = hl.sources_cited
             metadata["principles"] = hl.underlying_principles
+            # Structured citations annotated with library verification
+            metadata["sources"] = context.metadata.get("sources", [])
 
         metadata["rag_used"] = context.metadata.get("rag_used", False)
 

@@ -43,6 +43,9 @@ class Settings(BaseSettings):
     # Environment: "development" or "production"
     environment: str = "development"
 
+    # Canonical public URL used in robots.txt / sitemap.xml links.
+    public_base_url: str = "https://rebbe.dev"
+
     @property
     def is_production(self) -> bool:
         """Return ``True`` when running in production (case-insensitive)."""
@@ -222,6 +225,20 @@ class Settings(BaseSettings):
         if env.lower() == 'production' and '*' in v:
             raise ValueError("CORS_ORIGINS must not contain '*' in production")
         return v
+
+    # -------------------------------------------------------------------
+    # Administration
+    # -------------------------------------------------------------------
+    # Comma-separated list of email addresses that are automatically
+    # granted administrator privileges. These users can access the
+    # /api/admin endpoints and the /admin dashboard. Additional admins
+    # can be promoted at runtime via POST /api/admin/users/{id}/role.
+    admin_emails: str = "cheesejaguar@gmail.com"
+
+    @property
+    def admin_email_list(self) -> list[str]:
+        """Return the configured admin emails as a normalized (lowercase) list."""
+        return [e.strip().lower() for e in self.admin_emails.split(",") if e.strip()]
 
     # -------------------------------------------------------------------
     # Rate Limiting

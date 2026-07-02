@@ -208,9 +208,17 @@ class TestHalachicReasoningAgent:
     @pytest.mark.asyncio
     async def test_process_rag_calls_retriever_when_appropriate(self, mock_anthropic_client, mock_claude_response):
         """When RAG is warranted and a retriever is available, it should be called."""
+        from app.agents.rag import TextChunk, SearchResult
+
         mock_retriever = MagicMock()
         mock_retriever.ensure_loaded = MagicMock()
-        mock_retriever.search_formatted = MagicMock(return_value="Source text here")
+        mock_retriever.search = MagicMock(return_value=[
+            SearchResult(
+                chunk=TextChunk(text="Source text here", title="Shulchan Arukh Orach Chayyim",
+                                section="Siman 318", category="Halacha"),
+                score=0.9,
+            )
+        ])
 
         agent = HalachicReasoningAgent(mock_anthropic_client, retriever=mock_retriever)
         agent.client.chat.completions.create.return_value = mock_claude_response(
@@ -220,7 +228,7 @@ class TestHalachicReasoningAgent:
                 "underlying_principles": [],
                 "precedents_for_leniency": [],
                 "non_negotiable_boundaries": [],
-                "sources_cited": [],
+                "sources_cited": ["Shulchan Aruch Orach Chaim 318", "Igrot Moshe OC 4:60"],
             })
         )
 
@@ -228,8 +236,15 @@ class TestHalachicReasoningAgent:
         result = await agent.process(context)
 
         mock_retriever.ensure_loaded.assert_called_once()
-        mock_retriever.search_formatted.assert_called_once()
+        mock_retriever.search.assert_called_once()
         assert result.metadata["rag_used"] is True
+        # Citations are annotated: the retrieved source verifies, the
+        # model's own-knowledge citation does not.
+        sources = result.metadata["sources"]
+        assert sources[0]["ref"] == "Shulchan Aruch Orach Chaim 318"
+        assert sources[0]["verified"] is True
+        assert sources[1]["ref"] == "Igrot Moshe OC 4:60"
+        assert sources[1]["verified"] is False
 
     @pytest.mark.asyncio
     async def test_process_rag_not_called_when_skipped(self, mock_anthropic_client, mock_claude_response):

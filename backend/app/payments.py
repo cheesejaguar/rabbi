@@ -26,10 +26,12 @@ the first successful fulfillment.
 import logging
 import stripe
 from fastapi import APIRouter, HTTPException, Request
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
+from typing import Literal
 
 from .config import get_settings
 from .auth import get_current_user
+from .dvar_torah import get_current_parsha
 from . import database as db
 
 logger = logging.getLogger(__name__)
@@ -49,6 +51,16 @@ router = APIRouter(prefix="/api/payments", tags=["payments"])
 CREDIT_PACKAGES = {
     "credits_10": {"credits": 10, "price_cents": 100, "display_price": "$1.00"},
     "credits_25": {"credits": 25, "price_cents": 200, "display_price": "$2.00"},
+}
+
+# Sponsorship (tzedakah) tiers for dedicating the week's d'var Torah.
+# Amounts follow the tradition of giving in multiples of chai (18),
+# the numerical value of the Hebrew word for "life".
+SPONSORSHIP_TIERS = {
+    "chai": {"amount_cents": 1800, "display_price": "$18", "label": "Chai"},
+    "double_chai": {"amount_cents": 3600, "display_price": "$36", "label": "Double Chai"},
+    "triple_chai": {"amount_cents": 5400, "display_price": "$54", "label": "Triple Chai"},
+    "tenfold_chai": {"amount_cents": 18000, "display_price": "$180", "label": "Tenfold Chai"},
 }
 
 
@@ -72,6 +84,20 @@ class VerifyPaymentRequest(BaseModel):
     payment_intent_id: str
 
 
+class CreateSponsorshipRequest(BaseModel):
+    """Request body for sponsoring the week's d'var Torah.
+
+    Attributes:
+        tier_id: A key in ``SPONSORSHIP_TIERS`` (chai multiples).
+        dedication: The public dedication text (e.g. a name), shown
+            alongside the d'var Torah once payment completes.
+        dedication_type: How the dedication is framed.
+    """
+    tier_id: str
+    dedication: str = Field(..., min_length=2, max_length=200)
+    dedication_type: Literal["memory", "honor", "refuah", "gratitude", "general"] = "general"
+
+
 @router.get("/packages")
 async def get_packages():
     """Return the catalog of available credit packages.
@@ -81,6 +107,115 @@ async def get_packages():
         their credit count, price, and display price.
     """
     return {"packages": CREDIT_PACKAGES}
+
+
+@router.get("/sponsorship-tiers")
+async def get_sponsorship_tiers():
+    """Return the catalog of d'var Torah sponsorship tiers.
+
+    Returns:
+        A JSON object with a ``tiers`` key plus the current parsha the
+        sponsorship would apply to (``None`` during holiday weeks).
+    """
+    parsha = get_current_parsha()
+    return {"tiers": SPONSORSHIP_TIERS, "parsha": parsha}
+
+
+@router.post("/create-sponsorship-intent")
+async def create_sponsorship_intent(request: Request, body: CreateSponsorshipRequest):
+    """Create a Stripe PaymentIntent for a d'var Torah sponsorship.
+
+    Mirrors ``create_payment_intent`` but records a sponsorship (a
+    tzedakah dedication for the current week's parsha) instead of a
+    credit purchase. The PaymentIntent carries ``type=sponsorship``
+    metadata so webhook fulfillment routes to the sponsorship path.
+
+    Args:
+        request: The incoming FastAPI ``Request`` object.
+        body: Tier, dedication text, and dedication type.
+
+    Returns:
+        A JSON object with ``client_secret``,
+        ``customer_session_client_secret``, ``publishable_key``, and the
+        ``parsha`` being sponsored.
+
+    Raises:
+        HTTPException: 401 if not authenticated, 400 for an invalid tier
+            or during holiday weeks with no parsha, 503 if Stripe or the
+            database is not configured, 500 on Stripe API errors.
+    """
+    user = get_current_user(request)
+    if not user:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+
+    tier = SPONSORSHIP_TIERS.get(body.tier_id)
+    if not tier:
+        raise HTTPException(status_code=400, detail="Invalid sponsorship tier")
+
+    if not settings.stripe_secret_key:
+        raise HTTPException(status_code=503, detail="Payment system not configured")
+    if not settings.db_url:
+        raise HTTPException(status_code=503, detail="Database not configured")
+
+    parsha = get_current_parsha()
+    if not parsha:
+        raise HTTPException(
+            status_code=400,
+            detail="No weekly parsha this week (holiday reading) - sponsorships reopen next week."
+        )
+
+    # Pydantic validates raw length, but a whitespace-only value would trim
+    # to an empty public dedication - revalidate after trimming.
+    dedication = body.dedication.strip()
+    if len(dedication) < 2:
+        raise HTTPException(status_code=400, detail="Dedication cannot be empty")
+
+    try:
+        stripe_customer_id = await get_or_create_stripe_customer(user)
+
+        payment_intent = stripe.PaymentIntent.create(
+            amount=tier["amount_cents"],
+            currency="usd",
+            customer=stripe_customer_id,
+            metadata={
+                "type": "sponsorship",
+                "user_id": user["id"],
+                "tier_id": body.tier_id,
+                "parsha_name": parsha["parsha_name"],
+            },
+            payment_method_types=["card", "amazon_pay"],
+        )
+
+        customer_session = stripe.CustomerSession.create(
+            customer=stripe_customer_id,
+            components={"payment_element": {"enabled": True}},
+        )
+
+        await db.create_sponsorship(
+            user_id=user["id"],
+            stripe_payment_intent_id=payment_intent.id,
+            amount_cents=tier["amount_cents"],
+            dedication=dedication,
+            dedication_type=body.dedication_type,
+            parsha_name=parsha["parsha_name"],
+            hebrew_year=parsha["hebrew_year"],
+        )
+
+        return {
+            "client_secret": payment_intent.client_secret,
+            "customer_session_client_secret": customer_session.client_secret,
+            "publishable_key": settings.stripe_publishable_key,
+            "parsha": parsha,
+        }
+
+    except stripe.error.StripeError as e:
+        logger.error(f"Stripe error creating sponsorship intent: {e}")
+        raise HTTPException(status_code=500, detail="Payment processing error. Please try again or contact support.")
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error creating sponsorship intent: {e}")
+        raise HTTPException(status_code=500, detail="Payment processing error. Please try again or contact support.")
 
 
 @router.post("/create-intent")
@@ -233,6 +368,21 @@ async def verify_and_fulfill(request: Request, body: VerifyPaymentRequest):
                 "message": "Payment has not succeeded yet",
             }
 
+        # Sponsorship payments fulfill through the sponsorship path
+        if payment_intent.metadata.get("type") == "sponsorship":
+            result = await db.complete_sponsorship(body.payment_intent_id)
+            if result:
+                return {
+                    "success": True,
+                    "sponsorship": True,
+                    "message": f"Thank you! Your dedication for Parashat {result['parsha_name']} is now live.",
+                }
+            logger.warning(f"No sponsorship record for verified payment: {body.payment_intent_id}")
+            return {
+                "success": False,
+                "message": "Payment verified but sponsorship record not found. Please contact support.",
+            }
+
         # Complete the purchase (idempotent - safe to call multiple times)
         result = await db.complete_purchase(body.payment_intent_id)
 
@@ -372,13 +522,21 @@ async def get_or_create_stripe_customer(user: dict) -> str:
     return customer.id
 
 
+def _is_sponsorship(payment_intent: dict) -> bool:
+    """Check whether a PaymentIntent belongs to the sponsorship flow."""
+    metadata = payment_intent.get("metadata") or {}
+    return metadata.get("type") == "sponsorship"
+
+
 async def handle_payment_succeeded(payment_intent: dict):
-    """Process a successful payment and add credits to the user's account.
+    """Process a successful payment (credit purchase or sponsorship).
 
     Called by the webhook handler when a ``payment_intent.succeeded``
-    event is received. Delegates to ``db.complete_purchase()`` which
-    handles idempotency -- if the purchase was already fulfilled (e.g.,
-    via the ``verify-and-fulfill`` endpoint), this is a safe no-op.
+    event is received. Routes on the ``type`` metadata: sponsorships
+    are marked completed (making the dedication publicly visible);
+    everything else goes through ``db.complete_purchase()`` which adds
+    credits. Both paths are idempotent -- if fulfillment already ran
+    (e.g., via the ``verify-and-fulfill`` endpoint), this is a safe no-op.
 
     Args:
         payment_intent: The Stripe PaymentIntent object (as a dict)
@@ -387,6 +545,14 @@ async def handle_payment_succeeded(payment_intent: dict):
     payment_intent_id = payment_intent["id"]
 
     logger.info(f"Processing successful payment: {payment_intent_id}")
+
+    if _is_sponsorship(payment_intent):
+        result = await db.complete_sponsorship(payment_intent_id)
+        if result:
+            logger.info(f"Sponsorship {payment_intent_id} completed for Parashat {result['parsha_name']}")
+        else:
+            logger.warning(f"No sponsorship record found for payment intent: {payment_intent_id}")
+        return
 
     # Complete the purchase (adds credits, handles idempotency)
     result = await db.complete_purchase(payment_intent_id)
@@ -403,7 +569,7 @@ async def handle_payment_succeeded(payment_intent: dict):
 
 
 async def handle_payment_failed(payment_intent: dict):
-    """Process a failed payment by updating the purchase record.
+    """Process a failed payment by updating the purchase/sponsorship record.
 
     Called by the webhook handler when a
     ``payment_intent.payment_failed`` event is received.
@@ -415,6 +581,14 @@ async def handle_payment_failed(payment_intent: dict):
     payment_intent_id = payment_intent["id"]
 
     logger.info(f"Processing failed payment: {payment_intent_id}")
+
+    if _is_sponsorship(payment_intent):
+        result = await db.fail_sponsorship(payment_intent_id)
+        if result:
+            logger.info(f"Sponsorship {payment_intent_id} marked as failed")
+        else:
+            logger.warning(f"No sponsorship record found for failed payment: {payment_intent_id}")
+        return
 
     result = await db.fail_purchase(payment_intent_id)
 

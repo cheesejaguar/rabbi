@@ -214,9 +214,51 @@ class TextRetriever:
             self._idf = data["idf"]
             self._chunk_vectors = data["vectors"]
 
+        self._normalize_legacy_terms()
         self._indexed = True
         logger.info(f"Loaded {len(self.chunks)} chunks from pre-built index")
         return len(self.chunks)
+
+    def _normalize_legacy_terms(self):
+        """Migrate an index built before Hebrew normalization existed.
+
+        Older indexes contain vocabulary terms with niqqud/cantillation and
+        final letters that the normalized query tokenizer can never produce,
+        making pointed Hebrew text (most of Tanakh) unsearchable. This merges
+        each term into its normalized form: vector weights for merged terms
+        are summed, and the merged IDF takes the minimum (treating the merged
+        term as at least as common as its most common variant). Rebuilding
+        the index (`python -m backend.app.agents.rag`) is still preferred.
+        """
+        needs_migration = any(
+            _HEBREW_MARKS_RE.search(term) or any(c in "ךםןףץ" for c in term)
+            for term in self._idf
+        )
+        if not needs_migration:
+            return
+
+        logger.warning(
+            "RAG index was built before Hebrew normalization - merging %d terms "
+            "at load time. Rebuild the index for best results.", len(self._idf)
+        )
+
+        merged_idf: dict[str, float] = {}
+        for term, idf in self._idf.items():
+            norm = _normalize_hebrew(term)
+            if norm in merged_idf:
+                merged_idf[norm] = min(merged_idf[norm], idf)
+            else:
+                merged_idf[norm] = idf
+        self._idf = merged_idf
+
+        migrated_vectors = []
+        for vec in self._chunk_vectors:
+            merged_vec: dict[str, float] = {}
+            for term, weight in vec.items():
+                norm = _normalize_hebrew(term)
+                merged_vec[norm] = merged_vec.get(norm, 0.0) + weight
+            migrated_vectors.append(merged_vec)
+        self._chunk_vectors = migrated_vectors
 
     def ensure_loaded(self, index_path: Optional[str] = None,
                       library_path: Optional[str] = None) -> int:
@@ -390,9 +432,24 @@ _STOP_WORDS = frozenset({
     'their', 'and', 'but', 'or', 'nor', 'not', 'so', 'if',
 })
 
+# Hebrew niqqud (vowel points), cantillation marks, and other combining
+# marks: U+0591-U+05C7. Library texts (especially Tanakh) are fully
+# pointed while user queries almost never are, so without stripping these
+# a query for \u05D1\u05E8\u05D0\u05E9\u05D9\u05EA can never match the indexed \u05D1\u05B0\u05BC\u05E8\u05B5\u05D0\u05E9\u05B4\u05C1\u0596\u05D9\u05EA.
+_HEBREW_MARKS_RE = re.compile(r'[\u0591-\u05C7]')
+
+# Final (sofit) letters mapped to their medial forms so a term matches
+# regardless of word position (e.g. \u05E9\u05DC\u05D5\u05DD/\u05E9\u05DC\u05D5\u05DE tokenize identically).
+_FINAL_LETTERS = str.maketrans("\u05DA\u05DD\u05DF\u05E3\u05E5", "\u05DB\u05DE\u05E0\u05E4\u05E6")
+
+
+def _normalize_hebrew(text: str) -> str:
+    """Strip Hebrew pointing/cantillation and normalize final letters."""
+    return _HEBREW_MARKS_RE.sub('', text).translate(_FINAL_LETTERS)
+
 
 def _tokenize(text: str) -> list[str]:
-    text = text.lower()
+    text = _normalize_hebrew(text.lower())
     tokens = re.findall(r'[\w\u0590-\u05FF]+', text)
     return [t for t in tokens if len(t) > 1 and t not in _STOP_WORDS]
 

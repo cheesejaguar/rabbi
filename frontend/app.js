@@ -273,6 +273,9 @@ async function init() {
     // Check authentication
     const isAuthenticated = await checkAuth();
 
+    // Shabbat / yom tov awareness banner (fire-and-forget)
+    checkCalendarStatus();
+
     // Load greeting and d'var Torah for all users (authenticated and guests)
     await Promise.all([loadGreeting(), loadDvarTorah()]);
 
@@ -289,6 +292,32 @@ async function init() {
         window.history.replaceState({}, '', window.location.pathname);
         // Show success message
         showToast('Payment successful! Credits have been added to your account.');
+    }
+
+    // Check for sponsorship success redirect (same redirect-based payment
+    // methods as above, but for d'var Torah dedications)
+    if (urlParams.get('sponsorship') === 'success') {
+        const paymentIntentId = urlParams.get('payment_intent');
+        window.history.replaceState({}, '', window.location.pathname);
+
+        // Best-effort immediate fulfillment (dev-only endpoint; production
+        // relies on webhooks, where this returns 404 and is safely ignored)
+        if (paymentIntentId) {
+            try {
+                await fetch(`${API_BASE}/payments/verify-and-fulfill`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ payment_intent_id: paymentIntentId }),
+                    credentials: 'include',
+                });
+            } catch (verifyError) {
+                console.error('Sponsorship verification error:', verifyError);
+            }
+        }
+
+        showToast("Thank you! Your d'var Torah dedication has been received.");
+        // Refresh so the new dedication appears once fulfillment lands
+        await loadDvarTorah(true);
     }
 
     // If the user was mid-prompt before logging in, restore their draft
@@ -373,6 +402,13 @@ function updateUserUI() {
             </svg>
             Settings
         </button>
+        ${currentUser.is_admin ? `
+        <a href="/admin" class="dropdown-item" id="adminLink">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+            </svg>
+            Admin
+        </a>` : ''}
         <div class="dropdown-divider"></div>
         <a href="/auth/logout" class="dropdown-item dropdown-item-danger">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -832,12 +868,15 @@ async function loadGreeting() {
  * @description Fetches the weekly D'var Torah (Torah portion commentary) from the API.
  *              If the data is available and it is not a holiday week, caches the response
  *              and reveals the D'var Torah preview section on the welcome screen.
+ * @param {boolean} [fresh=false] - Bypass the HTTP cache (used after a new
+ *              sponsorship so the dedication appears without waiting out the
+ *              endpoint's Cache-Control window)
  * @returns {Promise<void>}
  * @async
  */
-async function loadDvarTorah() {
+async function loadDvarTorah(fresh = false) {
     try {
-        const response = await fetch(`${API_BASE}/dvar-torah`);
+        const response = await fetch(`${API_BASE}/dvar-torah`, fresh ? { cache: 'no-store' } : undefined);
         if (!response.ok) return;
 
         const data = await response.json();
@@ -873,10 +912,56 @@ function showDvarTorah() {
 
     dvarTorahScreenTitle.textContent = `Parashat ${dvarTorahData.parsha_name}`;
 
-    // Convert plain text to paragraphs
+    // Sponsor dedications for this parsha week (shown above the teaching,
+    // in the tradition of dedicating Torah learning)
+    let sponsorsHtml = '';
+    if (dvarTorahData.sponsors && dvarTorahData.sponsors.length) {
+        const lines = dvarTorahData.sponsors
+            .map(s => `<p class="dvar-sponsor-line">🕯️ ${escapeHtml(formatDedication(s))}</p>`)
+            .join('');
+        sponsorsHtml = `<div class="dvar-sponsors">${lines}</div>`;
+    }
+
+    // Convert plain text to paragraphs (escaped - content is server-generated
+    // but rendered consistently with the chat path)
     const paragraphs = dvarTorahData.content.split('\n\n').filter(p => p.trim());
-    const html = paragraphs.map(p => `<p>${p.replace(/\n/g, ' ')}</p>`).join('');
-    dvarTorahScreenContent.innerHTML = `<div class="dvar-torah-body">${html}</div>`;
+    const html = paragraphs.map(p => `<p>${escapeHtml(p).replace(/\n/g, ' ')}</p>`).join('');
+
+    const ctaHtml = `
+        <div class="dvar-sponsor-cta">
+            <button class="sponsor-btn" id="sponsorDvarBtn">Sponsor this week's d'var Torah</button>
+            <p class="sponsor-hint">Dedicate this week's Torah learning in memory or in honor of a loved one.</p>
+        </div>`;
+
+    dvarTorahScreenContent.innerHTML = `${sponsorsHtml}<div class="dvar-torah-body">${html}</div>${ctaHtml}`;
+
+    const sponsorBtn = document.getElementById('sponsorDvarBtn');
+    if (sponsorBtn) {
+        sponsorBtn.addEventListener('click', () => {
+            if (!currentUser) {
+                showLoginPrompt();
+                return;
+            }
+            openSponsorModal();
+        });
+    }
+}
+
+/**
+ * @description Formats a sponsorship dedication for display, prefixing the sponsor's
+ *              text with traditional dedication language based on its type.
+ * @param {{dedication: string, dedication_type: string}} s - A sponsorship record
+ * @returns {string} The full dedication line
+ */
+function formatDedication(s) {
+    const prefixes = {
+        memory: 'In loving memory of',
+        honor: 'In honor of',
+        refuah: 'For a refuah shleima for',
+        gratitude: 'In gratitude for',
+        general: 'Dedicated by',
+    };
+    return `${prefixes[s.dedication_type] || 'Dedicated:'} ${s.dedication}`;
 }
 
 /**
@@ -886,6 +971,57 @@ function showDvarTorah() {
 function hideDvarTorah() {
     dvarTorahScreen.classList.add('hidden');
     welcomeScreen.classList.remove('hidden');
+}
+
+/* ============================================================
+ * JEWISH CALENDAR AWARENESS
+ * Shows a respectful, dismissible banner on Shabbat, yom tov,
+ * and their eves. Uses the client's local clock since Shabbat
+ * depends on local sundown.
+ * ============================================================ */
+
+/**
+ * @description Fetches Shabbat/yom tov status for the user's local time and shows
+ *              a dismissible notice banner when applicable. Dismissal is remembered
+ *              per message for the browser session.
+ * @returns {Promise<void>}
+ * @async
+ */
+async function checkCalendarStatus() {
+    try {
+        const now = new Date();
+        const pad = n => String(n).padStart(2, '0');
+        const localTime = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}` +
+            `T${pad(now.getHours())}:${pad(now.getMinutes())}:00`;
+
+        const response = await fetch(`${API_BASE}/calendar-status?client_time=${encodeURIComponent(localTime)}`);
+        if (!response.ok) return;
+
+        const data = await response.json();
+        const banner = document.getElementById('calendarBanner');
+        if (!banner || !data.message) return;
+        if (sessionStorage.getItem('calendarBannerDismissed') === data.message) return;
+
+        banner.innerHTML = '';
+        const text = document.createElement('span');
+        text.className = 'calendar-banner-text';
+        text.textContent = data.message;
+
+        const close = document.createElement('button');
+        close.className = 'calendar-banner-close';
+        close.setAttribute('aria-label', 'Dismiss notice');
+        close.textContent = '×';
+        close.addEventListener('click', () => {
+            banner.classList.add('hidden');
+            sessionStorage.setItem('calendarBannerDismissed', data.message);
+        });
+
+        banner.appendChild(text);
+        banner.appendChild(close);
+        banner.classList.remove('hidden');
+    } catch (error) {
+        console.error('Calendar status check failed:', error);
+    }
 }
 
 /* ============================================================
@@ -1074,7 +1210,7 @@ async function loadConversation(conversationId) {
             // Update UI
             chatMessages.innerHTML = '';
             data.messages.forEach(msg => {
-                addMessageToUI(msg.role, msg.content, new Date(msg.created_at), msg.id);
+                addMessageToUI(msg.role, msg.content, new Date(msg.created_at), msg.id, msg.metadata);
             });
 
             // Update title
@@ -1276,6 +1412,7 @@ async function sendMessage(message) {
         const decoder = new TextDecoder();
         let fullResponse = '';
         let requiresHumanReferral = false;
+        let pipelineMetadata = null; // Crisis flags, verified sources, pastoral mode
         let buffer = ''; // Accumulates partial lines between read() calls
         let messageElement = null;
         let savedMessageId = null;
@@ -1315,6 +1452,7 @@ async function sendMessage(message) {
                                 currentConversationId = data.conversation_id;
                             }
                         } else if (data.type === 'metadata') {
+                            pipelineMetadata = data.data;
                             requiresHumanReferral = data.data.requires_human_referral;
                         } else if (data.type === 'token') {
                             if (!messageElement) {
@@ -1354,7 +1492,7 @@ async function sendMessage(message) {
         }
 
         if (messageElement) {
-            finalizeStreamingMessage(messageElement, fullResponse, savedMessageId, messageSaveFailed);
+            finalizeStreamingMessage(messageElement, fullResponse, savedMessageId, messageSaveFailed, pipelineMetadata);
         } else {
             removeTypingIndicator();
             throw new Error('No response received');
@@ -1441,7 +1579,7 @@ function addMessage(role, content) {
  * @param {string|null} [messageId=null] - Server-assigned message ID for feedback/TTS tracking
  * @returns {void}
  */
-function addMessageToUI(role, content, date, messageId = null) {
+function addMessageToUI(role, content, date, messageId = null, metadata = null) {
     const messageDiv = document.createElement('div');
     messageDiv.className = `message ${role}`;
     if (messageId) {
@@ -1465,6 +1603,15 @@ function addMessageToUI(role, content, date, messageId = null) {
 
     metaDiv.appendChild(timeSpan);
     messageDiv.appendChild(contentDiv);
+
+    // Citations for saved assistant messages (persisted pipeline metadata)
+    if (role === 'assistant' && metadata) {
+        const sourcesDiv = createSourcesFooter(metadata.sources);
+        if (sourcesDiv) {
+            messageDiv.appendChild(sourcesDiv);
+        }
+    }
+
     messageDiv.appendChild(metaDiv);
 
     // Add action buttons for assistant messages
@@ -1505,20 +1652,111 @@ function escapeHtml(text) {
 }
 
 /**
- * @description Converts a subset of Markdown to HTML using a regex-based formatting pipeline.
- *              First escapes HTML to prevent XSS, then applies transformations:
- *              1. **bold** -> <strong>bold</strong>
- *              2. *italic* -> <em>italic</em>
- *              This is intentionally minimal; full Markdown parsing is not needed for
- *              the rabbinic response format.
+ * @description Applies inline Markdown formatting (bold, italic, inline code) to a line
+ *              of already-HTML-escaped text.
+ * @param {string} s - HTML-escaped text
+ * @returns {string} Text with inline formatting tags applied
+ */
+function formatInlineMarkdown(s) {
+    return s
+        .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+        .replace(/(^|[^*])\*([^*\n]+)\*/g, '$1<em>$2</em>')
+        .replace(/`([^`]+)`/g, '<code>$1</code>');
+}
+
+/**
+ * @description Converts Markdown to HTML with a line-based, dependency-free renderer.
+ *              First escapes ALL input (XSS-safe), then handles headings, bullet and
+ *              numbered lists, blockquotes, paragraphs, and line breaks in addition to
+ *              bold/italic/inline code. Tolerant of partial input, so it is safe to call
+ *              repeatedly on accumulating streamed text.
  * @param {string} text - Raw Markdown text from the assistant
- * @returns {string} HTML string with basic formatting applied
+ * @returns {string} HTML string
  */
 function formatMarkdown(text) {
-    let html = escapeHtml(text);
-    html = html.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
-    html = html.replace(/\*(.+?)\*/g, '<em>$1</em>');
-    return html;
+    const lines = escapeHtml(text).split('\n');
+    const out = [];
+    let listTag = null;   // 'ul' | 'ol' while inside a list
+    let paragraph = [];
+
+    const closeList = () => {
+        if (listTag) { out.push(`</${listTag}>`); listTag = null; }
+    };
+    const flushParagraph = () => {
+        if (paragraph.length) {
+            out.push(`<p>${paragraph.join('<br>')}</p>`);
+            paragraph = [];
+        }
+    };
+
+    for (const raw of lines) {
+        const trimmed = raw.trim();
+        if (!trimmed) { flushParagraph(); closeList(); continue; }
+
+        const heading = /^(#{1,4})\s+(.+)$/.exec(trimmed);
+        const bullet = /^[-*•]\s+(.+)$/.exec(trimmed);
+        const numbered = /^\d+[.)]\s+(.+)$/.exec(trimmed);
+        const quote = /^&gt;\s?(.*)$/.exec(trimmed);
+
+        if (heading) {
+            flushParagraph(); closeList();
+            // Map #/## -> h3, deeper -> h4/h5, sized for the chat column
+            const level = Math.min(heading[1].length + 2, 5);
+            out.push(`<h${level}>${formatInlineMarkdown(heading[2])}</h${level}>`);
+        } else if (bullet) {
+            flushParagraph();
+            if (listTag !== 'ul') { closeList(); out.push('<ul>'); listTag = 'ul'; }
+            out.push(`<li>${formatInlineMarkdown(bullet[1])}</li>`);
+        } else if (numbered) {
+            flushParagraph();
+            if (listTag !== 'ol') { closeList(); out.push('<ol>'); listTag = 'ol'; }
+            out.push(`<li>${formatInlineMarkdown(numbered[1])}</li>`);
+        } else if (quote) {
+            flushParagraph(); closeList();
+            out.push(`<blockquote>${formatInlineMarkdown(quote[1])}</blockquote>`);
+        } else {
+            closeList();
+            paragraph.push(formatInlineMarkdown(trimmed));
+        }
+    }
+    flushParagraph();
+    closeList();
+    return out.join('');
+}
+
+/**
+ * @description Builds the "Sources" footer for an assistant message from the pipeline
+ *              metadata. Citations verified against passages actually retrieved from
+ *              the text library get a checkmark; unverified ones (cited from the
+ *              model's general knowledge) are labeled via tooltip.
+ * @param {Array<{ref: string, verified: boolean}|string>} sources - Structured citations
+ * @returns {HTMLElement|null} The footer element, or null when there are no sources
+ */
+function createSourcesFooter(sources) {
+    if (!sources || !sources.length) return null;
+
+    const div = document.createElement('div');
+    div.className = 'message-sources';
+
+    const label = document.createElement('span');
+    label.className = 'sources-label';
+    label.textContent = 'Sources';
+    div.appendChild(label);
+
+    sources.forEach(src => {
+        const ref = typeof src === 'string' ? src : src.ref;
+        if (!ref) return;
+        const verified = typeof src === 'object' && !!src.verified;
+        const chip = document.createElement('span');
+        chip.className = 'source-chip' + (verified ? ' verified' : '');
+        chip.title = verified
+            ? 'Matched to a passage retrieved from the text library for this answer'
+            : "Cited from the model's general knowledge — not verified against the library";
+        chip.textContent = (verified ? '✓ ' : '') + ref;
+        div.appendChild(chip);
+    });
+
+    return div.childElementCount > 1 ? div : null;
 }
 
 /**
@@ -1578,7 +1816,7 @@ function updateStreamingMessage(messageElement, content) {
  *              rather than shown non-functional)
  * @returns {void}
  */
-function finalizeStreamingMessage(messageElement, content, messageId = null, saveFailed = false) {
+function finalizeStreamingMessage(messageElement, content, messageId = null, saveFailed = false, metadata = null) {
     const contentDiv = messageElement.querySelector('.message-content');
     contentDiv.innerHTML = formatMarkdown(content);
     contentDiv.classList.remove('streaming');
@@ -1586,6 +1824,13 @@ function finalizeStreamingMessage(messageElement, content, messageId = null, sav
 
     if (messageId) {
         messageElement.dataset.messageId = messageId;
+    }
+
+    // Show the citations behind this answer (verified against the library
+    // where possible) directly under the message content.
+    const sourcesDiv = createSourcesFooter(metadata && metadata.sources);
+    if (sourcesDiv) {
+        contentDiv.after(sourcesDiv);
     }
 
     // Add action buttons if not already added
@@ -2692,5 +2937,279 @@ function showPaymentErrorMessage(message) {
         setTimeout(() => {
             paymentError.classList.add('hidden');
         }, 5000);
+    }
+}
+
+/* ============================================================
+ * D'VAR TORAH SPONSORSHIP (TZEDAKAH)
+ * Two-step Stripe flow for dedicating the week's d'var Torah:
+ * 1. Pick a chai-multiple tier, choose a dedication type, and
+ *    write the dedication text.
+ * 2. Pay via a Stripe PaymentElement (same machinery as the
+ *    credit purchase modal).
+ * ============================================================ */
+
+/** @type {string} Currently selected sponsorship tier ID */
+let selectedSponsorTier = 'chai';
+/** @type {object|null} Stripe Elements instance for the sponsorship modal */
+let sponsorElements = null;
+/** @type {object|null} Mounted PaymentElement for the sponsorship modal */
+let sponsorPaymentElement = null;
+/** @type {boolean} Whether the sponsor modal's static listeners are attached */
+let sponsorModalWired = false;
+
+/**
+ * @description Opens the sponsorship modal at step 1 (tier + dedication),
+ *              wiring its static event listeners on first open.
+ * @returns {void}
+ */
+function openSponsorModal() {
+    const modal = document.getElementById('sponsorModal');
+    if (!modal) return;
+
+    if (!sponsorModalWired) {
+        wireSponsorModal();
+        sponsorModalWired = true;
+    }
+
+    resetSponsorModalState();
+    modal.classList.remove('hidden');
+    modal.classList.add('visible');
+}
+
+/**
+ * @description Attaches one-time event listeners for the sponsorship modal:
+ *              close button, backdrop click, tier selection, and the two
+ *              step-advancing buttons.
+ * @returns {void}
+ */
+function wireSponsorModal() {
+    const modal = document.getElementById('sponsorModal');
+
+    document.getElementById('closeSponsorModal').addEventListener('click', closeSponsorModalHandler);
+    modal.addEventListener('click', (e) => {
+        if (e.target === modal) closeSponsorModalHandler();
+    });
+
+    modal.querySelectorAll('.package-card[data-tier]').forEach(card => {
+        card.addEventListener('click', () => {
+            selectedSponsorTier = card.dataset.tier;
+            modal.querySelectorAll('.package-card[data-tier]').forEach(c => {
+                c.classList.toggle('selected', c.dataset.tier === selectedSponsorTier);
+            });
+        });
+    });
+
+    document.getElementById('sponsorContinueBtn').addEventListener('click', startSponsorshipPayment);
+    document.getElementById('submitSponsorship').addEventListener('click', handleSponsorshipSubmit);
+}
+
+/**
+ * @description Resets the sponsorship modal to step 1 with the default tier selected.
+ * @returns {void}
+ */
+function resetSponsorModalState() {
+    const modal = document.getElementById('sponsorModal');
+    document.getElementById('sponsorStepDetails').classList.remove('hidden');
+    document.getElementById('sponsorStepPayment').classList.add('hidden');
+    document.getElementById('sponsorStatus').classList.add('hidden');
+    document.getElementById('sponsorSuccess').classList.add('hidden');
+    document.getElementById('sponsorError').classList.add('hidden');
+    document.getElementById('submitSponsorship').disabled = true;
+
+    selectedSponsorTier = 'chai';
+    modal.querySelectorAll('.package-card[data-tier]').forEach(c => {
+        c.classList.toggle('selected', c.dataset.tier === 'chai');
+    });
+}
+
+/**
+ * @description Closes the sponsorship modal and tears down the Stripe PaymentElement.
+ * @returns {void}
+ */
+function closeSponsorModalHandler() {
+    const modal = document.getElementById('sponsorModal');
+    if (!modal) return;
+
+    modal.classList.remove('visible');
+    modal.classList.add('hidden');
+
+    if (sponsorPaymentElement) {
+        sponsorPaymentElement.destroy();
+        sponsorPaymentElement = null;
+    }
+    sponsorElements = null;
+
+    setTimeout(resetSponsorModalState, 300);
+}
+
+/**
+ * @description Step 1 -> 2 transition: validates the dedication, creates the
+ *              sponsorship PaymentIntent on the server, and mounts the Stripe
+ *              PaymentElement.
+ * @returns {Promise<void>}
+ * @async
+ */
+async function startSponsorshipPayment() {
+    const dedication = document.getElementById('sponsorDedication').value.trim();
+    const dedicationType = document.getElementById('sponsorDedicationType').value;
+    const errorEl = document.getElementById('sponsorDetailsError');
+
+    if (dedication.length < 2) {
+        errorEl.textContent = 'Please enter a dedication (e.g. a name).';
+        errorEl.classList.remove('hidden');
+        return;
+    }
+    errorEl.classList.add('hidden');
+
+    const container = document.getElementById('sponsorPaymentElementContainer');
+    document.getElementById('sponsorStepDetails').classList.add('hidden');
+    document.getElementById('sponsorStepPayment').classList.remove('hidden');
+    container.innerHTML = '<div class="payment-loading">Loading payment form...</div>';
+
+    try {
+        const response = await fetch(`${API_BASE}/payments/create-sponsorship-intent`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                tier_id: selectedSponsorTier,
+                dedication: dedication,
+                dedication_type: dedicationType,
+            }),
+            credentials: 'include',
+        });
+
+        if (!response.ok) {
+            const error = await response.json();
+            throw new Error(error.detail || 'Failed to start sponsorship');
+        }
+
+        const { client_secret, customer_session_client_secret, publishable_key } = await response.json();
+
+        if (!window.Stripe) {
+            await loadStripeJs();
+        }
+        if (!stripe) {
+            stripe = Stripe(publishable_key);
+        }
+
+        sponsorElements = stripe.elements({
+            clientSecret: client_secret,
+            customerSessionClientSecret: customer_session_client_secret,
+            appearance: {
+                theme: 'night',
+                variables: {
+                    colorPrimary: '#d4a853',
+                    colorBackground: '#1a1a1a',
+                    colorText: '#e8e8e8',
+                    colorDanger: '#ef4444',
+                    fontFamily: 'Inter, -apple-system, BlinkMacSystemFont, sans-serif',
+                    borderRadius: '8px',
+                    spacingUnit: '4px',
+                },
+            },
+        });
+
+        sponsorPaymentElement = sponsorElements.create('payment');
+        container.innerHTML = '';
+        sponsorPaymentElement.mount(container);
+
+        const submitBtn = document.getElementById('submitSponsorship');
+        sponsorPaymentElement.on('ready', () => { submitBtn.disabled = false; });
+        sponsorPaymentElement.on('change', (event) => { submitBtn.disabled = !event.complete; });
+
+    } catch (error) {
+        console.error('Failed to start sponsorship payment:', error);
+        container.innerHTML = `<p class="payment-error-text">${escapeHtml(error.message || 'Failed to load payment form. Please try again.')}</p>`;
+    }
+}
+
+/**
+ * @description Confirms the sponsorship payment. On success, attempts the
+ *              dev-only verify-and-fulfill path (production relies on
+ *              webhooks), shows the success panel, and refreshes the d'var
+ *              Torah data so the new dedication appears.
+ * @returns {Promise<void>}
+ * @async
+ */
+async function handleSponsorshipSubmit() {
+    if (!stripe || !sponsorElements) return;
+
+    const submitBtn = document.getElementById('submitSponsorship');
+    submitBtn.disabled = true;
+
+    try {
+        const { error, paymentIntent } = await stripe.confirmPayment({
+            elements: sponsorElements,
+            confirmParams: {
+                return_url: window.location.origin + '/?sponsorship=success',
+            },
+            redirect: 'if_required',
+        });
+
+        if (error) {
+            showSponsorError(error.message);
+            submitBtn.disabled = false;
+            return;
+        }
+
+        if (paymentIntent && paymentIntent.status === 'succeeded') {
+            // Dev-only immediate fulfillment; in production the webhook
+            // completes the sponsorship (404 here is expected and fine).
+            try {
+                await fetch(`${API_BASE}/payments/verify-and-fulfill`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ payment_intent_id: paymentIntent.id }),
+                    credentials: 'include',
+                });
+            } catch (verifyError) {
+                console.error('Sponsorship verification error:', verifyError);
+            }
+        }
+
+        document.getElementById('sponsorStepPayment').classList.add('hidden');
+        document.getElementById('sponsorStatus').classList.remove('hidden');
+        document.getElementById('sponsorSuccess').classList.remove('hidden');
+
+        // Refresh so the dedication shows on the d'var Torah screen
+        try {
+            const refreshed = await fetch(`${API_BASE}/dvar-torah`);
+            if (refreshed.ok) {
+                const data = await refreshed.json();
+                if (!data.is_holiday_week && data.content) {
+                    dvarTorahData = data;
+                }
+            }
+        } catch (refreshError) {
+            console.error('Failed to refresh d\'var Torah:', refreshError);
+        }
+
+        setTimeout(() => {
+            closeSponsorModalHandler();
+            if (!dvarTorahScreen.classList.contains('hidden')) {
+                showDvarTorah();
+            }
+        }, 2500);
+
+    } catch (err) {
+        console.error('Sponsorship payment error:', err);
+        showSponsorError('An unexpected error occurred.');
+        submitBtn.disabled = false;
+    }
+}
+
+/**
+ * @description Shows a temporary error message inside the sponsorship modal.
+ * @param {string} message - The error message to display
+ * @returns {void}
+ */
+function showSponsorError(message) {
+    const errorEl = document.getElementById('sponsorError');
+    const messageEl = document.getElementById('sponsorErrorMessage');
+    if (messageEl) messageEl.textContent = message;
+    if (errorEl) {
+        errorEl.classList.remove('hidden');
+        setTimeout(() => errorEl.classList.add('hidden'), 5000);
     }
 }

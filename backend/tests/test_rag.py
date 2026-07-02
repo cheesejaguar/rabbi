@@ -241,7 +241,17 @@ class TestTokenize:
         tokens = _tokenize("בראשית ברא אלהים")
         assert "בראשית" in tokens
         assert "ברא" in tokens
-        assert "אלהים" in tokens
+        # Final letters are normalized to medial forms (ם -> מ)
+        assert "אלהימ" in tokens
+
+    def test_hebrew_nikud_and_cantillation_stripped(self):
+        # Pointed Tanakh text and an unpointed query tokenize identically
+        pointed = _tokenize("בְּרֵאשִׁ֖ית בָּרָ֣א אֱלֹהִ֑ים")
+        plain = _tokenize("בראשית ברא אלהים")
+        assert pointed == plain
+
+    def test_hebrew_final_letters_normalized(self):
+        assert _tokenize("שלום") == _tokenize("שלומ")
 
     def test_mixed_language(self):
         tokens = _tokenize("The Torah says בראשית ברא")

@@ -133,6 +133,51 @@ def _should_use_rag(user_message: str, pastoral_mode: Optional[PastoralMode] = N
     return False
 
 
+def _citation_tokens(text: str) -> set[str]:
+    """Normalize a citation or source label into comparable tokens.
+
+    Lowercases, drops punctuation/numbers, and collapses common
+    transliteration variants (kh/ch, q/k) so "Shulchan Arukh Orach Chayyim"
+    matches "Shulchan Aruch, Orach Chaim 318".
+    """
+    text = text.lower().replace("kh", "ch").replace("q", "k")
+    tokens = re.findall(r"[a-z֐-׿']{3,}", text)
+    return {t.rstrip("'") for t in tokens}
+
+
+def _verify_sources(sources_cited: list[str], retrieved_labels: list[str]) -> list[dict]:
+    """Annotate LLM-emitted citations with whether they match retrieved texts.
+
+    A citation is "verified" when most of its significant tokens appear in
+    the title/section of a chunk that was actually retrieved for this
+    question. Unverified citations are still returned - the model may cite
+    from its own knowledge - but the UI labels them so users know which
+    references were checked against the library.
+
+    Args:
+        sources_cited: Free-form citation strings from the LLM.
+        retrieved_labels: ``context_label`` values of retrieved chunks.
+
+    Returns:
+        A list of ``{"ref": str, "verified": bool}`` dicts.
+    """
+    label_token_sets = [_citation_tokens(label) for label in retrieved_labels]
+    annotated = []
+    for ref in sources_cited:
+        if not isinstance(ref, str) or not ref.strip():
+            continue
+        ref_tokens = _citation_tokens(ref)
+        verified = False
+        if ref_tokens:
+            for label_tokens in label_token_sets:
+                overlap = len(ref_tokens & label_tokens)
+                if overlap and overlap >= max(1, len(ref_tokens) // 2):
+                    verified = True
+                    break
+        annotated.append({"ref": ref.strip(), "verified": verified})
+    return annotated
+
+
 class HalachicReasoningAgent(BaseAgent):
     """Second pipeline agent -- provides the halachic landscape.
 
@@ -282,6 +327,7 @@ LENIENCY APPROACH: {config.leniency_bias}
 
         # RAG: Retrieve relevant source texts only when the question warrants it
         retrieved_sources = ""
+        retrieved_labels: list[str] = []
         pastoral_mode = context.pastoral_context.mode if context.pastoral_context else None
         use_rag = _should_use_rag(context.user_message, pastoral_mode)
         context.metadata["rag_used"] = use_rag
@@ -289,25 +335,35 @@ LENIENCY APPROACH: {config.leniency_bias}
         if self.retriever and use_rag:
             # Lazily ensure index is loaded (handles Vercel where lifespan doesn't fire)
             self.retriever.ensure_loaded()
-            retrieved_sources = self.retriever.search_formatted(
-                context.user_message, top_k=5
-            )
-            if retrieved_sources:
+            results = self.retriever.search(context.user_message, top_k=5)
+            # Remember what was actually retrieved so citations the LLM emits
+            # can be verified against it (see _verify_sources).
+            retrieved_labels = [r.chunk.context_label for r in results]
+            if results:
+                lines = []
+                for i, result in enumerate(results, 1):
+                    chunk = result.chunk
+                    lines.append(f"[Source {i}: {chunk.context_label} ({chunk.category})]")
+                    text = chunk.text[:1500] + "..." if len(chunk.text) > 1500 else chunk.text
+                    lines.append(text)
+                    lines.append("")
                 retrieved_sources = f"""
 RELEVANT SOURCE TEXTS FROM LIBRARY:
 The following primary source texts were retrieved from the Jewish texts library and may be relevant to this question. Use them to ground your analysis in actual sources. Cite specific passages when applicable.
 
-{retrieved_sources}
+{chr(10).join(lines)}
 """
                 logger.info("RAG: Retrieved %d chars of source text for halachic analysis",
                             len(retrieved_sources))
         elif not use_rag:
             logger.info("RAG: Skipped retrieval (message does not warrant source texts)")
 
+        history_info = self._format_history(context)
+
         messages = [
             {
                 "role": "user",
-                "content": f"""{pastoral_info}{denomination_info}{user_bio_info}{retrieved_sources}
+                "content": f"""{history_info}{pastoral_info}{denomination_info}{user_bio_info}{retrieved_sources}
 USER'S QUESTION:
 {context.user_message}
 
@@ -320,6 +376,14 @@ Provide a halachic landscape analysis for this question, adjusted appropriately 
 
         halachic_landscape = self._parse_response(response)
         context.halachic_landscape = halachic_landscape
+
+        # Structured, verification-annotated citations for the frontend.
+        # "verified" means the citation matches a source actually retrieved
+        # from the library for this question; unverified citations come from
+        # the model's own knowledge and are labeled as such in the UI.
+        context.metadata["sources"] = _verify_sources(
+            halachic_landscape.sources_cited, retrieved_labels
+        )
 
         if halachic_landscape.majority_view:
             context.intermediate_response = halachic_landscape.majority_view

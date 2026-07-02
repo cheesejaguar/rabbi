@@ -619,9 +619,10 @@ class TestInitSchema:
             from app.database import init_schema, SCHEMA_SQL
             await init_schema()
 
-            # Should acquire lock, execute schema, then release lock
+            # Should acquire lock, execute schema, promote configured
+            # admin emails, then release lock
             mock_connection.fetchval.assert_called_once_with("SELECT pg_try_advisory_lock(1)")
-            assert mock_connection.execute.call_count == 2
+            assert mock_connection.execute.call_count == 3
             mock_connection.execute.assert_any_call(SCHEMA_SQL)
             mock_connection.execute.assert_any_call("SELECT pg_advisory_unlock(1)")
 

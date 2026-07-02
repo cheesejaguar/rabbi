@@ -352,6 +352,35 @@ BEGIN
     END IF;
 END $$;
 
+-- is_admin: administrator flag. Admins can access the /api/admin
+-- endpoints and the /admin dashboard. Bootstrapped from the
+-- ADMIN_EMAILS setting; additional admins can be granted at runtime.
+DO $$
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns
+                   WHERE table_name = 'users' AND column_name = 'is_admin') THEN
+        ALTER TABLE users ADD COLUMN is_admin BOOLEAN DEFAULT FALSE;
+    END IF;
+END $$;
+
+-- =========================================================================
+-- ADMIN AUDIT LOG TABLE
+-- Immutable trail of privileged actions (credit grants, role changes,
+-- conversation reviews). Every /api/admin mutation and moderation view
+-- writes a row here so administrator activity is accountable.
+-- =========================================================================
+CREATE TABLE IF NOT EXISTS admin_audit_log (
+    id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
+    admin_user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    action TEXT NOT NULL,                      -- e.g. 'adjust_credits', 'set_role', 'view_conversation'
+    target_user_id TEXT REFERENCES users(id) ON DELETE SET NULL,
+    details JSONB DEFAULT '{}',                -- Action-specific payload (delta, reason, ids)
+    created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_admin_audit_log_admin ON admin_audit_log(admin_user_id);
+CREATE INDEX IF NOT EXISTS idx_admin_audit_log_created_at ON admin_audit_log(created_at DESC);
+
 -- =========================================================================
 -- PURCHASES TABLE
 -- Records every credit purchase. The lifecycle is:
@@ -375,6 +404,32 @@ CREATE INDEX IF NOT EXISTS idx_purchases_user_id ON purchases(user_id);
 -- Index: webhook lookup by Stripe PaymentIntent ID
 CREATE INDEX IF NOT EXISTS idx_purchases_stripe_payment_intent_id ON purchases(stripe_payment_intent_id);
 CREATE INDEX IF NOT EXISTS idx_purchases_status ON purchases(status);
+
+-- =========================================================================
+-- SPONSORSHIPS TABLE
+-- Tzedakah-style dedications: users sponsor the week's d'var Torah
+-- ("in memory of...", "in honor of..."). Completed dedications are shown
+-- publicly alongside the commentary for that parsha and Hebrew year.
+-- Lifecycle mirrors purchases: pending -> completed | failed | refunded.
+-- =========================================================================
+CREATE TABLE IF NOT EXISTS sponsorships (
+    id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
+    user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    stripe_payment_intent_id TEXT UNIQUE NOT NULL,
+    amount_cents INTEGER NOT NULL,
+    dedication TEXT NOT NULL,                        -- e.g. "in memory of Sarah bat Avraham"
+    dedication_type TEXT NOT NULL DEFAULT 'general'
+        CHECK (dedication_type IN ('memory', 'honor', 'refuah', 'gratitude', 'general')),
+    parsha_name TEXT NOT NULL,                       -- The sponsored week's parsha
+    hebrew_year INTEGER NOT NULL,
+    status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'completed', 'failed', 'refunded')),
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    completed_at TIMESTAMPTZ
+);
+
+CREATE INDEX IF NOT EXISTS idx_sponsorships_parsha ON sponsorships(parsha_name, hebrew_year);
+CREATE INDEX IF NOT EXISTS idx_sponsorships_intent ON sponsorships(stripe_payment_intent_id);
+CREATE INDEX IF NOT EXISTS idx_sponsorships_status ON sponsorships(status);
 
 -- =========================================================================
 -- D'VAR TORAH CACHE TABLE
@@ -417,6 +472,15 @@ async def init_schema():
             return
         try:
             await conn.execute(SCHEMA_SQL)
+            # Promote any configured admin emails that already have accounts.
+            # (upsert_user handles the same promotion at login time, so admins
+            # who sign up after this deploy are still covered.)
+            admin_emails = get_settings().admin_email_list
+            if admin_emails:
+                await conn.execute(
+                    "UPDATE users SET is_admin = TRUE WHERE LOWER(email) = ANY($1::text[]) AND is_admin IS NOT TRUE",
+                    admin_emails
+                )
         finally:
             # Release the advisory lock
             await conn.execute("SELECT pg_advisory_unlock(1)")
@@ -433,6 +497,10 @@ async def upsert_user(user_id: str, email: str, first_name: str = None, last_nam
     New users receive 3 starting credits. On conflict (same ``id``), the
     email, name fields, and ``updated_at`` timestamp are refreshed.
 
+    Emails listed in the ``ADMIN_EMAILS`` setting are automatically
+    promoted to administrator. The admin flag is sticky: once granted
+    (via config or the admin API), a login never revokes it.
+
     Args:
         user_id: The WorkOS user ID (used as primary key).
         email: The user's email address.
@@ -440,21 +508,24 @@ async def upsert_user(user_id: str, email: str, first_name: str = None, last_nam
         last_name: Optional last name.
 
     Returns:
-        A dict of the full user row including ``credits`` and timestamps.
+        A dict of the full user row including ``credits``, ``is_admin``,
+        and timestamps.
     """
+    is_admin = bool(email) and email.lower() in get_settings().admin_email_list
     async with get_connection() as conn:
         row = await conn.fetchrow(
             """
-            INSERT INTO users (id, email, first_name, last_name, credits)
-            VALUES ($1, $2, $3, $4, 3)
+            INSERT INTO users (id, email, first_name, last_name, credits, is_admin)
+            VALUES ($1, $2, $3, $4, 3, $5)
             ON CONFLICT (id) DO UPDATE SET
                 email = EXCLUDED.email,
                 first_name = EXCLUDED.first_name,
                 last_name = EXCLUDED.last_name,
+                is_admin = users.is_admin OR EXCLUDED.is_admin,
                 updated_at = NOW()
-            RETURNING id, email, first_name, last_name, credits, created_at, updated_at
+            RETURNING id, email, first_name, last_name, credits, is_admin, created_at, updated_at
             """,
-            user_id, email, first_name, last_name
+            user_id, email, first_name, last_name, is_admin
         )
         return dict(row)
 
@@ -470,7 +541,7 @@ async def get_user(user_id: str) -> Optional[dict]:
     """
     async with get_connection() as conn:
         row = await conn.fetchrow(
-            "SELECT id, email, first_name, last_name, credits, created_at, updated_at FROM users WHERE id = $1",
+            "SELECT id, email, first_name, last_name, credits, is_admin, created_at, updated_at FROM users WHERE id = $1",
             user_id
         )
         return dict(row) if row else None
@@ -1478,3 +1549,555 @@ async def fail_dvar_torah_generation(row_id: str) -> bool:
             row_id
         )
         return result == "DELETE 1"
+
+
+# ---------------------------------------------------------------------------
+# Administration
+# ---------------------------------------------------------------------------
+
+
+async def is_user_admin(user_id: str) -> bool:
+    """Check whether a user has the administrator flag set.
+
+    Args:
+        user_id: The WorkOS user ID.
+
+    Returns:
+        ``True`` if the user exists and ``is_admin`` is set.
+    """
+    async with get_connection() as conn:
+        row = await conn.fetchrow(
+            "SELECT is_admin FROM users WHERE id = $1",
+            user_id
+        )
+        return bool(row['is_admin']) if row else False
+
+
+async def admin_set_role(user_id: str, is_admin: bool) -> Optional[dict]:
+    """Grant or revoke administrator privileges for a user.
+
+    Args:
+        user_id: The WorkOS user ID of the target user.
+        is_admin: The new administrator state.
+
+    Returns:
+        A dict with the user's id, email, and new ``is_admin`` value,
+        or ``None`` if the user does not exist.
+    """
+    async with get_connection() as conn:
+        row = await conn.fetchrow(
+            """
+            UPDATE users
+            SET is_admin = $2, updated_at = NOW()
+            WHERE id = $1
+            RETURNING id, email, is_admin
+            """,
+            user_id, is_admin
+        )
+        return dict(row) if row else None
+
+
+async def admin_list_users(search: str = None, limit: int = 50, offset: int = 0) -> list[dict]:
+    """List users for the admin dashboard with activity and spend rollups.
+
+    Args:
+        search: Optional case-insensitive substring match against email,
+            first name, or last name.
+        limit: Maximum rows to return.
+        offset: Pagination offset.
+
+    Returns:
+        A list of user dicts including conversation/message counts and
+        total completed spend in cents, newest accounts first.
+    """
+    async with get_connection() as conn:
+        rows = await conn.fetch(
+            """
+            SELECT u.id, u.email, u.first_name, u.last_name, u.credits, u.is_admin,
+                   u.denomination, u.created_at, u.updated_at,
+                   (SELECT COUNT(*) FROM conversations c WHERE c.user_id = u.id) AS conversation_count,
+                   (SELECT COUNT(*) FROM messages m JOIN conversations c ON c.id = m.conversation_id
+                     WHERE c.user_id = u.id) AS message_count,
+                   (SELECT COALESCE(SUM(p.amount_cents), 0) FROM purchases p
+                     WHERE p.user_id = u.id AND p.status = 'completed') AS total_spent_cents
+            FROM users u
+            WHERE $1::text IS NULL
+               OR u.email ILIKE '%' || $1 || '%'
+               OR u.first_name ILIKE '%' || $1 || '%'
+               OR u.last_name ILIKE '%' || $1 || '%'
+            ORDER BY u.created_at DESC
+            LIMIT $2 OFFSET $3
+            """,
+            search, limit, offset
+        )
+        return [dict(row) for row in rows]
+
+
+async def admin_count_users(search: str = None) -> int:
+    """Count users matching an optional search filter (for pagination)."""
+    async with get_connection() as conn:
+        return await conn.fetchval(
+            """
+            SELECT COUNT(*) FROM users u
+            WHERE $1::text IS NULL
+               OR u.email ILIKE '%' || $1 || '%'
+               OR u.first_name ILIKE '%' || $1 || '%'
+               OR u.last_name ILIKE '%' || $1 || '%'
+            """,
+            search
+        )
+
+
+async def admin_adjust_credits(user_id: str, delta: int) -> Optional[int]:
+    """Adjust a user's credit balance by a positive or negative delta.
+
+    The balance is clamped at zero so an over-large deduction cannot
+    produce a negative balance.
+
+    Args:
+        user_id: The WorkOS user ID.
+        delta: Credits to add (positive) or remove (negative).
+
+    Returns:
+        The new credit balance, or ``None`` if the user does not exist.
+    """
+    async with get_connection() as conn:
+        row = await conn.fetchrow(
+            """
+            UPDATE users
+            SET credits = GREATEST(0, credits + $2), updated_at = NOW()
+            WHERE id = $1
+            RETURNING credits
+            """,
+            user_id, delta
+        )
+        return row['credits'] if row else None
+
+
+async def admin_get_overview() -> dict:
+    """Compute platform-wide health, usage, and revenue statistics.
+
+    Returns:
+        A dict of counters: users (total/new/active), conversations,
+        messages, credits outstanding, completed revenue, errors, and
+        feedback volume over recent windows.
+    """
+    async with get_connection() as conn:
+        row = await conn.fetchrow(
+            """
+            SELECT
+                (SELECT COUNT(*) FROM users) AS total_users,
+                (SELECT COUNT(*) FROM users WHERE created_at > NOW() - INTERVAL '7 days') AS new_users_7d,
+                (SELECT COUNT(DISTINCT c.user_id) FROM conversations c
+                  JOIN messages m ON m.conversation_id = c.id
+                 WHERE m.created_at > NOW() - INTERVAL '7 days') AS active_users_7d,
+                (SELECT COUNT(*) FROM conversations) AS total_conversations,
+                (SELECT COUNT(*) FROM messages) AS total_messages,
+                (SELECT COUNT(*) FROM messages WHERE created_at > NOW() - INTERVAL '24 hours') AS messages_24h,
+                (SELECT COALESCE(SUM(credits), 0) FROM users) AS credits_outstanding,
+                (SELECT COALESCE(SUM(amount_cents), 0) FROM purchases WHERE status = 'completed') AS revenue_cents_total,
+                (SELECT COALESCE(SUM(amount_cents), 0) FROM purchases
+                  WHERE status = 'completed' AND completed_at > NOW() - INTERVAL '30 days') AS revenue_cents_30d,
+                (SELECT COUNT(*) FROM purchases WHERE status = 'completed') AS purchases_completed,
+                (SELECT COALESCE(SUM(amount_cents), 0) FROM sponsorships WHERE status = 'completed') AS sponsorship_revenue_cents_total,
+                (SELECT COUNT(*) FROM sponsorships WHERE status = 'completed') AS sponsorships_completed,
+                (SELECT COUNT(*) FROM errors WHERE created_at > NOW() - INTERVAL '24 hours') AS errors_24h,
+                (SELECT COUNT(*) FROM errors WHERE created_at > NOW() - INTERVAL '7 days') AS errors_7d,
+                (SELECT COUNT(*) FROM feedback WHERE feedback_type = 'thumbs_up'
+                  AND created_at > NOW() - INTERVAL '7 days') AS thumbs_up_7d,
+                (SELECT COUNT(*) FROM feedback WHERE feedback_type = 'thumbs_down'
+                  AND created_at > NOW() - INTERVAL '7 days') AS thumbs_down_7d
+            """
+        )
+        return dict(row) if row else {}
+
+
+async def admin_get_llm_cost_stats(days: int = 30) -> list[dict]:
+    """Aggregate estimated LLM spend per day from message metadata.
+
+    Sums the ``estimated_cost_usd`` values that the agent pipeline stores
+    in each assistant message's metadata JSONB.
+
+    Args:
+        days: Look-back window in days (clamped to 1-365).
+
+    Returns:
+        A list of dicts with ``day``, ``messages``, ``estimated_cost_usd``,
+        ``input_tokens``, and ``output_tokens`` fields, newest first.
+    """
+    days = max(1, min(days, 365))
+    async with get_connection() as conn:
+        rows = await conn.fetch(
+            """
+            SELECT DATE_TRUNC('day', created_at) AS day,
+                   COUNT(*) AS messages,
+                   COALESCE(SUM((metadata->>'estimated_cost_usd')::numeric), 0) AS estimated_cost_usd,
+                   COALESCE(SUM((metadata->>'total_input_tokens')::bigint), 0) AS input_tokens,
+                   COALESCE(SUM((metadata->>'total_output_tokens')::bigint), 0) AS output_tokens
+            FROM messages
+            WHERE role = 'assistant'
+              AND created_at > NOW() - INTERVAL '1 day' * $1
+              AND metadata ? 'estimated_cost_usd'
+            GROUP BY DATE_TRUNC('day', created_at)
+            ORDER BY day DESC
+            """,
+            days
+        )
+        return [dict(row) for row in rows]
+
+
+async def admin_list_errors(limit: int = 50, offset: int = 0, error_type: str = None) -> list[dict]:
+    """Browse individual error records, newest first.
+
+    Args:
+        limit: Maximum rows to return.
+        offset: Pagination offset.
+        error_type: Optional filter on the error category.
+
+    Returns:
+        A list of error dicts including message, stack trace, and context.
+    """
+    async with get_connection() as conn:
+        rows = await conn.fetch(
+            """
+            SELECT id, user_id, conversation_id, error_type, error_message,
+                   stack_trace, request_context, created_at
+            FROM errors
+            WHERE $3::text IS NULL OR error_type = $3
+            ORDER BY created_at DESC
+            LIMIT $1 OFFSET $2
+            """,
+            limit, offset, error_type
+        )
+        return [dict(row) for row in rows]
+
+
+async def admin_list_feedback(feedback_type: str = None, limit: int = 50, offset: int = 0) -> list[dict]:
+    """Review-queue view of message feedback joined with message content.
+
+    Args:
+        feedback_type: Optional filter (``"thumbs_up"`` / ``"thumbs_down"``).
+        limit: Maximum rows to return.
+        offset: Pagination offset.
+
+    Returns:
+        A list of feedback dicts with the rated message's content (truncated
+        to 500 chars), conversation id, and the rating user's email.
+    """
+    async with get_connection() as conn:
+        rows = await conn.fetch(
+            """
+            SELECT f.id, f.message_id, f.feedback_type, f.created_at,
+                   u.email AS user_email,
+                   m.conversation_id,
+                   LEFT(m.content, 500) AS message_excerpt
+            FROM feedback f
+            JOIN users u ON u.id = f.user_id
+            JOIN messages m ON m.id = f.message_id
+            WHERE $3::text IS NULL OR f.feedback_type = $3
+            ORDER BY f.created_at DESC
+            LIMIT $1 OFFSET $2
+            """,
+            limit, offset, feedback_type
+        )
+        return [dict(row) for row in rows]
+
+
+async def admin_list_flagged_messages(limit: int = 50, offset: int = 0) -> list[dict]:
+    """Crisis / human-referral review queue.
+
+    Surfaces assistant messages whose pipeline metadata indicates a crisis,
+    detected vulnerability, or a recommendation to consult a human rabbi,
+    so an administrator can follow up.
+
+    Args:
+        limit: Maximum rows to return.
+        offset: Pagination offset.
+
+    Returns:
+        A list of message dicts (content truncated to 500 chars) with the
+        owning user's email and the relevant metadata flags, newest first.
+    """
+    async with get_connection() as conn:
+        rows = await conn.fetch(
+            """
+            SELECT m.id, m.conversation_id, m.created_at,
+                   LEFT(m.content, 500) AS message_excerpt,
+                   c.user_id, u.email AS user_email,
+                   m.metadata->>'pastoral_mode' AS pastoral_mode,
+                   m.metadata->>'emotional_state' AS emotional_state,
+                   m.metadata->'crisis_indicators' AS crisis_indicators,
+                   COALESCE((m.metadata->>'requires_human_referral')::boolean, FALSE) AS requires_human_referral,
+                   COALESCE((m.metadata->>'vulnerability_detected')::boolean, FALSE) AS vulnerability_detected
+            FROM messages m
+            JOIN conversations c ON c.id = m.conversation_id
+            JOIN users u ON u.id = c.user_id
+            WHERE m.role = 'assistant'
+              AND (
+                  COALESCE((m.metadata->>'requires_human_referral')::boolean, FALSE)
+                  OR COALESCE((m.metadata->>'vulnerability_detected')::boolean, FALSE)
+                  OR m.metadata ? 'crisis_indicators'
+                  OR m.metadata->>'pastoral_mode' = 'crisis'
+              )
+            ORDER BY m.created_at DESC
+            LIMIT $1 OFFSET $2
+            """,
+            limit, offset
+        )
+        return [dict(row) for row in rows]
+
+
+async def admin_list_purchases(status: str = None, limit: int = 50, offset: int = 0) -> list[dict]:
+    """List purchases across all users with buyer emails, newest first.
+
+    Args:
+        status: Optional filter (``pending``/``completed``/``failed``/``refunded``).
+        limit: Maximum rows to return.
+        offset: Pagination offset.
+
+    Returns:
+        A list of purchase dicts including the buyer's email.
+    """
+    async with get_connection() as conn:
+        rows = await conn.fetch(
+            """
+            SELECT p.id, p.user_id, u.email AS user_email,
+                   p.stripe_payment_intent_id, p.amount_cents, p.credits_purchased,
+                   p.package_id, p.status, p.created_at, p.completed_at
+            FROM purchases p
+            JOIN users u ON u.id = p.user_id
+            WHERE $3::text IS NULL OR p.status = $3
+            ORDER BY p.created_at DESC
+            LIMIT $1 OFFSET $2
+            """,
+            limit, offset, status
+        )
+        return [dict(row) for row in rows]
+
+
+async def admin_list_user_conversations(user_id: str, limit: int = 50, offset: int = 0) -> list[dict]:
+    """List a specific user's conversations for moderation review.
+
+    Unlike ``list_conversations`` this is not ownership-scoped to the
+    caller; access control and audit logging happen at the API layer.
+    """
+    async with get_connection() as conn:
+        rows = await conn.fetch(
+            """
+            SELECT c.id, c.user_id, c.title, c.created_at, c.updated_at,
+                   (SELECT COUNT(*) FROM messages m WHERE m.conversation_id = c.id) AS message_count
+            FROM conversations c
+            WHERE c.user_id = $1
+            ORDER BY c.updated_at DESC
+            LIMIT $2 OFFSET $3
+            """,
+            user_id, limit, offset
+        )
+        return [dict(row) for row in rows]
+
+
+async def admin_get_conversation_with_messages(conversation_id: str) -> Optional[dict]:
+    """Fetch any conversation with its messages for moderation review.
+
+    Unlike ``get_conversation`` this is not ownership-scoped; access
+    control and audit logging happen at the API layer.
+    """
+    async with get_connection() as conn:
+        conv = await conn.fetchrow(
+            """
+            SELECT c.id, c.user_id, u.email AS user_email, c.title, c.created_at, c.updated_at
+            FROM conversations c
+            JOIN users u ON u.id = c.user_id
+            WHERE c.id = $1
+            """,
+            conversation_id
+        )
+        if not conv:
+            return None
+        messages = await conn.fetch(
+            """
+            SELECT id, role, content, metadata, created_at
+            FROM messages
+            WHERE conversation_id = $1
+            ORDER BY created_at ASC
+            """,
+            conversation_id
+        )
+        return {**dict(conv), "messages": [dict(m) for m in messages]}
+
+
+async def log_admin_action(
+    admin_user_id: str,
+    action: str,
+    target_user_id: str = None,
+    details: dict = None
+) -> dict:
+    """Record a privileged action in the admin audit log.
+
+    Args:
+        admin_user_id: The administrator performing the action.
+        action: Short action identifier (e.g. ``"adjust_credits"``).
+        target_user_id: Optional user the action was performed on.
+        details: Optional action-specific payload.
+
+    Returns:
+        A dict of the newly created audit row.
+    """
+    async with get_connection() as conn:
+        row = await conn.fetchrow(
+            """
+            INSERT INTO admin_audit_log (admin_user_id, action, target_user_id, details)
+            VALUES ($1, $2, $3, $4)
+            RETURNING id, admin_user_id, action, target_user_id, details, created_at
+            """,
+            admin_user_id, action, target_user_id, details or {}
+        )
+        return dict(row)
+
+
+async def admin_list_audit_log(limit: int = 50, offset: int = 0) -> list[dict]:
+    """Browse the admin audit log with admin/target emails, newest first."""
+    async with get_connection() as conn:
+        rows = await conn.fetch(
+            """
+            SELECT a.id, a.admin_user_id, admin_u.email AS admin_email,
+                   a.action, a.target_user_id, target_u.email AS target_email,
+                   a.details, a.created_at
+            FROM admin_audit_log a
+            JOIN users admin_u ON admin_u.id = a.admin_user_id
+            LEFT JOIN users target_u ON target_u.id = a.target_user_id
+            ORDER BY a.created_at DESC
+            LIMIT $1 OFFSET $2
+            """,
+            limit, offset
+        )
+        return [dict(row) for row in rows]
+
+
+# ---------------------------------------------------------------------------
+# Sponsorships (tzedakah dedications)
+# ---------------------------------------------------------------------------
+
+
+async def create_sponsorship(
+    user_id: str,
+    stripe_payment_intent_id: str,
+    amount_cents: int,
+    dedication: str,
+    dedication_type: str,
+    parsha_name: str,
+    hebrew_year: int
+) -> dict:
+    """Insert a new sponsorship record with ``status='pending'``.
+
+    Called when the Stripe PaymentIntent is created, before payment is
+    confirmed. Transitions to ``completed`` or ``failed`` via the webhook.
+
+    Args:
+        user_id: The sponsoring user's WorkOS ID.
+        stripe_payment_intent_id: The Stripe PaymentIntent ID (unique).
+        amount_cents: Sponsorship amount in US cents.
+        dedication: The public dedication text.
+        dedication_type: One of memory/honor/refuah/gratitude/general.
+        parsha_name: The sponsored week's parsha.
+        hebrew_year: The Hebrew calendar year.
+
+    Returns:
+        A dict of the newly created sponsorship row.
+    """
+    async with get_connection() as conn:
+        row = await conn.fetchrow(
+            """
+            INSERT INTO sponsorships (user_id, stripe_payment_intent_id, amount_cents,
+                                      dedication, dedication_type, parsha_name, hebrew_year)
+            VALUES ($1, $2, $3, $4, $5, $6, $7)
+            RETURNING id, user_id, stripe_payment_intent_id, amount_cents, dedication,
+                      dedication_type, parsha_name, hebrew_year, status, created_at
+            """,
+            user_id, stripe_payment_intent_id, amount_cents,
+            dedication, dedication_type, parsha_name, hebrew_year
+        )
+        return dict(row)
+
+
+async def complete_sponsorship(stripe_payment_intent_id: str) -> Optional[dict]:
+    """Mark a sponsorship as completed (idempotent, safe for webhook retries).
+
+    Args:
+        stripe_payment_intent_id: The Stripe PaymentIntent ID.
+
+    Returns:
+        A dict of the sponsorship row, or ``None`` if not found.
+    """
+    async with get_connection() as conn:
+        row = await conn.fetchrow(
+            """
+            UPDATE sponsorships
+            SET status = 'completed',
+                completed_at = COALESCE(completed_at, NOW())
+            WHERE stripe_payment_intent_id = $1
+            RETURNING id, user_id, stripe_payment_intent_id, amount_cents, dedication,
+                      dedication_type, parsha_name, hebrew_year, status, created_at, completed_at
+            """,
+            stripe_payment_intent_id
+        )
+        return dict(row) if row else None
+
+
+async def fail_sponsorship(stripe_payment_intent_id: str) -> Optional[dict]:
+    """Transition a sponsorship to ``failed`` status (unless already completed)."""
+    async with get_connection() as conn:
+        row = await conn.fetchrow(
+            """
+            UPDATE sponsorships
+            SET status = 'failed'
+            WHERE stripe_payment_intent_id = $1 AND status = 'pending'
+            RETURNING id, user_id, stripe_payment_intent_id, status
+            """,
+            stripe_payment_intent_id
+        )
+        return dict(row) if row else None
+
+
+async def list_parsha_sponsors(parsha_name: str, hebrew_year: int) -> list[dict]:
+    """List completed dedications for a parsha week (public display).
+
+    Args:
+        parsha_name: English transliterated parsha name.
+        hebrew_year: The Hebrew calendar year.
+
+    Returns:
+        A list of dicts with ``dedication`` and ``dedication_type``,
+        oldest first (first sponsor shown first).
+    """
+    async with get_connection() as conn:
+        rows = await conn.fetch(
+            """
+            SELECT dedication, dedication_type
+            FROM sponsorships
+            WHERE parsha_name = $1 AND hebrew_year = $2 AND status = 'completed'
+            ORDER BY completed_at ASC
+            LIMIT 20
+            """,
+            parsha_name, hebrew_year
+        )
+        return [dict(row) for row in rows]
+
+
+async def admin_list_sponsorships(status: str = None, limit: int = 50, offset: int = 0) -> list[dict]:
+    """List sponsorships across all users with sponsor emails, newest first."""
+    async with get_connection() as conn:
+        rows = await conn.fetch(
+            """
+            SELECT s.id, s.user_id, u.email AS user_email, s.stripe_payment_intent_id,
+                   s.amount_cents, s.dedication, s.dedication_type, s.parsha_name,
+                   s.hebrew_year, s.status, s.created_at, s.completed_at
+            FROM sponsorships s
+            JOIN users u ON u.id = s.user_id
+            WHERE $3::text IS NULL OR s.status = $3
+            ORDER BY s.created_at DESC
+            LIMIT $1 OFFSET $2
+            """,
+            limit, offset, status
+        )
+        return [dict(row) for row in rows]
