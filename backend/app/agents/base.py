@@ -21,6 +21,7 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any, Optional, AsyncGenerator
 from openai import OpenAI
+from ..config import DEFAULT_LLM_MODEL
 
 
 # ---------------------------------------------------------------------------
@@ -249,7 +250,7 @@ class BaseAgent(ABC):
     per-agent metrics on the shared context.
     """
 
-    def __init__(self, client: OpenAI, model: str = "anthropic/claude-sonnet-5"):
+    def __init__(self, client: OpenAI, model: str = DEFAULT_LLM_MODEL):
         self.client = client
         self.model = model
         self.name = self.__class__.__name__

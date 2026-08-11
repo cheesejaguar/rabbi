@@ -27,6 +27,7 @@ import json
 import logging
 import re
 from typing import Optional
+from ..config import DEFAULT_LLM_MODEL
 from .base import (
     BaseAgent,
     AgentContext,
@@ -196,7 +197,7 @@ class HalachicReasoningAgent(BaseAgent):
       - **Curiosity mode**: engage intellectually while remaining warm.
     """
 
-    def __init__(self, client, model: str = "anthropic/claude-sonnet-5",
+    def __init__(self, client, model: str = DEFAULT_LLM_MODEL,
                  retriever: Optional[TextRetriever] = None):
         super().__init__(client, model)
         self.retriever = retriever
