@@ -24,6 +24,11 @@ from pydantic import field_validator
 
 logger = logging.getLogger(__name__)
 
+# Single source of truth for the default LLM model identifier.
+# Agents and the orchestrator import this constant so the default is not
+# hardcoded in multiple places. Override at runtime via the LLM_MODEL env var.
+DEFAULT_LLM_MODEL = "anthropic/claude-sonnet-5"
+
 
 class Settings(BaseSettings):
     """Application settings loaded from environment variables.
@@ -72,7 +77,7 @@ class Settings(BaseSettings):
     # -------------------------------------------------------------------
     # Model identifier in "<provider>/<model>" format, compatible with
     # both Vercel AI Gateway and OpenRouter.
-    llm_model: str = "anthropic/claude-sonnet-5"
+    llm_model: str = DEFAULT_LLM_MODEL
 
     # -------------------------------------------------------------------
     # TTS Configuration (ElevenLabs)

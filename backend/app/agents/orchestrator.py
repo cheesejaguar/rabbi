@@ -18,6 +18,7 @@ import logging
 from openai import OpenAI
 from typing import Optional
 from .base import AgentContext, LLMMetrics
+from ..config import DEFAULT_LLM_MODEL
 from .pastoral import PastoralContextAgent
 from .halachic import HalachicReasoningAgent
 from .moral import MoralEthicalAgent
@@ -50,7 +51,7 @@ class RabbiOrchestrator:
         self,
         api_key: Optional[str] = None,
         base_url: str = "https://openrouter.ai/api/v1",
-        model: str = "anthropic/claude-sonnet-5",
+        model: str = DEFAULT_LLM_MODEL,
     ):
         """Initialise the orchestrator and instantiate all pipeline agents.
 
