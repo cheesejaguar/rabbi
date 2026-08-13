@@ -291,6 +291,8 @@ class AuthMiddleware(BaseHTTPMiddleware):
     # Paths that don't require authentication (exact match)
     PUBLIC_PATHS = {
         "/",  # Public landing page for visitors / app for signed-in users
+        "/privacy",
+        "/privacy/",
         "/robots.txt",
         "/sitemap.xml",
         "/auth/login",
@@ -1313,6 +1315,11 @@ if os.path.exists(frontend_path):
     # Mount the frontend directory at /static for CSS, JS, and asset files
     app.mount("/static", StaticFiles(directory=frontend_path), name="static")
 
+    @app.get("/privacy", include_in_schema=False)
+    async def serve_privacy_policy():
+        """Serve the public, crawlable privacy policy."""
+        return FileResponse(os.path.join(frontend_path, "privacy.html"))
+
     @app.get("/")
     async def serve_frontend(request: Request):
         """Serve the app to signed-in users, the public landing page to visitors.
@@ -1344,11 +1351,12 @@ if os.path.exists(frontend_path):
 
     @app.get("/sitemap.xml", include_in_schema=False)
     async def sitemap_xml():
-        """Serve a minimal sitemap for the public landing page."""
+        """Serve a minimal sitemap for public, crawlable pages."""
         content = (
             '<?xml version="1.0" encoding="UTF-8"?>\n'
             '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n'
             f"  <url><loc>{settings.public_base_url}/</loc><changefreq>weekly</changefreq></url>\n"
+            f"  <url><loc>{settings.public_base_url}/privacy</loc><changefreq>yearly</changefreq></url>\n"
             "</urlset>\n"
         )
         return Response(content=content, media_type="application/xml")

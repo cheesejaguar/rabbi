@@ -477,6 +477,9 @@ async def logged_out():
                     <span>Sign in</span>
                     <span class="ph-icon ph-arrow-right" aria-hidden="true"></span>
                 </a>
+                <div class="auth-meta">
+                    <a href="/privacy">Privacy policy</a>
+                </div>
             </section>
         </main>
     </body>

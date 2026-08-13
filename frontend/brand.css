@@ -196,6 +196,7 @@ textarea,
 }
 
 .ph-arrow-right { --ph-url: url("/static/assets/icons/arrow-right.svg"); }
+.ph-arrow-up-right { --ph-url: url("/static/assets/icons/arrow-up-right.svg"); }
 .ph-book-open { --ph-url: url("/static/assets/icons/book-open-text.svg"); }
 .ph-books { --ph-url: url("/static/assets/icons/books.svg"); }
 .ph-chat { --ph-url: url("/static/assets/icons/chat-centered-dots.svg"); }

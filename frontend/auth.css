@@ -76,6 +76,22 @@ body {
   transform: translateY(-1px);
 }
 
+.auth-meta {
+  display: flex;
+  justify-content: center;
+  padding-top: 22px;
+}
+
+.auth-meta a {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  color: var(--brand-muted);
+  font-size: 0.82rem;
+  font-weight: 650;
+  text-underline-offset: 0.2em;
+}
+
 .auth-panel-compact {
   text-align: center;
 }

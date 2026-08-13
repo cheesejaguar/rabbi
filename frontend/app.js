@@ -406,6 +406,10 @@ function updateUserUI() {
             <span class="ph-icon ph-gear" aria-hidden="true"></span>
             Settings
         </button>
+        <a href="/privacy" class="dropdown-item" role="menuitem">
+            <span class="ph-icon ph-shield" aria-hidden="true"></span>
+            Privacy
+        </a>
         ${currentUser.is_admin ? `
         <a href="/admin" class="dropdown-item" id="adminLink" role="menuitem">
             <span class="ph-icon ph-shield" aria-hidden="true"></span>
@@ -449,6 +453,10 @@ function showLoggedOutState() {
         <a href="/auth/login" class="dropdown-item" role="menuitem">
             <span class="ph-icon ph-arrow-right" aria-hidden="true"></span>
             Sign in
+        </a>
+        <a href="/privacy" class="dropdown-item" role="menuitem">
+            <span class="ph-icon ph-shield" aria-hidden="true"></span>
+            Privacy
         </a>
     `;
 }

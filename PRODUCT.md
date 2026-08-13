@@ -51,7 +51,7 @@ The approved identity is Braided Light. Its mark is a reduced lowercase `r` form
 - The four-stage reasoning mechanism is documented in `README.md` and implemented in `backend/app/agents/`.
 - Current pricing and sponsorship tiers are defined in `backend/app/payments.py`.
 - Public-page and admin authorization behavior is covered by the existing backend test suite.
-- The product has no supplied testimonials, public usage figures, legal pages, independent accuracy study, or substantiated commercial performance claims. Future work must not fabricate them.
+- The product has no supplied testimonials, public usage figures, terms of service, independent accuracy study, or substantiated commercial performance claims. The privacy policy is grounded in the implemented data flows and must remain current as those flows change.
 
 ## Product Principles
 

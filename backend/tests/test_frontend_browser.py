@@ -24,7 +24,10 @@ class FrontendHandler(SimpleHTTPRequestHandler):
     """Serve frontend files while preserving the production /static prefix."""
 
     def do_GET(self):
-        if self.path == "/static":
+        request_path = urlparse(self.path).path
+        if request_path in {"/privacy", "/privacy/"}:
+            self.path = "/privacy.html"
+        elif self.path == "/static":
             self.path = "/"
         elif self.path.startswith("/static/"):
             self.path = self.path[len("/static"):]
@@ -203,6 +206,38 @@ def test_landing_demo_theme_keyboard_and_mobile_overflow(page, frontend_url):
     assert page.locator(".guided-demo").is_visible()
 
 
+def test_privacy_policy_reading_surface_theme_and_mobile_overflow(page, frontend_url):
+    page_errors = []
+    console_errors = []
+    page.on("pageerror", lambda error: page_errors.append(str(error)))
+    page.on(
+        "console",
+        lambda message: console_errors.append(message.text) if message.type == "error" else None,
+    )
+
+    open_frontend(page, frontend_url, "privacy.html", {"width": 1440, "height": 1000})
+
+    assert page.get_by_role("heading", name="A clear account of your information.").is_visible()
+    assert page.locator("time[datetime='2026-08-13']").inner_text() == "August 13, 2026"
+    assert page.get_by_text("Share thoughtfully.", exact=True).is_visible()
+    assert page.locator("link[rel='canonical']").get_attribute("href") == "https://rebbe.dev/privacy"
+
+    page.get_by_role("link", name="AI and text-to-speech").click()
+    assert page.locator("#ai").is_visible()
+    assert page.url.endswith("#ai")
+
+    theme = page.locator("[data-theme-cycle]")
+    theme.click()
+    theme.click()
+    assert page.locator("html").get_attribute("data-theme-preference") == "dark"
+
+    page.set_viewport_size({"width": 390, "height": 844})
+    assert page.evaluate("document.documentElement.scrollWidth <= document.documentElement.clientWidth")
+    assert page.get_by_role("heading", name="A clear account of your information.").is_visible()
+    assert page_errors == []
+    assert console_errors == []
+
+
 def test_signed_in_shell_has_labeled_operate_surfaces(page, frontend_url):
     open_frontend(page, frontend_url, "index.html", {"width": 390, "height": 844})
 
@@ -283,11 +318,13 @@ def test_settings_purchase_and_sponsorship_modal_focus_and_escape(page, frontend
     wait_for_signed_in_app(page)
 
     page.locator("#userProfile").click()
+    assert page.locator("#sidebarDropdown a[href='/privacy']").is_visible()
     page.locator("#settingsBtn").click()
     page.locator("#settingsScreen:not(.hidden)").wait_for()
     assert page.get_by_role("heading", name="Settings").is_visible()
     assert page.locator("label[for='denominationSelect']").is_visible()
     assert page.locator("label[for='bioInput']").is_visible()
+    assert page.locator(".settings-policy-link").get_attribute("href") == "/privacy"
 
     buy_button = page.locator("#buyCreditsBtn")
     buy_button.click()

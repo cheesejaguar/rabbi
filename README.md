@@ -26,6 +26,7 @@ rebbe.dev is a conversational companion for questions of Jewish thought, practic
 - Token-by-token response streaming
 - Credit-based usage with Stripe payments
 - Tiered credit packages ($1 for 10 credits, $2 for 25 credits)
+- Public, product-specific privacy policy at `/privacy`
 
 ## Quick Start
 
