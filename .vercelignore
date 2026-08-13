@@ -1,0 +1,12 @@
+# Repository-only design and verification artifacts
+.github/
+.impeccable/
+backend/tests/
+output/
+DESIGN.md
+PRODUCT.md
+
+# Image-generation masters; production AVIF/JPEG/social assets stay deployed
+frontend/assets/images/originals/
+frontend/assets/images/braid-macro.png
+frontend/assets/images/source-sheets.png
