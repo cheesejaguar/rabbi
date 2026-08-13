@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-labelledby="title">
+  <title id="title">rebbe.dev braided r</title>
+  <g fill="none" stroke-linecap="round" stroke-linejoin="round" stroke-width="4.5">
+    <path d="M14 56V13c0-3 2-5 5-5 7 0 13 4 17 10 4 6 7 10 14 11" stroke="#214784"/>
+    <path d="M22 56V17c0-5 3-8 8-8 9 0 16 7 18 17" stroke="#315DA8"/>
+    <path d="M30 56V21c0-7 5-12 12-12 4 0 8 2 10 5" stroke="#6F91CA"/>
+    <path d="M38 56V27c0-6 5-11 11-11 2 0 4 .4 6 1.4" stroke="#AFC3E1"/>
+  </g>
+  <path d="M26 16c5 2 8 6 11 10" fill="none" stroke="#FAFCFE" stroke-linecap="round" stroke-width="5.8"/>
+  <path d="M26 16c5 2 8 6 11 10" fill="none" stroke="#315DA8" stroke-linecap="round" stroke-width="4.5"/>
+</svg>

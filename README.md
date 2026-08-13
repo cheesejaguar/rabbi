@@ -1,6 +1,6 @@
 # rebbe.dev
 
-A multi-agent AI system for exploring Jewish thought, practice, and meaning from a progressive Modern Orthodox perspective.
+A source-aware Jewish guidance companion for exploring thought, practice, law, ethics, and spirituality across levels of knowledge and observance.
 
 [![Tests](https://github.com/cheesejaguar/rabbi/actions/workflows/tests.yml/badge.svg)](https://github.com/cheesejaguar/rabbi/actions/workflows/tests.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
@@ -8,7 +8,7 @@ A multi-agent AI system for exploring Jewish thought, practice, and meaning from
 
 ## Overview
 
-rebbe.dev is a chatbot that provides guidance on questions of Jewish law, ethics, and spirituality. It uses a multi-agent architecture where specialized agents handle different aspects of rabbinic reasoning:
+rebbe.dev is a conversational companion for questions of Jewish thought, practice, law, ethics, and spirituality. It uses a multi-agent architecture where specialized agents handle different parts of a response:
 
 - **Pastoral Context Agent** - Determines *how* to respond based on emotional context
 - **Halachic Reasoning Agent** - Provides the landscape of Jewish legal opinions
@@ -21,7 +21,7 @@ rebbe.dev is a chatbot that provides guidance on questions of Jewish law, ethics
 
 - Real-time streaming responses
 - WorkOS SSO authentication
-- Mobile-friendly dark theme UI
+- Responsive light and dark themes with a persisted system preference
 - Multi-agent reasoning pipeline
 - Token-by-token response streaming
 - Credit-based usage with Stripe payments
@@ -149,9 +149,13 @@ rabbi/
 │   │   └── models.py        # Pydantic models
 │   └── tests/               # Test suite
 ├── frontend/
-│   ├── index.html           # Main HTML
-│   ├── app.js               # Frontend JavaScript
-│   └── styles.css           # Styles
+│   ├── landing.html         # Public Source Loom landing page
+│   ├── index.html           # Signed-in conversation workspace
+│   ├── admin.html           # Role-protected operations workspace
+│   ├── brand.css            # Shared Braided Light design tokens
+│   ├── theme.js             # System/light/dark preference behavior
+│   ├── app.js               # Conversation application behavior
+│   └── assets/              # Local fonts, icons, identity, and imagery
 ├── pyproject.toml           # Project dependencies
 ├── uv.lock                  # Locked dependencies
 └── Dockerfile

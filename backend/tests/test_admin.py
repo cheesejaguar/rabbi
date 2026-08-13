@@ -110,6 +110,14 @@ class TestRequireAdmin:
             response = admin_client.get("/admin")
         assert response.status_code == 403
 
+    def test_admin_page_authorized_and_noindex(self, admin_client):
+        main_patch, admin_patch = logged_in_as(ADMIN_USER)
+        with main_patch, admin_patch, admin_settings():
+            response = admin_client.get("/admin")
+        assert response.status_code == 200
+        assert 'name="robots" content="noindex, nofollow"' in response.text
+        assert 'id="tabs"' in response.text
+
 
 class TestAdminEndpoints:
     """Test admin endpoint behavior with an authenticated admin."""

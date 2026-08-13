@@ -4,420 +4,148 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="robots" content="noindex, nofollow">
-    <title>rebbe.dev — Admin</title>
+    <meta name="color-scheme" content="light dark">
+    <title>rebbe.dev | Admin</title>
     <link rel="icon" type="image/x-icon" href="/static/favicon.ico">
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-    <style>
-        * { box-sizing: border-box; margin: 0; padding: 0; }
-        body {
-            font-family: 'Inter', -apple-system, sans-serif;
-            background: #1a1a1a;
-            color: #e8e8e8;
-            min-height: 100vh;
-        }
-        a { color: #d4a853; text-decoration: none; }
-        header {
-            display: flex; align-items: center; justify-content: space-between;
-            padding: 16px 24px; border-bottom: 1px solid #2e2e2e;
-        }
-        header h1 { font-size: 1.1rem; font-weight: 600; }
-        header h1 span { color: #d4a853; }
-        nav { display: flex; gap: 4px; flex-wrap: wrap; padding: 12px 24px; border-bottom: 1px solid #2e2e2e; }
-        nav button {
-            background: none; border: none; color: #a0a0a0; font: inherit;
-            padding: 8px 14px; border-radius: 8px; cursor: pointer; font-size: 0.9rem;
-        }
-        nav button:hover { color: #e8e8e8; background: #242424; }
-        nav button.active { color: #1a1a1a; background: #d4a853; font-weight: 600; }
-        main { padding: 24px; max-width: 1200px; margin: 0 auto; }
-        .cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 12px; margin-bottom: 24px; }
-        .card {
-            background: #222; border: 1px solid #2e2e2e; border-radius: 12px; padding: 16px;
-        }
-        .card .label { color: #a0a0a0; font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.04em; }
-        .card .value { font-size: 1.6rem; font-weight: 700; margin-top: 6px; }
-        .card .value.gold { color: #d4a853; }
-        table { width: 100%; border-collapse: collapse; font-size: 0.88rem; }
-        th, td { text-align: left; padding: 10px 12px; border-bottom: 1px solid #2a2a2a; vertical-align: top; }
-        th { color: #a0a0a0; font-weight: 500; font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.04em; }
-        tr:hover td { background: #212121; }
-        .muted { color: #808080; font-size: 0.82rem; }
-        .pill { display: inline-block; padding: 2px 10px; border-radius: 999px; font-size: 0.75rem; font-weight: 600; }
-        .pill.green { background: #1d3324; color: #7fd693; }
-        .pill.red { background: #38201f; color: #ef9a90; }
-        .pill.gold { background: #3a2f18; color: #d4a853; }
-        .pill.gray { background: #2a2a2a; color: #a0a0a0; }
-        .toolbar { display: flex; gap: 10px; align-items: center; margin-bottom: 16px; flex-wrap: wrap; }
-        input[type="text"], select {
-            background: #242424; border: 1px solid #333; color: #e8e8e8;
-            border-radius: 8px; padding: 8px 12px; font: inherit; font-size: 0.9rem;
-        }
-        button.action {
-            background: #2a2a2a; border: 1px solid #3a3a3a; color: #e8e8e8;
-            border-radius: 8px; padding: 6px 12px; font: inherit; font-size: 0.82rem; cursor: pointer;
-        }
-        button.action:hover { background: #333; }
-        button.action.primary { background: #d4a853; border-color: #d4a853; color: #1a1a1a; font-weight: 600; }
-        button.action.primary:hover { background: #e4bc6a; }
-        .section-title { font-size: 1rem; font-weight: 600; margin: 20px 0 12px; }
-        .empty { color: #808080; padding: 32px; text-align: center; }
-        .error-banner { background: #38201f; color: #ef9a90; padding: 12px 16px; border-radius: 10px; margin-bottom: 16px; display: none; }
-        pre { white-space: pre-wrap; word-break: break-word; font-size: 0.78rem; color: #b8b8b8; background: #202020; padding: 8px; border-radius: 6px; max-height: 160px; overflow: auto; }
-        dialog {
-            background: #232323; color: #e8e8e8; border: 1px solid #333; border-radius: 14px;
-            padding: 24px; max-width: 720px; width: 92%;
-        }
-        dialog::backdrop { background: rgba(0,0,0,0.6); }
-        .msg { border-left: 3px solid #3a3a3a; padding: 8px 12px; margin: 10px 0; }
-        .msg.user { border-color: #d4a853; }
-        .msg .role { font-size: 0.72rem; text-transform: uppercase; color: #a0a0a0; }
-        .pager { display: flex; gap: 8px; align-items: center; margin-top: 14px; }
-    </style>
+    <link rel="stylesheet" href="/static/brand.css">
+    <link rel="stylesheet" href="/static/admin.css">
+    <script src="/static/theme.js"></script>
+    <script src="/static/admin.js" defer></script>
 </head>
 <body>
-    <header>
-        <h1><span>rebbe.dev</span> admin</h1>
-        <div><a href="/">← Back to chat</a></div>
-    </header>
-    <nav id="tabs">
-        <button data-tab="overview" class="active">Overview</button>
-        <button data-tab="users">Users</button>
-        <button data-tab="flagged">Crisis queue</button>
-        <button data-tab="feedback">Feedback</button>
-        <button data-tab="errors">Errors</button>
-        <button data-tab="purchases">Purchases</button>
-        <button data-tab="sponsorships">Sponsorships</button>
-        <button data-tab="analytics">Analytics</button>
-        <button data-tab="audit">Audit log</button>
-    </nav>
-    <main>
-        <div class="error-banner" id="errorBanner"></div>
-        <div id="content"><div class="empty">Loading…</div></div>
-    </main>
+    <a class="skip-link" href="#adminMain">Skip to admin content</a>
 
-    <dialog id="convoDialog">
-        <div id="convoContent"></div>
-        <div style="margin-top:16px; text-align:right;">
-            <button class="action" onclick="document.getElementById('convoDialog').close()">Close</button>
+    <header class="admin-header">
+        <div class="admin-header-inner">
+            <a class="brand-lockup" href="/" aria-label="rebbe.dev chat">
+                <img src="/static/assets/brand/braided-r.svg" alt="" width="34" height="34">
+                <span>rebbe<span class="brand-wordmark-dot">.dev</span></span>
+            </a>
+            <div class="admin-context" aria-label="Current workspace">
+                <span class="context-name">Administration</span>
+            </div>
+            <div class="header-actions">
+                <button class="theme-cycle" type="button" data-theme-cycle>
+                    <span class="ph-icon ph-sun" aria-hidden="true"></span>
+                    <span class="theme-label" data-theme-label>system</span>
+                </button>
+                <a class="back-link" href="/">
+                    <span class="ph-icon ph-arrow-right back-link-icon" aria-hidden="true"></span>
+                    <span>Back to chat</span>
+                </a>
+            </div>
+        </div>
+    </header>
+
+    <div class="admin-shell">
+        <aside class="admin-rail" aria-label="Admin navigation">
+            <div class="rail-heading">
+                <p class="rail-note">Review product health and sensitive queues.</p>
+            </div>
+            <nav id="tabs" class="admin-tabs" role="tablist" aria-label="Admin views" aria-orientation="vertical">
+                <button id="tab-overview" type="button" role="tab" aria-selected="true" aria-controls="content" tabindex="0" data-tab="overview" class="active">
+                    <span class="tab-index numeric">01</span><span>Overview</span>
+                </button>
+                <button id="tab-users" type="button" role="tab" aria-selected="false" aria-controls="content" tabindex="-1" data-tab="users">
+                    <span class="tab-index numeric">02</span><span>Users</span>
+                </button>
+                <button id="tab-flagged" type="button" role="tab" aria-selected="false" aria-controls="content" tabindex="-1" data-tab="flagged">
+                    <span class="tab-index numeric">03</span><span>Crisis queue</span>
+                </button>
+                <button id="tab-feedback" type="button" role="tab" aria-selected="false" aria-controls="content" tabindex="-1" data-tab="feedback">
+                    <span class="tab-index numeric">04</span><span>Feedback</span>
+                </button>
+                <button id="tab-errors" type="button" role="tab" aria-selected="false" aria-controls="content" tabindex="-1" data-tab="errors">
+                    <span class="tab-index numeric">05</span><span>Errors</span>
+                </button>
+                <button id="tab-purchases" type="button" role="tab" aria-selected="false" aria-controls="content" tabindex="-1" data-tab="purchases">
+                    <span class="tab-index numeric">06</span><span>Purchases</span>
+                </button>
+                <button id="tab-sponsorships" type="button" role="tab" aria-selected="false" aria-controls="content" tabindex="-1" data-tab="sponsorships">
+                    <span class="tab-index numeric">07</span><span>Sponsorships</span>
+                </button>
+                <button id="tab-analytics" type="button" role="tab" aria-selected="false" aria-controls="content" tabindex="-1" data-tab="analytics">
+                    <span class="tab-index numeric">08</span><span>Analytics</span>
+                </button>
+                <button id="tab-audit" type="button" role="tab" aria-selected="false" aria-controls="content" tabindex="-1" data-tab="audit">
+                    <span class="tab-index numeric">09</span><span>Audit log</span>
+                </button>
+            </nav>
+            <div class="rail-footer">
+                <span class="rail-status-dot" aria-hidden="true"></span>
+                <span>Role enforced by server</span>
+            </div>
+        </aside>
+
+        <main id="adminMain" class="admin-main" tabindex="-1">
+            <div class="mobile-view-control">
+                <label for="mobileViewSelect">Admin view</label>
+                <select id="mobileViewSelect">
+                    <option value="overview">Overview</option>
+                    <option value="users">Users</option>
+                    <option value="flagged">Crisis queue</option>
+                    <option value="feedback">Feedback</option>
+                    <option value="errors">Errors</option>
+                    <option value="purchases">Purchases</option>
+                    <option value="sponsorships">Sponsorships</option>
+                    <option value="analytics">Analytics</option>
+                    <option value="audit">Audit log</option>
+                </select>
+            </div>
+
+            <div class="view-heading">
+                <div>
+                    <h1 id="viewTitle">Overview</h1>
+                </div>
+                <p id="viewDescription" class="view-description">Usage, revenue, quality, and estimated model costs.</p>
+            </div>
+
+            <div class="error-banner" id="errorBanner" role="alert" hidden></div>
+            <div id="adminStatus" class="sr-only" role="status" aria-live="polite" aria-atomic="true"></div>
+            <section id="content" role="tabpanel" aria-labelledby="tab-overview" aria-busy="true">
+                <div class="loading-state" role="status">
+                    <span class="loading-mark" aria-hidden="true"></span>
+                    <span>Loading overview</span>
+                </div>
+            </section>
+        </main>
+    </div>
+
+    <dialog id="convoDialog" class="admin-dialog" aria-labelledby="convoDialogTitle">
+        <div class="dialog-frame">
+            <div class="dialog-header">
+                <div>
+                    <h2 id="convoDialogTitle" dir="auto">Conversation</h2>
+                </div>
+                <button class="icon-button" type="button" data-dialog-close="convoDialog" aria-label="Close conversation dialog">
+                    <span class="ph-icon ph-x" aria-hidden="true"></span>
+                </button>
+            </div>
+            <div id="convoContent" class="dialog-content"></div>
+            <div class="dialog-actions">
+                <button class="button secondary" type="button" data-dialog-close="convoDialog">Close</button>
+            </div>
         </div>
     </dialog>
 
-    <script>
-    const content = document.getElementById('content');
-    const banner = document.getElementById('errorBanner');
-    let currentTab = 'overview';
-
-    function esc(s) {
-        return String(s ?? '').replace(/[&<>"']/g, c => ({
-            '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
-        })[c]);
-    }
-    function fmtDate(s) { return s ? new Date(s).toLocaleString() : '—'; }
-    function fmtCents(c) { return '$' + ((c || 0) / 100).toFixed(2); }
-
-    async function api(path) {
-        const res = await fetch(path, { credentials: 'include' });
-        if (res.status === 401) { window.location.href = '/auth/login'; throw new Error('unauthenticated'); }
-        if (res.status === 403) { showError('You are not an administrator.'); throw new Error('forbidden'); }
-        if (!res.ok) {
-            const body = await res.json().catch(() => ({}));
-            throw new Error(body.detail || ('Request failed: ' + res.status));
-        }
-        return res.json();
-    }
-    async function apiPost(path, body) {
-        const res = await fetch(path, {
-            method: 'POST', credentials: 'include',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(body),
-        });
-        if (!res.ok) {
-            const data = await res.json().catch(() => ({}));
-            throw new Error(data.detail || ('Request failed: ' + res.status));
-        }
-        return res.json();
-    }
-    function showError(msg) { banner.textContent = msg; banner.style.display = 'block'; }
-    function clearError() { banner.style.display = 'none'; }
-
-    // ------------------------------------------------------------------ tabs
-    document.getElementById('tabs').addEventListener('click', (e) => {
-        const btn = e.target.closest('button[data-tab]');
-        if (!btn) return;
-        document.querySelectorAll('#tabs button').forEach(b => b.classList.remove('active'));
-        btn.classList.add('active');
-        currentTab = btn.dataset.tab;
-        render();
-    });
-
-    async function render() {
-        clearError();
-        content.innerHTML = '<div class="empty">Loading…</div>';
-        try {
-            if (currentTab === 'overview') await renderOverview();
-            else if (currentTab === 'users') await renderUsers();
-            else if (currentTab === 'flagged') await renderFlagged();
-            else if (currentTab === 'feedback') await renderFeedback();
-            else if (currentTab === 'errors') await renderErrors();
-            else if (currentTab === 'purchases') await renderPurchases();
-            else if (currentTab === 'sponsorships') await renderSponsorships();
-            else if (currentTab === 'analytics') await renderAnalytics();
-            else if (currentTab === 'audit') await renderAudit();
-        } catch (err) {
-            if (err.message !== 'forbidden' && err.message !== 'unauthenticated') showError(err.message);
-            content.innerHTML = '<div class="empty">Could not load this view.</div>';
-        }
-    }
-
-    // -------------------------------------------------------------- overview
-    async function renderOverview() {
-        const [{ overview: o }, { costs }] = await Promise.all([
-            api('/api/admin/overview'),
-            api('/api/admin/costs?days=30'),
-        ]);
-        const totalCost = costs.reduce((s, r) => s + Number(r.estimated_cost_usd || 0), 0);
-        const cards = [
-            ['Total users', o.total_users], ['New users (7d)', o.new_users_7d],
-            ['Active users (7d)', o.active_users_7d], ['Conversations', o.total_conversations],
-            ['Messages', o.total_messages], ['Messages (24h)', o.messages_24h],
-            ['Credits outstanding', o.credits_outstanding],
-            ['Revenue (total)', fmtCents(o.revenue_cents_total), 'gold'],
-            ['Revenue (30d)', fmtCents(o.revenue_cents_30d), 'gold'],
-            ['Sponsorships', fmtCents(o.sponsorship_revenue_cents_total), 'gold'],
-            ['LLM spend (30d est.)', '$' + totalCost.toFixed(2)],
-            ['Errors (24h)', o.errors_24h, o.errors_24h > 0 ? 'red' : ''],
-            ['Errors (7d)', o.errors_7d],
-            ['👍 (7d)', o.thumbs_up_7d], ['👎 (7d)', o.thumbs_down_7d, o.thumbs_down_7d > 0 ? 'red' : ''],
-        ];
-        content.innerHTML = '<div class="cards">' + cards.map(([label, value, cls]) =>
-            `<div class="card"><div class="label">${esc(label)}</div><div class="value ${cls || ''}">${esc(value)}</div></div>`
-        ).join('') + '</div>' +
-        '<div class="section-title">Estimated LLM cost per day (30d)</div>' +
-        (costs.length ? '<table><tr><th>Day</th><th>Messages</th><th>Input tokens</th><th>Output tokens</th><th>Est. cost</th></tr>' +
-            costs.map(r => `<tr><td>${esc((r.day || '').slice(0, 10))}</td><td>${esc(r.messages)}</td><td>${esc(r.input_tokens)}</td><td>${esc(r.output_tokens)}</td><td>$${Number(r.estimated_cost_usd || 0).toFixed(4)}</td></tr>`).join('') +
-            '</table>' : '<div class="empty">No cost data yet.</div>');
-    }
-
-    // ----------------------------------------------------------------- users
-    let userSearch = '', userOffset = 0;
-    async function renderUsers() {
-        const params = new URLSearchParams({ limit: 50, offset: userOffset });
-        if (userSearch) params.set('search', userSearch);
-        const { users, total } = await api('/api/admin/users?' + params);
-        content.innerHTML = `
-            <div class="toolbar">
-                <input type="text" id="userSearchInput" placeholder="Search email or name…" value="${esc(userSearch)}">
-                <button class="action primary" id="userSearchBtn">Search</button>
-                <span class="muted">${total} user${total === 1 ? '' : 's'}</span>
-            </div>` +
-            (users.length ? '<table><tr><th>Email</th><th>Name</th><th>Credits</th><th>Convos</th><th>Msgs</th><th>Spent</th><th>Joined</th><th>Role</th><th>Actions</th></tr>' +
-            users.map(u => `<tr>
-                <td>${esc(u.email)}</td>
-                <td>${esc([u.first_name, u.last_name].filter(Boolean).join(' ')) || '—'}</td>
-                <td>${esc(u.credits)}</td>
-                <td>${esc(u.conversation_count)}</td>
-                <td>${esc(u.message_count)}</td>
-                <td>${fmtCents(u.total_spent_cents)}</td>
-                <td class="muted">${fmtDate(u.created_at)}</td>
-                <td>${u.is_admin ? '<span class="pill gold">admin</span>' : '<span class="pill gray">user</span>'}</td>
-                <td>
-                    <button class="action" data-act="credits" data-id="${esc(u.id)}" data-email="${esc(u.email)}">Credits</button>
-                    <button class="action" data-act="convos" data-id="${esc(u.id)}" data-email="${esc(u.email)}">Convos</button>
-                    <button class="action" data-act="role" data-id="${esc(u.id)}" data-admin="${u.is_admin ? 1 : 0}" data-email="${esc(u.email)}">${u.is_admin ? 'Revoke admin' : 'Make admin'}</button>
-                </td>
-            </tr>`).join('') + '</table>' : '<div class="empty">No users found.</div>') +
-            pager(userOffset, 50, total, (o) => { userOffset = o; renderUsers(); });
-        document.getElementById('userSearchBtn').onclick = () => {
-            userSearch = document.getElementById('userSearchInput').value.trim();
-            userOffset = 0; renderUsers();
-        };
-        document.getElementById('userSearchInput').addEventListener('keydown', (e) => {
-            if (e.key === 'Enter') document.getElementById('userSearchBtn').click();
-        });
-        content.querySelectorAll('button[data-act]').forEach(btn => btn.onclick = () => handleUserAction(btn));
-    }
-
-    async function handleUserAction(btn) {
-        const { act, id, email } = btn.dataset;
-        try {
-            if (act === 'credits') {
-                const delta = parseInt(prompt(`Adjust credits for ${email}\nEnter a positive number to grant, negative to deduct:`), 10);
-                if (!delta) return;
-                const reason = prompt('Reason (recorded in the audit log):');
-                if (!reason) return;
-                const res = await apiPost(`/api/admin/users/${encodeURIComponent(id)}/credits`, { delta, reason });
-                alert(`New balance for ${email}: ${res.credits}`);
-                renderUsers();
-            } else if (act === 'role') {
-                const makeAdmin = btn.dataset.admin !== '1';
-                if (!confirm(`${makeAdmin ? 'Grant admin to' : 'Revoke admin from'} ${email}?`)) return;
-                await apiPost(`/api/admin/users/${encodeURIComponent(id)}/role`, { is_admin: makeAdmin });
-                renderUsers();
-            } else if (act === 'convos') {
-                const { conversations } = await api(`/api/admin/users/${encodeURIComponent(id)}/conversations`);
-                openDialog(`<h3 style="margin-bottom:12px;">Conversations — ${esc(email)}</h3>` +
-                    (conversations.length ? '<table><tr><th>Title</th><th>Msgs</th><th>Updated</th><th></th></tr>' +
-                    conversations.map(c => `<tr><td>${esc(c.title || '(untitled)')}</td><td>${esc(c.message_count)}</td><td class="muted">${fmtDate(c.updated_at)}</td><td><button class="action" data-convo="${esc(c.id)}">View</button></td></tr>`).join('') +
-                    '</table>' : '<div class="empty">No conversations.</div>'));
-            }
-        } catch (err) { alert(err.message); }
-    }
-
-    function openDialog(html) {
-        const dlg = document.getElementById('convoDialog');
-        document.getElementById('convoContent').innerHTML = html;
-        dlg.showModal();
-        dlg.querySelectorAll('button[data-convo]').forEach(b => b.onclick = () => viewConversation(b.dataset.convo));
-    }
-
-    async function viewConversation(convoId) {
-        try {
-            const c = await api(`/api/admin/conversations/${encodeURIComponent(convoId)}`);
-            openDialog(`<h3 style="margin-bottom:4px;">${esc(c.title || '(untitled)')}</h3>` +
-                `<div class="muted" style="margin-bottom:12px;">${esc(c.user_email)} · ${fmtDate(c.created_at)}</div>` +
-                c.messages.map(m => `<div class="msg ${m.role === 'user' ? 'user' : ''}">
-                    <div class="role">${esc(m.role)}</div>
-                    <div>${esc(m.content)}</div>
-                </div>`).join(''));
-        } catch (err) { alert(err.message); }
-    }
-
-    // --------------------------------------------------------------- flagged
-    async function renderFlagged() {
-        const { flagged } = await api('/api/admin/flagged?limit=100');
-        content.innerHTML = '<div class="section-title">Messages flagged for crisis, vulnerability, or human referral</div>' +
-            (flagged.length ? '<table><tr><th>When</th><th>User</th><th>Flags</th><th>Mode / state</th><th>Excerpt</th><th></th></tr>' +
-            flagged.map(f => {
-                const flags = [];
-                if (f.requires_human_referral) flags.push('<span class="pill red">referral</span>');
-                if (f.vulnerability_detected) flags.push('<span class="pill gold">vulnerable</span>');
-                let crisis = [];
-                try { crisis = typeof f.crisis_indicators === 'string' ? JSON.parse(f.crisis_indicators) : (f.crisis_indicators || []); } catch (e) {}
-                crisis.forEach(ci => flags.push(`<span class="pill red">${esc(ci)}</span>`));
-                return `<tr>
-                    <td class="muted">${fmtDate(f.created_at)}</td>
-                    <td>${esc(f.user_email)}</td>
-                    <td>${flags.join(' ') || '—'}</td>
-                    <td class="muted">${esc(f.pastoral_mode || '—')} / ${esc(f.emotional_state || '—')}</td>
-                    <td class="muted">${esc(f.message_excerpt)}</td>
-                    <td><button class="action" data-convo="${esc(f.conversation_id)}">Review</button></td>
-                </tr>`;
-            }).join('') + '</table>' : '<div class="empty">No flagged messages. 🙏</div>');
-        content.querySelectorAll('button[data-convo]').forEach(b => b.onclick = () => viewConversation(b.dataset.convo));
-    }
-
-    // -------------------------------------------------------------- feedback
-    async function renderFeedback() {
-        const { feedback } = await api('/api/admin/feedback?limit=100');
-        content.innerHTML = '<div class="section-title">Message feedback (review 👎 for quality issues)</div>' +
-            (feedback.length ? '<table><tr><th>When</th><th>Rating</th><th>User</th><th>Message excerpt</th><th></th></tr>' +
-            feedback.map(f => `<tr>
-                <td class="muted">${fmtDate(f.created_at)}</td>
-                <td>${f.feedback_type === 'thumbs_down' ? '<span class="pill red">👎</span>' : '<span class="pill green">👍</span>'}</td>
-                <td>${esc(f.user_email)}</td>
-                <td class="muted">${esc(f.message_excerpt)}</td>
-                <td><button class="action" data-convo="${esc(f.conversation_id)}">Review</button></td>
-            </tr>`).join('') + '</table>' : '<div class="empty">No feedback yet.</div>');
-        content.querySelectorAll('button[data-convo]').forEach(b => b.onclick = () => viewConversation(b.dataset.convo));
-    }
-
-    // ---------------------------------------------------------------- errors
-    async function renderErrors() {
-        const { errors, stats } = await api('/api/admin/errors?limit=50');
-        content.innerHTML = '<div class="section-title">Error counts by day (7d)</div>' +
-            (stats.length ? '<table><tr><th>Day</th><th>Type</th><th>Count</th></tr>' +
-            stats.map(s => `<tr><td>${esc((s.day || '').slice ? String(s.day).slice(0, 10) : s.day)}</td><td>${esc(s.error_type)}</td><td>${esc(s.count)}</td></tr>`).join('') +
-            '</table>' : '<div class="empty">No errors in the window.</div>') +
-            '<div class="section-title">Recent errors</div>' +
-            (errors.length ? errors.map(e => `<div class="card" style="margin-bottom:10px;">
-                <div><span class="pill red">${esc(e.error_type)}</span> <span class="muted">${fmtDate(e.created_at)}${e.user_id ? ' · user ' + esc(e.user_id) : ''}</span></div>
-                <div style="margin:8px 0;">${esc(e.error_message)}</div>
-                ${e.stack_trace ? `<pre>${esc(e.stack_trace)}</pre>` : ''}
-            </div>`).join('') : '<div class="empty">No recorded errors.</div>');
-    }
-
-    // ------------------------------------------------------------- purchases
-    async function renderPurchases() {
-        const { purchases } = await api('/api/admin/purchases?limit=100');
-        content.innerHTML = '<div class="section-title">Purchases (all users)</div>' +
-            (purchases.length ? '<table><tr><th>When</th><th>User</th><th>Package</th><th>Credits</th><th>Amount</th><th>Status</th></tr>' +
-            purchases.map(p => `<tr>
-                <td class="muted">${fmtDate(p.created_at)}</td>
-                <td>${esc(p.user_email)}</td>
-                <td>${esc(p.package_id)}</td>
-                <td>${esc(p.credits_purchased)}</td>
-                <td>${fmtCents(p.amount_cents)}</td>
-                <td><span class="pill ${p.status === 'completed' ? 'green' : p.status === 'failed' ? 'red' : 'gray'}">${esc(p.status)}</span></td>
-            </tr>`).join('') + '</table>' : '<div class="empty">No purchases yet.</div>');
-    }
-
-    // ---------------------------------------------------------- sponsorships
-    async function renderSponsorships() {
-        const { sponsorships } = await api('/api/admin/sponsorships?limit=100');
-        content.innerHTML = '<div class="section-title">D\'var Torah sponsorships</div>' +
-            (sponsorships.length ? '<table><tr><th>When</th><th>Sponsor</th><th>Dedication</th><th>Parsha</th><th>Amount</th><th>Status</th></tr>' +
-            sponsorships.map(s => `<tr>
-                <td class="muted">${fmtDate(s.created_at)}</td>
-                <td>${esc(s.user_email)}</td>
-                <td>${esc(s.dedication_type)}: ${esc(s.dedication)}</td>
-                <td>${esc(s.parsha_name)} ${esc(s.hebrew_year)}</td>
-                <td>${fmtCents(s.amount_cents)}</td>
-                <td><span class="pill ${s.status === 'completed' ? 'green' : s.status === 'failed' ? 'red' : 'gray'}">${esc(s.status)}</span></td>
-            </tr>`).join('') + '</table>' : '<div class="empty">No sponsorships yet.</div>');
-    }
-
-    // ------------------------------------------------------------- analytics
-    async function renderAnalytics() {
-        const a = await api('/api/admin/analytics?days=7');
-        const s = a.sessions || {}, t = a.tts || {};
-        content.innerHTML = '<div class="cards">' + [
-            ['Unique sessions (7d)', s.unique_sessions ?? 0],
-            ['Page views (7d)', s.total_page_views ?? 0],
-            ['Unique users (7d)', s.unique_users ?? 0],
-            ['TTS plays (7d)', t.total_starts ?? 0],
-            ['TTS errors (7d)', t.total_errors ?? 0],
-        ].map(([l, v]) => `<div class="card"><div class="label">${esc(l)}</div><div class="value">${esc(v)}</div></div>`).join('') + '</div>' +
-        '<div class="section-title">Top referrers</div>' +
-        ((a.referrers || []).length ? '<table><tr><th>Referrer</th><th>Sessions</th></tr>' +
-            a.referrers.map(r => `<tr><td>${esc(r.referrer)}</td><td>${esc(r.sessions)}</td></tr>`).join('') + '</table>' : '<div class="empty">No referrer data.</div>') +
-        '<div class="section-title">Devices</div>' +
-        ((a.devices || []).length ? '<table><tr><th>Device</th><th>Sessions</th></tr>' +
-            a.devices.map(d => `<tr><td>${esc(d.device_type)}</td><td>${esc(d.sessions)}</td></tr>`).join('') + '</table>' : '<div class="empty">No device data.</div>');
-    }
-
-    // ------------------------------------------------------------- audit log
-    async function renderAudit() {
-        const { audit_log } = await api('/api/admin/audit-log?limit=100');
-        content.innerHTML = '<div class="section-title">Admin actions</div>' +
-            (audit_log.length ? '<table><tr><th>When</th><th>Admin</th><th>Action</th><th>Target</th><th>Details</th></tr>' +
-            audit_log.map(e => `<tr>
-                <td class="muted">${fmtDate(e.created_at)}</td>
-                <td>${esc(e.admin_email)}</td>
-                <td><span class="pill gold">${esc(e.action)}</span></td>
-                <td>${esc(e.target_email || '—')}</td>
-                <td class="muted">${esc(JSON.stringify(e.details))}</td>
-            </tr>`).join('') + '</table>' : '<div class="empty">No admin actions recorded yet.</div>');
-    }
-
-    function pager(offset, pageSize, total, go) {
-        if (total <= pageSize) return '';
-        const html = `<div class="pager">
-            <button class="action" id="pagerPrev" ${offset === 0 ? 'disabled' : ''}>← Prev</button>
-            <span class="muted">${offset + 1}–${Math.min(offset + pageSize, total)} of ${total}</span>
-            <button class="action" id="pagerNext" ${offset + pageSize >= total ? 'disabled' : ''}>Next →</button>
-        </div>`;
-        setTimeout(() => {
-            const prev = document.getElementById('pagerPrev');
-            const next = document.getElementById('pagerNext');
-            if (prev) prev.onclick = () => go(Math.max(0, offset - pageSize));
-            if (next) next.onclick = () => go(offset + pageSize);
-        });
-        return html;
-    }
-
-    render();
-    </script>
+    <dialog id="actionDialog" class="admin-dialog action-dialog" aria-labelledby="actionDialogTitle" aria-describedby="actionDialogDescription">
+        <form id="actionForm" class="dialog-frame" novalidate>
+            <div class="dialog-header">
+                <div>
+                    <h2 id="actionDialogTitle">Confirm action</h2>
+                </div>
+                <button class="icon-button" type="button" data-dialog-close="actionDialog" aria-label="Close action dialog">
+                    <span class="ph-icon ph-x" aria-hidden="true"></span>
+                </button>
+            </div>
+            <p id="actionDialogDescription" class="dialog-description" dir="auto"></p>
+            <div id="actionFields" class="action-fields"></div>
+            <div id="actionState" class="action-state" role="status" aria-live="polite" aria-atomic="true"></div>
+            <div class="dialog-actions">
+                <button id="actionCancel" class="button secondary" type="button" data-dialog-close="actionDialog">Cancel</button>
+                <button id="actionSubmit" class="button primary" type="submit">Continue</button>
+            </div>
+        </form>
+    </dialog>
 </body>
 </html>

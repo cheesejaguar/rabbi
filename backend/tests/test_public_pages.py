@@ -41,8 +41,11 @@ class TestLandingPage:
     def test_unauthenticated_visitor_gets_landing_page(self, public_client):
         response = public_client.get("/")
         assert response.status_code == 200
-        assert "Torah wisdom and guidance" in response.text
+        assert "Thoughtful Jewish guidance, grounded in sources." in response.text
         assert "guidance, not psak" in response.text.lower()
+        assert "How can I make Shabbat meaningful if I’m just beginning?" in response.text
+        assert "Static example" in response.text
+        assert '"price": "0"' not in response.text
 
     def test_authenticated_user_gets_app(self, public_client):
         with patch('app.main.get_current_user', return_value=AUTH_USER):

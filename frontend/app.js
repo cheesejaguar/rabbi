@@ -210,7 +210,7 @@ const buyCreditsBtn = document.getElementById('buyCreditsBtn');
 /** @type {HTMLElement} */
 const closePurchaseModal = document.getElementById('closePurchaseModal');
 /** @type {NodeListOf<HTMLElement>} Credit package option cards (e.g., 10 credits, 25 credits) */
-const packageCards = document.querySelectorAll('.package-card');
+const packageCards = document.querySelectorAll('#packageSelection .package-card[data-package]');
 /** @type {HTMLButtonElement} */
 const submitPayment = document.getElementById('submitPayment');
 /** @type {HTMLElement} Mount point for the Stripe PaymentElement */
@@ -227,6 +227,8 @@ const paymentSuccess = document.getElementById('paymentSuccess');
 const paymentError = document.getElementById('paymentError');
 /** @type {HTMLElement} */
 const paymentErrorMessage = document.getElementById('paymentErrorMessage');
+/** @type {HTMLElement} Polite screen-reader announcement region */
+const appLiveRegion = document.getElementById('appLiveRegion');
 
 // --- Stripe payment state ---
 /** @type {Object|null} Stripe.js instance, initialized lazily on first modal open */
@@ -237,6 +239,10 @@ let elements = null;
 let paymentElement = null;
 /** @type {string} Currently selected credit package identifier (e.g., 'credits_10', 'credits_25') */
 let selectedPackage = 'credits_10';
+/** @type {boolean} Whether new chat content should keep following the bottom edge */
+let shouldAutoScroll = true;
+/** @type {WeakMap<HTMLElement, {content: string, frame: number|null}>} */
+const streamingRenderState = new WeakMap();
 
 /* ============================================================
  * INITIALIZATION
@@ -382,6 +388,7 @@ async function checkAuth() {
 function updateUserUI() {
     if (!currentUser) return;
 
+    sidebarUserAvatar.classList.remove('ph-icon', 'ph-arrow-right');
     const firstName = currentUser.first_name || '';
     const lastName = currentUser.last_name || '';
     const email = currentUser.email || '';
@@ -395,28 +402,19 @@ function updateUserUI() {
 
     // Restore logged-in dropdown content
     sidebarDropdown.innerHTML = `
-        <button class="dropdown-item" id="settingsBtn">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <circle cx="12" cy="12" r="3"/>
-                <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/>
-            </svg>
+        <button class="dropdown-item" id="settingsBtn" type="button" role="menuitem">
+            <span class="ph-icon ph-gear" aria-hidden="true"></span>
             Settings
         </button>
         ${currentUser.is_admin ? `
-        <a href="/admin" class="dropdown-item" id="adminLink">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
-            </svg>
+        <a href="/admin" class="dropdown-item" id="adminLink" role="menuitem">
+            <span class="ph-icon ph-shield" aria-hidden="true"></span>
             Admin
         </a>` : ''}
         <div class="dropdown-divider"></div>
-        <a href="/auth/logout" class="dropdown-item dropdown-item-danger">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/>
-                <polyline points="16 17 21 12 16 7"/>
-                <line x1="21" y1="12" x2="9" y2="12"/>
-            </svg>
-            Logout
+        <a href="/auth/logout" class="dropdown-item dropdown-item-danger" role="menuitem">
+            <span class="ph-icon ph-sign-out" aria-hidden="true"></span>
+            Sign out
         </a>
     `;
 
@@ -441,19 +439,16 @@ function updateUserUI() {
  */
 function showLoggedOutState() {
     // Update avatar to show login icon
-    sidebarUserAvatar.innerHTML = '&#x2192;';
+    sidebarUserAvatar.replaceChildren();
+    sidebarUserAvatar.classList.add('ph-icon', 'ph-arrow-right');
     sidebarUserAvatar.style.fontSize = '1rem';
     sidebarUserName.textContent = 'Sign in';
 
     // Update dropdown to show login option
     sidebarDropdown.innerHTML = `
-        <a href="/auth/login" class="dropdown-item">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/>
-                <polyline points="10 17 15 12 10 7"/>
-                <line x1="15" y1="12" x2="3" y2="12"/>
-            </svg>
-            Sign In
+        <a href="/auth/login" class="dropdown-item" role="menuitem">
+            <span class="ph-icon ph-arrow-right" aria-hidden="true"></span>
+            Sign in
         </a>
     `;
 }
@@ -588,7 +583,9 @@ function showLoginPrompt() {
         <div class="login-prompt-content">
             <p></p>
             <button class="login-prompt-btn" id="loginPromptSignInBtn">Sign In</button>
-            <button class="login-prompt-close" id="loginPromptCloseBtn" aria-label="Close">&times;</button>
+            <button class="login-prompt-close" id="loginPromptCloseBtn" type="button" aria-label="Close sign-in prompt">
+                <span class="ph-icon ph-x" aria-hidden="true"></span>
+            </button>
         </div>
     `;
     // Use textContent for the message to avoid any HTML injection risk
@@ -672,7 +669,10 @@ function setupEventListeners() {
     chatSendBtn.addEventListener('click', () => sendFromChat());
 
     // Sidebar toggle
-    sidebarToggle.addEventListener('click', toggleSidebar);
+    sidebarToggle.addEventListener('click', () => {
+        if (window.innerWidth <= 820) closeSidebarMobile();
+        else toggleSidebar();
+    });
     menuBtn.addEventListener('click', toggleSidebarMobile);
     welcomeMenuBtn.addEventListener('click', toggleSidebarMobile);
     sidebarOverlay.addEventListener('click', closeSidebarMobile);
@@ -695,11 +695,13 @@ function setupEventListeners() {
         sidebarDropdown.style.bottom = `${window.innerHeight - rect.top + 8}px`;
         sidebarDropdown.style.left = `${rect.left}px`;
         sidebarDropdown.classList.toggle('hidden');
+        userProfile.setAttribute('aria-expanded', String(!sidebarDropdown.classList.contains('hidden')));
     });
 
     // Close dropdowns when clicking outside
     document.addEventListener('click', () => {
         sidebarDropdown.classList.add('hidden');
+        userProfile.setAttribute('aria-expanded', 'false');
         document.querySelectorAll('.conversation-dropdown').forEach(d => d.classList.add('hidden'));
     });
 
@@ -738,6 +740,15 @@ function setupEventListeners() {
     [messageInput, chatInput].forEach(textarea => {
         textarea.addEventListener('input', () => autoResize(textarea));
     });
+
+    // Respect a reader who has moved away from the newest message.
+    chatMessages.addEventListener('scroll', () => {
+        shouldAutoScroll = isChatNearBottom();
+    }, { passive: true });
+
+    window.addEventListener('resize', () => {
+        if (window.innerWidth > 820) closeSidebarMobile();
+    });
 }
 
 /* ============================================================
@@ -752,6 +763,9 @@ function setupEventListeners() {
  */
 function toggleSidebar() {
     sidebar.classList.toggle('collapsed');
+    const expanded = !sidebar.classList.contains('collapsed');
+    sidebarToggle.setAttribute('aria-expanded', String(expanded));
+    sidebarToggle.setAttribute('aria-label', expanded ? 'Collapse conversation rail' : 'Expand conversation rail');
 }
 
 /**
@@ -762,11 +776,10 @@ function toggleSidebar() {
 function toggleSidebarMobile() {
     // On mobile, use open/overlay behavior
     // On desktop with collapsed sidebar, toggle collapsed state
-    const isMobile = window.innerWidth <= 768;
+    const isMobile = window.innerWidth <= 820;
 
     if (isMobile) {
-        sidebar.classList.toggle('open');
-        sidebarOverlay.classList.toggle('visible');
+        setSidebarMobileOpen(!sidebar.classList.contains('open'));
     } else {
         // Desktop: toggle collapsed state
         sidebar.classList.toggle('collapsed');
@@ -778,8 +791,21 @@ function toggleSidebarMobile() {
  * @returns {void}
  */
 function closeSidebarMobile() {
-    sidebar.classList.remove('open');
-    sidebarOverlay.classList.remove('visible');
+    setSidebarMobileOpen(false);
+}
+
+/**
+ * Keeps the mobile rail, overlay, accessibility state, and page scroll in sync.
+ * @param {boolean} open
+ * @returns {void}
+ */
+function setSidebarMobileOpen(open) {
+    sidebar.classList.toggle('open', open);
+    sidebarOverlay.classList.toggle('visible', open);
+    sidebarOverlay.classList.toggle('hidden', !open);
+    sidebarOverlay.setAttribute('aria-hidden', String(!open));
+    menuBtn.setAttribute('aria-expanded', String(open));
+    welcomeMenuBtn.setAttribute('aria-expanded', String(open));
 }
 
 /**
@@ -917,7 +943,7 @@ function showDvarTorah() {
     let sponsorsHtml = '';
     if (dvarTorahData.sponsors && dvarTorahData.sponsors.length) {
         const lines = dvarTorahData.sponsors
-            .map(s => `<p class="dvar-sponsor-line">🕯️ ${escapeHtml(formatDedication(s))}</p>`)
+            .map(s => `<p class="dvar-sponsor-line" dir="auto">${escapeHtml(formatDedication(s))}</p>`)
             .join('');
         sponsorsHtml = `<div class="dvar-sponsors">${lines}</div>`;
     }
@@ -925,7 +951,7 @@ function showDvarTorah() {
     // Convert plain text to paragraphs (escaped - content is server-generated
     // but rendered consistently with the chat path)
     const paragraphs = dvarTorahData.content.split('\n\n').filter(p => p.trim());
-    const html = paragraphs.map(p => `<p>${escapeHtml(p).replace(/\n/g, ' ')}</p>`).join('');
+    const html = paragraphs.map(p => `<p dir="auto">${escapeHtml(p).replace(/\n/g, ' ')}</p>`).join('');
 
     const ctaHtml = `
         <div class="dvar-sponsor-cta">
@@ -1009,8 +1035,12 @@ async function checkCalendarStatus() {
 
         const close = document.createElement('button');
         close.className = 'calendar-banner-close';
+        close.type = 'button';
         close.setAttribute('aria-label', 'Dismiss notice');
-        close.textContent = '×';
+        const closeIcon = document.createElement('span');
+        closeIcon.className = 'ph-icon ph-x';
+        closeIcon.setAttribute('aria-hidden', 'true');
+        close.appendChild(closeIcon);
         close.addEventListener('click', () => {
             banner.classList.add('hidden');
             sessionStorage.setItem('calendarBannerDismissed', data.message);
@@ -1084,26 +1114,22 @@ function renderConversationsSkeleton() {
  */
 function renderConversationsList() {
     if (conversations.length === 0) {
-        conversationsList.innerHTML = '<div class="conversations-empty">No conversations yet</div>';
+        conversationsList.innerHTML = '<div class="conversations-empty">Your conversations will appear here after you ask a question.</div>';
         return;
     }
 
     conversationsList.innerHTML = conversations.map(conv => `
         <div class="conversation-item ${conv.id === currentConversationId ? 'active' : ''}" data-id="${conv.id}">
-            <span class="conversation-title">${escapeHtml(conv.title || conv.first_message || 'New conversation')}</span>
+            <button class="conversation-open" type="button" ${conv.id === currentConversationId ? 'aria-current="page"' : ''}>
+                <span class="conversation-title" dir="auto">${escapeHtml(conv.title || conv.first_message || 'New conversation')}</span>
+            </button>
             <div class="conversation-menu">
-                <button class="conversation-menu-btn" data-menu-id="${conv.id}" aria-label="Conversation options">
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
-                        <circle cx="5" cy="12" r="2"/>
-                        <circle cx="12" cy="12" r="2"/>
-                        <circle cx="19" cy="12" r="2"/>
-                    </svg>
+                <button class="conversation-menu-btn" type="button" data-menu-id="${conv.id}" aria-label="Conversation options">
+                    <span class="ph-icon ph-dots" aria-hidden="true"></span>
                 </button>
                 <div class="conversation-dropdown hidden" data-dropdown-id="${conv.id}">
-                    <button class="dropdown-item dropdown-item-danger" data-delete-id="${conv.id}">
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                            <path d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
-                        </svg>
+                    <button class="dropdown-item dropdown-item-danger" type="button" data-delete-id="${conv.id}">
+                        <span class="ph-icon ph-trash" aria-hidden="true"></span>
                         Delete
                     </button>
                 </div>
@@ -1228,7 +1254,7 @@ async function loadConversation(conversationId) {
             // Close mobile sidebar
             closeSidebarMobile();
 
-            scrollToBottom();
+            scrollToBottom(true);
         }
     } catch (error) {
         console.error('Failed to load conversation:', error);
@@ -1526,13 +1552,17 @@ async function sendMessage(message) {
             // The 90-second watchdog timeout fired because no data ever
             // started arriving - distinct message so the user knows to retry
             // rather than assuming a generic failure.
-            addMessage('assistant',
+            const timeoutMessage = addMessage('assistant',
                 "Request timed out, please try again."
             );
+            timeoutMessage.classList.add('message-timeout');
+            announce('The request timed out. Please try again.');
         } else {
-            addMessage('assistant',
+            const errorMessage = addMessage('assistant',
                 "I'm having trouble responding right now. Please try again in a moment."
             );
+            errorMessage.classList.add('message-error');
+            announce('The response could not be completed. Please try again.');
         }
     } finally {
         clearTimeout(timeoutId);
@@ -1549,7 +1579,7 @@ async function sendMessage(message) {
  * @returns {void}
  */
 function addMessage(role, content) {
-    addMessageToUI(role, content, new Date());
+    const messageElement = addMessageToUI(role, content, new Date());
 
     // Update conversation history
     conversationHistory.push({ role, content });
@@ -1559,7 +1589,8 @@ function addMessage(role, content) {
         conversationHistory = conversationHistory.slice(-20);
     }
 
-    scrollToBottom();
+    scrollToBottom(role === 'user');
+    return messageElement;
 }
 
 /* ============================================================
@@ -1588,6 +1619,7 @@ function addMessageToUI(role, content, date, messageId = null, metadata = null) 
 
     const contentDiv = document.createElement('div');
     contentDiv.className = 'message-content';
+    contentDiv.setAttribute('dir', 'auto');
     if (role === 'assistant') {
         contentDiv.innerHTML = formatMarkdown(content);
     } else {
@@ -1621,6 +1653,7 @@ function addMessageToUI(role, content, date, messageId = null, metadata = null) 
     }
 
     chatMessages.appendChild(messageDiv);
+    return messageDiv;
 }
 
 /* ============================================================
@@ -1748,11 +1781,12 @@ function createSourcesFooter(sources) {
         if (!ref) return;
         const verified = typeof src === 'object' && !!src.verified;
         const chip = document.createElement('span');
-        chip.className = 'source-chip' + (verified ? ' verified' : '');
+        chip.className = 'source-chip' + (verified ? ' local-match' : ' model-knowledge');
+        chip.setAttribute('dir', 'auto');
         chip.title = verified
             ? 'Matched to a passage retrieved from the text library for this answer'
-            : "Cited from the model's general knowledge — not verified against the library";
-        chip.textContent = (verified ? '✓ ' : '') + ref;
+            : "Cited from model knowledge and not matched against the local library";
+        chip.textContent = `${verified ? 'Locally matched' : 'Model knowledge'}: ${ref}`;
         div.appendChild(chip);
     });
 
@@ -1772,6 +1806,7 @@ function createStreamingMessage() {
 
     const contentDiv = document.createElement('div');
     contentDiv.className = 'message-content streaming';
+    contentDiv.setAttribute('dir', 'auto');
     contentDiv.innerHTML = '<span class="cursor"></span>';
 
     const metaDiv = document.createElement('div');
@@ -1791,17 +1826,32 @@ function createStreamingMessage() {
 }
 
 /**
- * @description Updates the content of a streaming message element with new text. Re-renders
- *              the full accumulated content through formatMarkdown on each call, appending
- *              the blinking cursor span.
+ * @description Updates the streaming message at most once per animation frame using plain
+ *              text. Markdown is applied once when the response is finalized.
  * @param {HTMLElement} messageElement - The streaming message container
  * @param {string} content - The full accumulated response text so far
  * @returns {void}
  */
 function updateStreamingMessage(messageElement, content) {
-    const contentDiv = messageElement.querySelector('.message-content');
-    contentDiv.innerHTML = formatMarkdown(content) + '<span class="cursor"></span>';
-    scrollToBottom();
+    let state = streamingRenderState.get(messageElement);
+    if (!state) {
+        state = { content: '', frame: null };
+        streamingRenderState.set(messageElement, state);
+    }
+    state.content = content;
+    if (state.frame !== null) return;
+
+    state.frame = requestAnimationFrame(() => {
+        const contentDiv = messageElement.querySelector('.message-content');
+        if (!contentDiv) return;
+        contentDiv.textContent = state.content;
+        const cursor = document.createElement('span');
+        cursor.className = 'cursor';
+        cursor.setAttribute('aria-hidden', 'true');
+        contentDiv.appendChild(cursor);
+        state.frame = null;
+        scrollToBottom();
+    });
 }
 
 /**
@@ -1817,6 +1867,9 @@ function updateStreamingMessage(messageElement, content) {
  * @returns {void}
  */
 function finalizeStreamingMessage(messageElement, content, messageId = null, saveFailed = false, metadata = null) {
+    const renderState = streamingRenderState.get(messageElement);
+    if (renderState && renderState.frame !== null) cancelAnimationFrame(renderState.frame);
+    streamingRenderState.delete(messageElement);
     const contentDiv = messageElement.querySelector('.message-content');
     contentDiv.innerHTML = formatMarkdown(content);
     contentDiv.classList.remove('streaming');
@@ -1844,6 +1897,7 @@ function finalizeStreamingMessage(messageElement, content, messageId = null, sav
     if (conversationHistory.length > 20) {
         conversationHistory = conversationHistory.slice(-20);
     }
+    announce('Response complete.');
 }
 
 /**
@@ -1948,6 +2002,8 @@ function setLoading(loading) {
     chatSendBtn.classList.toggle('loading', loading);
     sendBtn.classList.toggle('loading', loading);
     loadingIndicator.classList.toggle('hidden', !loading);
+    chatMessages.setAttribute('aria-busy', String(loading));
+    if (loading) announce('Preparing a response.');
 }
 
 /**
@@ -1957,6 +2013,7 @@ function setLoading(loading) {
  */
 function showReferralNotice() {
     referralNotice.classList.remove('hidden');
+    announce('A human rabbi or counselor may be helpful for this question.');
 }
 
 /**
@@ -2006,18 +2063,38 @@ function startNewConversation() {
     closeSidebarMobile();
 
     // Focus welcome input
-    setTimeout(() => messageInput.focus(), 300);
+    requestAnimationFrame(() => messageInput.focus());
 }
 
 /**
- * @description Scrolls the chat message container to the bottom after a 100ms delay.
- *              The delay ensures the DOM has been updated before measuring scrollHeight.
+ * @description Scrolls to new content only while the reader is already following the
+ *              bottom edge. A forced scroll is reserved for the reader's own messages
+ *              and explicit conversation navigation.
+ * @param {boolean} [force=false]
  * @returns {void}
  */
-function scrollToBottom() {
-    setTimeout(() => {
+function scrollToBottom(force = false) {
+    if (!force && !shouldAutoScroll) return;
+    requestAnimationFrame(() => {
         chatMessages.scrollTop = chatMessages.scrollHeight;
-    }, 100);
+        shouldAutoScroll = true;
+    });
+}
+
+/** @returns {boolean} */
+function isChatNearBottom() {
+    return chatMessages.scrollHeight - chatMessages.scrollTop - chatMessages.clientHeight < 120;
+}
+
+/**
+ * Sends a concise status update to assistive technology without interrupting focus.
+ * @param {string} message
+ * @returns {void}
+ */
+function announce(message) {
+    if (!appLiveRegion) return;
+    appLiveRegion.textContent = '';
+    requestAnimationFrame(() => { appLiveRegion.textContent = message; });
 }
 
 /* ============================================================
@@ -2147,7 +2224,7 @@ async function loadProfile() {
 async function saveProfile() {
     const originalText = saveProfileBtn.innerHTML;
     saveProfileBtn.disabled = true;
-    saveProfileBtn.innerHTML = '<span class="saving-spinner"></span> Saving...';
+    saveProfileBtn.innerHTML = '<span class="saving-spinner" aria-hidden="true"></span> Saving...';
 
     try {
         const response = await fetch(`${API_BASE}/profile`, {
@@ -2162,20 +2239,23 @@ async function saveProfile() {
         });
 
         if (response.ok) {
-            saveProfileBtn.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg> Saved!';
+            saveProfileBtn.innerHTML = '<span class="ph-icon ph-check" aria-hidden="true"></span> Saved';
+            announce('Profile saved successfully.');
             setTimeout(() => {
                 saveProfileBtn.innerHTML = originalText;
                 saveProfileBtn.disabled = false;
             }, 2000);
         } else {
             const errorData = await response.json();
-            alert(errorData.detail || 'Failed to save profile');
+            showToast(errorData.detail || 'Failed to save profile');
+            announce('Profile could not be saved.');
             saveProfileBtn.innerHTML = originalText;
             saveProfileBtn.disabled = false;
         }
     } catch (error) {
         console.error('Failed to save profile:', error);
-        alert('Failed to save profile. Please try again.');
+        showToast('Failed to save profile. Please try again.');
+        announce('Profile could not be saved.');
         saveProfileBtn.innerHTML = originalText;
         saveProfileBtn.disabled = false;
     }
@@ -2212,29 +2292,18 @@ function createMessageActions(content, messageId, saveFailed = false) {
     actionsDiv.className = 'message-actions';
 
     actionsDiv.innerHTML = `
-        <button class="action-btn copy-btn" title="Copy response" data-action="copy">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/>
-                <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
-            </svg>
+        <button class="action-btn copy-btn" type="button" aria-label="Copy response" title="Copy response" data-action="copy">
+            <span class="ph-icon ph-copy" aria-hidden="true"></span>
         </button>
-        <button class="action-btn speak-btn" title="Listen" data-action="speak">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/>
-                <path d="M15.54 8.46a5 5 0 0 1 0 7.07"/>
-                <path d="M19.07 4.93a10 10 0 0 1 0 14.14"/>
-            </svg>
+        <button class="action-btn speak-btn" type="button" aria-label="Listen to response" title="Listen" data-action="speak">
+            <span class="ph-icon ph-speaker" aria-hidden="true"></span>
         </button>
         ${saveFailed ? '' : `
-        <button class="action-btn thumbs-up-btn" title="Good response" data-action="thumbs_up">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <path d="M14 9V5a3 3 0 0 0-3-3l-4 9v11h11.28a2 2 0 0 0 2-1.7l1.38-9a2 2 0 0 0-2-2.3zM7 22H4a2 2 0 0 1-2-2v-7a2 2 0 0 1 2-2h3"/>
-            </svg>
+        <button class="action-btn thumbs-up-btn" type="button" aria-label="Mark as a good response" title="Good response" data-action="thumbs_up">
+            <span class="ph-icon ph-thumbs-up" aria-hidden="true"></span>
         </button>
-        <button class="action-btn thumbs-down-btn" title="Poor response" data-action="thumbs_down">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <path d="M10 15v4a3 3 0 0 0 3 3l4-9V2H5.72a2 2 0 0 0-2 1.7l-1.38 9a2 2 0 0 0 2 2.3zm7-13h2.67A2.31 2.31 0 0 1 22 4v7a2.31 2.31 0 0 1-2.33 2H17"/>
-            </svg>
+        <button class="action-btn thumbs-down-btn" type="button" aria-label="Mark as a poor response" title="Poor response" data-action="thumbs_down">
+            <span class="ph-icon ph-thumbs-down" aria-hidden="true"></span>
         </button>`}
     `;
 
@@ -2574,6 +2643,75 @@ function showToast(message) {
  *    client-side verify-and-fulfill (development/staging)
  * ============================================================ */
 
+let activeModal = null;
+let modalReturnFocus = null;
+
+/** @param {HTMLElement} modal */
+function activateModal(modal) {
+    modalReturnFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    activeModal = modal;
+    modal.setAttribute('aria-hidden', 'false');
+    document.addEventListener('keydown', handleModalKeydown);
+    requestAnimationFrame(() => {
+        const first = getModalFocusables(modal)[0];
+        (first || modal).focus();
+    });
+}
+
+/** @param {HTMLElement} modal */
+function deactivateModal(modal) {
+    modal.setAttribute('aria-hidden', 'true');
+    if (activeModal === modal) {
+        activeModal = null;
+        document.removeEventListener('keydown', handleModalKeydown);
+        if (modalReturnFocus && document.contains(modalReturnFocus)) modalReturnFocus.focus();
+        modalReturnFocus = null;
+    }
+}
+
+/** @param {HTMLElement} modal @returns {HTMLElement[]} */
+function getModalFocusables(modal) {
+    return Array.from(modal.querySelectorAll('button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), a[href], [tabindex]:not([tabindex="-1"])'))
+        .filter(element => element.offsetParent !== null);
+}
+
+/** @param {KeyboardEvent} event */
+function handleModalKeydown(event) {
+    if (!activeModal) return;
+    if (event.key === 'Escape') {
+        event.preventDefault();
+        if (activeModal === purchaseModal) closePurchaseModalHandler();
+        else closeSponsorModalHandler();
+        return;
+    }
+    if (event.key !== 'Tab') return;
+    const focusables = getModalFocusables(activeModal);
+    if (!focusables.length) {
+        event.preventDefault();
+        activeModal.focus();
+        return;
+    }
+    const first = focusables[0];
+    const last = focusables[focusables.length - 1];
+    if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+    } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+    }
+}
+
+/** Safely renders an inline provider or network error. */
+function renderPaymentLoadError(container, message) {
+    container.replaceChildren();
+    const error = document.createElement('p');
+    error.className = 'payment-error-text';
+    error.setAttribute('role', 'alert');
+    error.textContent = message || 'Failed to load payment form. Please try again.';
+    container.appendChild(error);
+}
+
 /**
  * @description Updates the "Pay Now" button's label and spinner visibility. Centralizes
  *              the text/spinner swap so every stage of the payment flow (processing,
@@ -2631,6 +2769,7 @@ async function openPurchaseModal() {
 
     purchaseModal.classList.remove('hidden');
     purchaseModal.classList.add('visible');
+    activateModal(purchaseModal);
 
     // Load Stripe.js if not already loaded
     if (!stripe) {
@@ -2652,6 +2791,7 @@ function closePurchaseModalHandler() {
 
     purchaseModal.classList.remove('visible');
     purchaseModal.classList.add('hidden');
+    deactivateModal(purchaseModal);
 
     // Clean up payment element
     if (paymentElement) {
@@ -2693,7 +2833,9 @@ function resetModalState() {
     // Reset package selection
     selectedPackage = 'credits_10';
     packageCards.forEach(card => {
-        card.classList.toggle('selected', card.dataset.package === 'credits_10');
+        const selected = card.dataset.package === 'credits_10';
+        card.classList.toggle('selected', selected);
+        card.setAttribute('aria-pressed', String(selected));
     });
 }
 
@@ -2706,7 +2848,9 @@ function resetModalState() {
 function selectPackage(packageId) {
     selectedPackage = packageId;
     packageCards.forEach(card => {
-        card.classList.toggle('selected', card.dataset.package === packageId);
+        const selected = card.dataset.package === packageId;
+        card.classList.toggle('selected', selected);
+        card.setAttribute('aria-pressed', String(selected));
     });
 
     // Reinitialize payment form with new package
@@ -2774,17 +2918,18 @@ async function initializePaymentForm() {
         }
 
         // Create Elements with customer session
+        const stripeDark = document.documentElement.dataset.theme === 'dark';
         elements = stripe.elements({
             clientSecret: client_secret,
             customerSessionClientSecret: customer_session_client_secret,
             appearance: {
-                theme: 'night',
+                theme: stripeDark ? 'night' : 'stripe',
                 variables: {
-                    colorPrimary: '#d4a853',
-                    colorBackground: '#1a1a1a',
-                    colorText: '#e8e8e8',
-                    colorDanger: '#ef4444',
-                    fontFamily: 'Inter, -apple-system, BlinkMacSystemFont, sans-serif',
+                    colorPrimary: stripeDark ? '#86a8e3' : '#315da8',
+                    colorBackground: stripeDark ? '#161f2c' : '#fafcfe',
+                    colorText: stripeDark ? '#eff4fa' : '#122033',
+                    colorDanger: stripeDark ? '#f08b8b' : '#b23a3a',
+                    fontFamily: 'Hanken Grotesk, Arial, sans-serif',
                     borderRadius: '8px',
                     spacingUnit: '4px',
                 }
@@ -2808,7 +2953,7 @@ async function initializePaymentForm() {
         // Handles PaymentIntent creation failures, Stripe initialization errors,
         // or network issues. Shows the error message inline in the payment container.
         console.error('Failed to initialize payment form:', error);
-        paymentElementContainer.innerHTML = `<p class="payment-error-text">${error.message || 'Failed to load payment form. Please try again.'}</p>`;
+        renderPaymentLoadError(paymentElementContainer, error.message);
     }
 }
 
@@ -2922,6 +3067,7 @@ function showPaymentSuccessMessage() {
     if (modalFooter) modalFooter.classList.add('hidden');
     if (paymentStatus) paymentStatus.classList.remove('hidden');
     if (paymentSuccess) paymentSuccess.classList.remove('hidden');
+    announce('Payment successful. Credits were added.');
 }
 
 /**
@@ -2975,6 +3121,7 @@ function openSponsorModal() {
     resetSponsorModalState();
     modal.classList.remove('hidden');
     modal.classList.add('visible');
+    activateModal(modal);
 }
 
 /**
@@ -2995,7 +3142,9 @@ function wireSponsorModal() {
         card.addEventListener('click', () => {
             selectedSponsorTier = card.dataset.tier;
             modal.querySelectorAll('.package-card[data-tier]').forEach(c => {
-                c.classList.toggle('selected', c.dataset.tier === selectedSponsorTier);
+                const selected = c.dataset.tier === selectedSponsorTier;
+                c.classList.toggle('selected', selected);
+                c.setAttribute('aria-pressed', String(selected));
             });
         });
     });
@@ -3019,7 +3168,9 @@ function resetSponsorModalState() {
 
     selectedSponsorTier = 'chai';
     modal.querySelectorAll('.package-card[data-tier]').forEach(c => {
-        c.classList.toggle('selected', c.dataset.tier === 'chai');
+        const selected = c.dataset.tier === 'chai';
+        c.classList.toggle('selected', selected);
+        c.setAttribute('aria-pressed', String(selected));
     });
 }
 
@@ -3033,6 +3184,7 @@ function closeSponsorModalHandler() {
 
     modal.classList.remove('visible');
     modal.classList.add('hidden');
+    deactivateModal(modal);
 
     if (sponsorPaymentElement) {
         sponsorPaymentElement.destroy();
@@ -3093,17 +3245,18 @@ async function startSponsorshipPayment() {
             stripe = Stripe(publishable_key);
         }
 
+        const stripeDark = document.documentElement.dataset.theme === 'dark';
         sponsorElements = stripe.elements({
             clientSecret: client_secret,
             customerSessionClientSecret: customer_session_client_secret,
             appearance: {
-                theme: 'night',
+                theme: stripeDark ? 'night' : 'stripe',
                 variables: {
-                    colorPrimary: '#d4a853',
-                    colorBackground: '#1a1a1a',
-                    colorText: '#e8e8e8',
-                    colorDanger: '#ef4444',
-                    fontFamily: 'Inter, -apple-system, BlinkMacSystemFont, sans-serif',
+                    colorPrimary: stripeDark ? '#86a8e3' : '#315da8',
+                    colorBackground: stripeDark ? '#161f2c' : '#fafcfe',
+                    colorText: stripeDark ? '#eff4fa' : '#122033',
+                    colorDanger: stripeDark ? '#f08b8b' : '#b23a3a',
+                    fontFamily: 'Hanken Grotesk, Arial, sans-serif',
                     borderRadius: '8px',
                     spacingUnit: '4px',
                 },
@@ -3120,7 +3273,7 @@ async function startSponsorshipPayment() {
 
     } catch (error) {
         console.error('Failed to start sponsorship payment:', error);
-        container.innerHTML = `<p class="payment-error-text">${escapeHtml(error.message || 'Failed to load payment form. Please try again.')}</p>`;
+        renderPaymentLoadError(container, error.message);
     }
 }
 
@@ -3171,6 +3324,7 @@ async function handleSponsorshipSubmit() {
         document.getElementById('sponsorStepPayment').classList.add('hidden');
         document.getElementById('sponsorStatus').classList.remove('hidden');
         document.getElementById('sponsorSuccess').classList.remove('hidden');
+        announce('Sponsorship completed successfully.');
 
         // Refresh so the dedication shows on the d'var Torah screen
         try {

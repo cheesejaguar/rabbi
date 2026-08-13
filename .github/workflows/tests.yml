@@ -26,6 +26,9 @@ jobs:
       - name: Install dependencies
         run: uv sync --dev
 
+      - name: Install Chromium for browser tests
+        run: uv run playwright install --with-deps chromium
+
       # There are ~46 pre-existing lint findings on the codebase today
       # (mostly unused imports in tests, plus a few unused locals and
       # import-order issues). continue-on-error is intentional for now so
@@ -38,11 +41,15 @@ jobs:
       - name: Run tests with coverage
         run: |
           uv run pytest backend/tests/ \
+            --ignore=backend/tests/test_frontend_browser.py \
             --cov=backend/app \
             --cov-report=term-missing \
             --cov-report=xml \
             --cov-fail-under=60 \
             -v
+
+      - name: Run browser interaction tests
+        run: uv run pytest backend/tests/test_frontend_browser.py --browser chromium -v
 
       # pip-audit scans installed dependencies for known vulnerabilities.
       # continue-on-error is intentional: this is being introduced for
