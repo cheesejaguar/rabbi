@@ -146,6 +146,42 @@ textarea,
   transform: translateY(0);
 }
 
+/* Windows High Contrast / forced-colors.
+ *
+ * The UA replaces author colors with a small system palette here. Two things
+ * in this design break under that substitution and need an explicit escape:
+ *
+ * 1. Icons. `.ph-icon` paints a masked shape with `background-color`, which
+ *    forced-colors rewrites to the system Canvas -- rendering every icon
+ *    invisible against its own background. Opting the glyph out keeps
+ *    `currentColor`, which still resolves to the *forced* text color of its
+ *    button or link, so icons stay legible and stay semantically colored.
+ * 2. Focus. The `:focus-visible` ring leans on a box-shadow, and shadows are
+ *    dropped entirely in forced-colors mode. The outline has to carry the
+ *    whole indicator, so it gets a system color and more weight. */
+@media (forced-colors: active) {
+  .ph-icon {
+    forced-color-adjust: none;
+    background-color: currentColor;
+  }
+
+  :focus-visible {
+    outline: 3px solid Highlight;
+    outline-offset: 2px;
+    box-shadow: none;
+  }
+
+  /* Controls distinguished only by fill lose their edges once backgrounds
+   * collapse to Canvas; a forced border keeps the hit area visible. */
+  button,
+  input,
+  select,
+  textarea,
+  .skip-link {
+    border: 1px solid ButtonText;
+  }
+}
+
 .brand-lockup {
   display: inline-flex;
   align-items: center;

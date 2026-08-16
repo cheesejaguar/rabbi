@@ -1330,6 +1330,14 @@ svg {
     font-weight: 680;
 }
 
+/* A numeric credit balance is emphasized so it reads as a quantity the
+ * account can spend. loadCredits() adds this class only for a number and
+ * removes it for "Unlimited" or an error, which stay at body emphasis. */
+.settings-row-value.credits-value {
+    color: var(--brand-accent);
+    font-size: 1.14rem;
+}
+
 .settings-row-description {
     margin: 14px 0 0 42px;
     color: var(--brand-muted);

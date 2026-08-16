@@ -6,7 +6,6 @@ output/
 DESIGN.md
 PRODUCT.md
 
-# Image-generation masters; production AVIF/JPEG/social assets stay deployed
-frontend/assets/images/originals/
-frontend/assets/images/braid-macro.png
-frontend/assets/images/source-sheets.png
+# The image-generation masters that used to be excluded here are no longer in
+# the repository at all -- see .impeccable/assets-manifest.md. Everything left
+# under frontend/assets/images/ is served in production.

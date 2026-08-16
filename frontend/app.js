@@ -2721,6 +2721,52 @@ function renderPaymentLoadError(container, message) {
 }
 
 /**
+ * @description Builds the Stripe Elements appearance for the theme currently resolved
+ *              on the document. theme.js always writes a concrete 'light' or 'dark' to
+ *              data-theme (it resolves the 'system' preference itself), so this never
+ *              has to consult matchMedia.
+ * @returns {Object} A Stripe Elements appearance object.
+ */
+function stripeAppearance() {
+    const dark = document.documentElement.dataset.theme === 'dark';
+    return {
+        theme: dark ? 'night' : 'stripe',
+        variables: {
+            colorPrimary: dark ? '#86a8e3' : '#315da8',
+            colorBackground: dark ? '#161f2c' : '#fafcfe',
+            colorText: dark ? '#eff4fa' : '#122033',
+            colorDanger: dark ? '#f08b8b' : '#b23a3a',
+            fontFamily: 'Hanken Grotesk, Arial, sans-serif',
+            borderRadius: '8px',
+            spacingUnit: '4px',
+        }
+    };
+}
+
+/**
+ * @description Repaints any mounted Stripe Elements when the theme changes. Elements
+ *              renders inside a cross-origin iframe, so it cannot inherit the page's
+ *              CSS variables -- without this, toggling the theme with a payment modal
+ *              open leaves the card form in the previous theme.
+ * @returns {void}
+ */
+function syncStripeAppearance() {
+    const appearance = stripeAppearance();
+    [elements, sponsorElements].forEach(instance => {
+        if (!instance) return;
+        try {
+            instance.update({ appearance });
+        } catch (error) {
+            // A stale Elements group (modal already closed, intent superseded)
+            // rejects updates. The next mount picks up the current theme anyway.
+            console.debug('Stripe appearance update skipped:', error);
+        }
+    });
+}
+
+window.addEventListener('rebbe-theme-change', syncStripeAppearance);
+
+/**
  * @description Updates the "Pay Now" button's label and spinner visibility. Centralizes
  *              the text/spinner swap so every stage of the payment flow (processing,
  *              adding credits, error recovery) stays visually consistent.
@@ -2926,22 +2972,10 @@ async function initializePaymentForm() {
         }
 
         // Create Elements with customer session
-        const stripeDark = document.documentElement.dataset.theme === 'dark';
         elements = stripe.elements({
             clientSecret: client_secret,
             customerSessionClientSecret: customer_session_client_secret,
-            appearance: {
-                theme: stripeDark ? 'night' : 'stripe',
-                variables: {
-                    colorPrimary: stripeDark ? '#86a8e3' : '#315da8',
-                    colorBackground: stripeDark ? '#161f2c' : '#fafcfe',
-                    colorText: stripeDark ? '#eff4fa' : '#122033',
-                    colorDanger: stripeDark ? '#f08b8b' : '#b23a3a',
-                    fontFamily: 'Hanken Grotesk, Arial, sans-serif',
-                    borderRadius: '8px',
-                    spacingUnit: '4px',
-                }
-            }
+            appearance: stripeAppearance()
         });
 
         // Create and mount PaymentElement
@@ -3253,22 +3287,10 @@ async function startSponsorshipPayment() {
             stripe = Stripe(publishable_key);
         }
 
-        const stripeDark = document.documentElement.dataset.theme === 'dark';
         sponsorElements = stripe.elements({
             clientSecret: client_secret,
             customerSessionClientSecret: customer_session_client_secret,
-            appearance: {
-                theme: stripeDark ? 'night' : 'stripe',
-                variables: {
-                    colorPrimary: stripeDark ? '#86a8e3' : '#315da8',
-                    colorBackground: stripeDark ? '#161f2c' : '#fafcfe',
-                    colorText: stripeDark ? '#eff4fa' : '#122033',
-                    colorDanger: stripeDark ? '#f08b8b' : '#b23a3a',
-                    fontFamily: 'Hanken Grotesk, Arial, sans-serif',
-                    borderRadius: '8px',
-                    spacingUnit: '4px',
-                },
-            },
+            appearance: stripeAppearance(),
         });
 
         sponsorPaymentElement = sponsorElements.create('payment');

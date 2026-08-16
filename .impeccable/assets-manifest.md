@@ -1,13 +1,20 @@
 # Production image assets
 
-Generated with the native OpenAI image-generation tool on 2026-08-12. Raw generated PNGs are preserved under `frontend/assets/images/originals/`; production derivatives use lossless PNG.
+Generated with the native OpenAI image-generation tool on 2026-08-12.
 
-## `braid-macro.png`
+The raw generated PNGs and the intermediate lossless PNG masters are **not** kept in
+the repository: together they came to roughly 12 MB of build artifacts that nothing
+serves, and git history is permanent. What is kept is what the site actually ships
+(AVIF with a JPEG fallback, plus the social card) and the exact prompt and
+post-processing recipe for each asset, below, so any of them can be regenerated from
+scratch without the binaries.
 
-- Production file: `frontend/assets/images/braid-macro.png`
+## `braid-macro`
+
+- Production files: `frontend/assets/images/braid-macro.avif` (preferred),
+  `frontend/assets/images/braid-macro.jpg` (fallback)
 - Production dimensions: 1800 x 1200 px
-- Preserved original: `frontend/assets/images/originals/braid-macro-generated.png`
-- Original dimensions: 1536 x 1024 px
+- Original dimensions as generated: 1536 x 1024 px
 - Post-processing: proportional resize to 1800 x 1200 with `sips`; no crop or distortion.
 - Exact prompt:
 
@@ -26,16 +33,16 @@ Constraints: exactly four interwoven material strands; original composition; no 
 Avoid: gold, purple AI gradients, parchment, mystical glow, particles, lens flare, excessive bloom, plastic surfaces, stock-photo staging, clutter, fake writing, symbols pretending to be text.
 ```
 
-Runtime derivative: `frontend/assets/images/braid-macro.jpg`, 1800 x 1200, JPEG quality 84, used by the landing page to reduce transfer size while the prompted PNG remains the production master.
+Runtime derivative: `frontend/assets/images/braid-macro.jpg`, 1800 x 1200, JPEG quality 84, the fallback the landing page serves to browsers without AVIF support.
 
 Modern runtime derivative: `frontend/assets/images/braid-macro.avif`, 1800 x 1200, AVIF quality 68, preferred by supporting browsers with the JPEG retained as fallback.
 
-## `source-sheets.png`
+## `source-sheets`
 
-- Production file: `frontend/assets/images/source-sheets.png`
+- Production files: `frontend/assets/images/source-sheets.avif` (preferred),
+  `frontend/assets/images/source-sheets.jpg` (fallback)
 - Production dimensions: 1800 x 1200 px
-- Preserved original: `frontend/assets/images/originals/source-sheets-generated.png`
-- Original dimensions: 1536 x 1024 px
+- Original dimensions as generated: 1536 x 1024 px
 - Post-processing: proportional resize to 1800 x 1200 with `sips`; no crop or distortion.
 - Exact prompt:
 
@@ -55,16 +62,16 @@ Constraints: all card and sheet faces must be entirely blank; no text; no letter
 Avoid: fake or legible text, placeholder lines, symbols pretending to be text, document UI, book icons, quotation marks, interface chrome, gold, purple AI gradients, parchment, mystical effects, particles, lens flare, excessive bloom, clutter.
 ```
 
-Runtime derivative: `frontend/assets/images/source-sheets.jpg`, 1800 x 1200, JPEG quality 86, used by the landing page to reduce transfer size while the prompted PNG remains the production master.
+Runtime derivative: `frontend/assets/images/source-sheets.jpg`, 1800 x 1200, JPEG quality 86, the fallback the landing page serves to browsers without AVIF support.
 
 Modern runtime derivative: `frontend/assets/images/source-sheets.avif`, 1800 x 1200, AVIF quality 68, preferred by supporting browsers with the JPEG retained as fallback.
 
 ## `social-card.png`
 
-- Production file: `frontend/assets/images/social-card.png`
+- Production file: `frontend/assets/images/social-card.png` (kept as PNG: it is the
+  `og:image` / `twitter:image`, and several crawlers still refuse AVIF)
 - Production dimensions: 1200 x 630 px
-- Preserved original: `frontend/assets/images/originals/social-card-generated.png`
-- Original dimensions: 1733 x 908 px, RGBA
+- Original dimensions as generated: 1733 x 908 px, RGBA
 - Post-processing: proportional scale-to-fill and centered 2 px horizontal crop to 1200 x 630 with `ffmpeg`; transparent edge pixels flattened over `#F3F6FA`. Text and identity artwork were not altered.
 - Exact prompt:
 

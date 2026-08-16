@@ -205,6 +205,19 @@ Landing navigation is quiet and centered between brand and actions. App and admi
 
 The signature explanatory component contains exactly four countable SVG strands, four stage labels, and a readable result. Draw the braid once with SVG stroke motion; under reduced motion, render the complete static form immediately. Source references remain adjacent and distinguish locally matched material from model knowledge.
 
+## Asset versioning
+
+Every page links its stylesheets and scripts with a `?v=` query — `brand.css?v=2`,
+`styles.css?v=31`, `app.js?v=31`, and so on. Bump the number on a file whenever you
+change it, and bump it on **every** page that links that file: `brand.css` and
+`theme.js` are shared by the landing, app, admin, privacy, and auth surfaces, and a
+version that drifts between pages means the same bytes are cached under two keys.
+
+Production serves `/static/*` with `cache-control: public, max-age=0, must-revalidate`,
+so this is belt-and-braces rather than the only thing standing between a user and stale
+CSS. Keep it consistent anyway: the header is a deployment setting that can change, and
+the version string is the part that lives with the code.
+
 ## Do's and Don'ts
 
 ### Do:

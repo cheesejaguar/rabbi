@@ -380,9 +380,9 @@ async def callback(request: Request, code: str = None, state: str = None, error:
                 "<meta name=\"viewport\" content=\"width=device-width,initial-scale=1\">"
                 "<meta name=\"robots\" content=\"noindex,nofollow\">"
                 "<title>Signed in | rebbe.dev</title>"
-                "<link rel=\"stylesheet\" href=\"/static/brand.css\">"
-                "<link rel=\"stylesheet\" href=\"/static/auth.css\">"
-                "<script src=\"/static/theme.js\"></script>"
+                "<link rel=\"stylesheet\" href=\"/static/brand.css?v=2\">"
+                "<link rel=\"stylesheet\" href=\"/static/auth.css?v=1\">"
+                "<script src=\"/static/theme.js?v=1\"></script>"
                 "</head><body><main class=\"auth-shell\">"
                 "<section class=\"auth-panel auth-panel-compact\">"
                 "<img class=\"auth-success-mark\" src=\"/static/assets/brand/"
@@ -452,9 +452,9 @@ async def logged_out():
         <meta name="robots" content="noindex, nofollow">
         <title>Signed out | rebbe.dev</title>
         <link rel="icon" href="/static/favicon.ico" sizes="any">
-        <link rel="stylesheet" href="/static/brand.css">
-        <link rel="stylesheet" href="/static/auth.css">
-        <script src="/static/theme.js"></script>
+        <link rel="stylesheet" href="/static/brand.css?v=2">
+        <link rel="stylesheet" href="/static/auth.css?v=1">
+        <script src="/static/theme.js?v=1"></script>
     </head>
     <body>
         <main class="auth-shell">

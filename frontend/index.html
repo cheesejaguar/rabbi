@@ -50,8 +50,12 @@
             </div>
 
             <div class="sidebar-content">
+                <!-- Deliberately a <p>, not a heading: the rail renders before the
+                     screen's <h1> in source order, so a heading here would put an
+                     h2 ahead of the page's h1 in the document outline. The section
+                     still exposes it as the region's accessible name. -->
                 <section class="conversations-section" aria-labelledby="recentConversationsTitle">
-                    <h2 class="section-title" id="recentConversationsTitle">Recent conversations</h2>
+                    <p class="section-title" id="recentConversationsTitle">Recent conversations</p>
                     <div class="conversations-list" id="conversationsList" aria-live="polite"></div>
                 </section>
             </div>

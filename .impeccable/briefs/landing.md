@@ -5,7 +5,7 @@
 - Mode: Persuade
 - Direction: Braided Light
 - Seed: `8feeff99`
-- Approved composition: `.impeccable/mocks/source-loom.png`
+- Approved composition: Source Loom, generated from the prompt recorded in `.impeccable/mocks/source-loom.json` (the rendered comps are not kept in the repository)
 - Approval: Source Loom was the implementation plan's default, with the choice explicitly delegated when a separate approval round was unavailable.
 
 Source Loom carries forward an asymmetric promise-and-proof first viewport. Copy and conversion sit on the left; a real, static guided answer occupies the right. The four strands explain the response mechanism and continue through later sections as connective structure. The image comp is a north star, not a literal screenshot: all copy remains semantic HTML, all source relationships use authored SVG/CSS, and mobile reorders the answer into a readable linear sequence.
