@@ -56,20 +56,33 @@ def open_frontend(page, frontend_url: str, filename: str, viewport: dict[str, in
 
 
 def install_stripe_stub(page):
-    """Keep modal tests local while exercising the production payment UI."""
+    """Keep modal tests local while exercising the production payment UI.
+
+    The stub records the appearance each Elements group is created with and
+    every appearance later pushed through update(), so a test can assert that
+    the card form follows a theme change instead of staying on the theme it
+    happened to mount under.
+    """
 
     page.add_init_script(
         """
+        window.__stripeAppearances = { created: [], updated: [] };
         window.Stripe = () => ({
-          elements: () => ({
-            create: () => ({
-              mount: () => {},
-              on: (name, callback) => {
-                if (name === 'ready') queueMicrotask(callback);
+          elements: (options) => {
+            window.__stripeAppearances.created.push(options && options.appearance);
+            return {
+              create: () => ({
+                mount: () => {},
+                on: (name, callback) => {
+                  if (name === 'ready') queueMicrotask(callback);
+                },
+                destroy: () => {},
+              }),
+              update: (options) => {
+                window.__stripeAppearances.updated.push(options && options.appearance);
               },
-              destroy: () => {},
-            }),
-          }),
+            };
+          },
           confirmPayment: async () => ({ paymentIntent: { status: 'succeeded', id: 'pi_synthetic' } }),
         });
         """
@@ -179,6 +192,127 @@ def install_app_routes(page, *, stream_body: str | None = None):
 def wait_for_signed_in_app(page):
     page.locator("#greetingText:not(.hidden)").wait_for()
     page.locator("#sidebarUserName").filter(has_text="Aaron Example").wait_for()
+
+
+# 320 CSS pixels is the narrowest viewport still in real use (iPhone SE in
+# landscape-locked apps, small Android handsets, and a 1280px desktop zoomed
+# to 400%, which WCAG 1.4.10 requires to reflow without horizontal scrolling).
+NARROW_WIDTH = 320
+PUBLIC_PAGES = ("landing.html", "privacy.html")
+ALL_PAGES = ("landing.html", "privacy.html", "index.html", "admin.html")
+
+
+def assert_no_horizontal_overflow(page, label: str):
+    """Fail with the offending elements named, not just a bare False."""
+
+    offenders = page.evaluate(
+        """
+        () => {
+          const root = document.documentElement;
+          if (root.scrollWidth <= root.clientWidth) return [];
+          return Array.from(document.querySelectorAll('*'))
+            .filter((el) => {
+              const rect = el.getBoundingClientRect();
+              return rect.width > 0 && rect.right > root.clientWidth + 1;
+            })
+            .slice(0, 8)
+            .map((el) => `${el.tagName}.${String(el.className).trim().slice(0, 40)}`);
+        }
+        """
+    )
+    assert offenders == [], f"{label} overflows horizontally; widest offenders: {offenders}"
+
+
+# Computes the WCAG 2.1 contrast ratio for every element that renders its own
+# text, resolving translucent colors against the real painted backdrop by
+# walking up the ancestor chain. Returns only the elements that fall short, so
+# an assertion failure names the exact offenders and their ratios.
+CONTRAST_AUDIT_JS = r"""
+() => {
+  const parse = (value) => {
+    const match = value.match(/rgba?\(([^)]+)\)/);
+    if (!match) return null;
+    const parts = match[1].split(/[ ,/]+/).filter(Boolean).map(Number);
+    return { r: parts[0], g: parts[1], b: parts[2], a: parts.length > 3 ? parts[3] : 1 };
+  };
+  const luminance = ({ r, g, b }) => {
+    const channel = (value) => {
+      value /= 255;
+      return value <= 0.03928 ? value / 12.92 : Math.pow((value + 0.055) / 1.055, 2.4);
+    };
+    return 0.2126 * channel(r) + 0.7152 * channel(g) + 0.0722 * channel(b);
+  };
+  const contrast = (a, b) => {
+    const la = luminance(a);
+    const lb = luminance(b);
+    return (Math.max(la, lb) + 0.05) / (Math.min(la, lb) + 0.05);
+  };
+  const over = (fg, bg) => ({
+    r: fg.r * fg.a + bg.r * (1 - fg.a),
+    g: fg.g * fg.a + bg.g * (1 - fg.a),
+    b: fg.b * fg.a + bg.b * (1 - fg.a),
+    a: 1,
+  });
+  const backdrop = (el) => {
+    let node = el;
+    let stack = null;
+    while (node && node.nodeType === 1) {
+      const bg = parse(getComputedStyle(node).backgroundColor);
+      if (bg && bg.a > 0) {
+        stack = stack ? over(stack, bg) : bg;
+        if (stack.a >= 1) return stack;
+      }
+      node = node.parentElement;
+    }
+    const page = parse(getComputedStyle(document.body).backgroundColor)
+      || { r: 255, g: 255, b: 255, a: 1 };
+    return stack ? over(stack, page) : page;
+  };
+
+  const SELECTOR = 'h1,h2,h3,h4,h5,h6,p,a,button,label,span,li,td,th,summary,strong,em,time,figcaption';
+  const failures = [];
+  document.querySelectorAll(SELECTOR).forEach((el) => {
+    if (el.closest('[aria-hidden="true"], .sr-only')) return;
+    if (el.matches(':disabled') || el.closest(':disabled')) return;
+    const rect = el.getBoundingClientRect();
+    if (rect.width < 2 || rect.height < 2) return;
+    const style = getComputedStyle(el);
+    if (style.visibility === 'hidden' || Number(style.opacity) < 0.1) return;
+    // Skip wrappers: only elements with their own text nodes are measured.
+    const text = Array.from(el.childNodes)
+      .filter((node) => node.nodeType === 3 && node.textContent.trim())
+      .map((node) => node.textContent.trim())
+      .join(' ');
+    if (!text) return;
+
+    const color = parse(style.color);
+    if (!color || color.a === 0) return;
+    const bg = backdrop(el);
+    const resolved = color.a < 1 ? over(color, bg) : color;
+    const size = parseFloat(style.fontSize);
+    const weight = Number(style.fontWeight) || 400;
+    const large = size >= 24 || (size >= 18.66 && weight >= 700);
+    const required = large ? 3 : 4.5;
+    const ratio = contrast(resolved, bg);
+    if (ratio < required) {
+      failures.push({
+        text: text.slice(0, 40),
+        selector: `${el.tagName}.${String(el.className).trim().slice(0, 40)}`,
+        color: style.color,
+        background: `rgb(${Math.round(bg.r)}, ${Math.round(bg.g)}, ${Math.round(bg.b)})`,
+        ratio: Math.round(ratio * 100) / 100,
+        required,
+      });
+    }
+  });
+  return failures;
+}
+"""
+
+
+def assert_text_contrast(page, label: str):
+    failures = page.evaluate(CONTRAST_AUDIT_JS)
+    assert failures == [], f"{label} has text below the WCAG AA contrast threshold: {failures}"
 
 
 def test_landing_demo_theme_keyboard_and_mobile_overflow(page, frontend_url):
@@ -580,3 +714,218 @@ def test_authenticated_app_visual_matrix_has_no_page_errors_or_overflow(page, fr
 
     assert page_errors == []
     assert console_errors == []
+
+
+def test_every_surface_reflows_at_320_css_pixels(page, frontend_url):
+    """WCAG 1.4.10: content must reflow to 320px without horizontal scrolling.
+
+    The rest of the suite starts at 390px, which leaves the narrowest real
+    devices -- and a 1280px desktop zoomed to 400% -- uncovered.
+    """
+
+    install_app_routes(page)
+    for filename in ALL_PAGES:
+        open_frontend(page, frontend_url, filename, {"width": NARROW_WIDTH, "height": 800})
+        if filename == "index.html":
+            wait_for_signed_in_app(page)
+        page.wait_for_timeout(200)
+        assert_no_horizontal_overflow(page, f"{filename} at {NARROW_WIDTH}px")
+
+
+def test_public_pages_load_without_page_or_console_errors(page, frontend_url):
+    """The signed-in shell is already covered by the visual matrix; the two
+    pages a first-time visitor actually lands on were not."""
+
+    page_errors = []
+    console_errors = []
+    page.on("pageerror", lambda error: page_errors.append(str(error)))
+    page.on(
+        "console",
+        lambda message: console_errors.append(message.text) if message.type == "error" else None,
+    )
+
+    for filename in PUBLIC_PAGES:
+        for width in (NARROW_WIDTH, 768, 1440):
+            open_frontend(page, frontend_url, filename, {"width": width, "height": 900})
+            # The feature images are loading="lazy", so a broken one is never
+            # requested and never reports while it sits below the fold.
+            # Promoting them to eager fetches every image the page references
+            # regardless of scroll position, which is what we actually want to
+            # assert -- and it avoids depending on scroll geometry, since these
+            # pages scroll on <body> rather than the viewport.
+            page.evaluate(
+                """
+                () => {
+                  document.querySelectorAll('img[loading="lazy"]').forEach((image) => {
+                    image.loading = 'eager';
+                    // Re-assigning src restarts source selection for an <img>
+                    // the lazy loader has already skipped.
+                    if (!image.currentSrc) image.src = image.src;
+                  });
+                }
+                """
+            )
+            page.wait_for_load_state("networkidle")
+            page.evaluate("document.fonts.ready")
+            page.wait_for_function(
+                "Array.from(document.images).every((image) => image.complete)"
+            )
+            assert page.evaluate(
+                "Array.from(document.images).every((image) => image.naturalWidth > 0)"
+            ), f"{filename} at {width}px has an image that failed to decode"
+            assert_no_horizontal_overflow(page, f"{filename} at {width}px")
+
+    assert page_errors == []
+    assert console_errors == []
+
+
+def test_text_meets_wcag_aa_contrast_in_both_themes(page, frontend_url):
+    """Guards the palette itself.
+
+    Nothing in CI checked contrast before this: the Lighthouse accessibility
+    score in the pull request was a manual run over the public pages only, so
+    a token misapplied on an operator surface (a border color used as text,
+    say) could ship unnoticed.
+    """
+
+    install_app_routes(page)
+    for filename in ALL_PAGES:
+        for theme in ("light", "dark"):
+            page.add_init_script(
+                f"try {{ localStorage.setItem('rebbe-theme', '{theme}'); }} catch (error) {{}}"
+            )
+            open_frontend(page, frontend_url, filename, {"width": 1280, "height": 900})
+            if filename == "index.html":
+                wait_for_signed_in_app(page)
+            page.wait_for_timeout(250)
+            assert page.locator("html").get_attribute("data-theme") == theme
+            assert_text_contrast(page, f"{filename} [{theme}]")
+
+
+def test_icon_controls_survive_forced_colors(page, frontend_url):
+    """Windows High Contrast replaces author colors with a system palette.
+
+    `.ph-icon` paints a masked shape with background-color, which that mode
+    rewrites to the system Canvas -- without an explicit escape every
+    icon-only control renders as an empty box.
+    """
+
+    page.emulate_media(forced_colors="active")
+    install_app_routes(page)
+    open_frontend(page, frontend_url, "index.html", {"width": 1280, "height": 900})
+    wait_for_signed_in_app(page)
+
+    assert page.evaluate("matchMedia('(forced-colors: active)').matches")
+
+    icons = page.evaluate(
+        """
+        () => Array.from(document.querySelectorAll('.ph-icon'))
+          .filter((el) => el.getBoundingClientRect().width > 0)
+          .slice(0, 12)
+          .map((el) => {
+            const style = getComputedStyle(el);
+            return {
+              adjust: style.forcedColorAdjust,
+              background: style.backgroundColor,
+              masked: style.maskImage !== 'none' || style.webkitMaskImage !== 'none',
+            };
+          })
+        """
+    )
+    assert icons, "expected rendered .ph-icon glyphs in the signed-in shell"
+    for icon in icons:
+        assert icon["adjust"] == "none", f"masked icon would be repainted to Canvas: {icon}"
+        assert icon["masked"], f"icon lost its mask under forced colors: {icon}"
+
+    # The focus ring cannot rely on box-shadow here: forced-colors drops shadows.
+    page.locator("#newChatBtn").focus()
+    focus_style = page.evaluate(
+        """
+        () => {
+          const style = getComputedStyle(document.activeElement);
+          return { outlineWidth: style.outlineWidth, outlineStyle: style.outlineStyle };
+        }
+        """
+    )
+    assert focus_style["outlineStyle"] != "none"
+    assert float(focus_style["outlineWidth"].replace("px", "")) >= 2
+
+
+def test_credit_balance_keeps_its_numeric_emphasis(page, frontend_url):
+    """loadCredits() toggles `.credits-value` for a numeric balance.
+
+    The class carried no rule at all after the rebrand, so the balance
+    silently rendered at plain body emphasis.
+    """
+
+    install_app_routes(page)
+    open_frontend(page, frontend_url, "index.html", {"width": 1280, "height": 900})
+    wait_for_signed_in_app(page)
+
+    page.locator("#userProfile").click()
+    page.locator("#settingsBtn").click()
+    page.locator("#settingsScreen:not(.hidden)").wait_for()
+
+    credits = page.locator("#creditsValue")
+    credits.filter(has_text="12").wait_for()
+    assert "credits-value" in (credits.get_attribute("class") or "")
+
+    styling = page.evaluate(
+        """
+        () => {
+          const el = document.getElementById('creditsValue');
+          const emphasized = getComputedStyle(el);
+          const label = getComputedStyle(document.querySelector('.settings-row-label'));
+          const probe = document.createElement('span');
+          probe.className = 'settings-row-value';
+          el.parentElement.appendChild(probe);
+          const plain = getComputedStyle(probe);
+          const result = {
+            color: emphasized.color,
+            plainColor: plain.color,
+            fontSize: parseFloat(emphasized.fontSize),
+            plainFontSize: parseFloat(plain.fontSize),
+            labelColor: label.color,
+          };
+          probe.remove();
+          return result;
+        }
+        """
+    )
+    assert styling["color"] != styling["plainColor"], (
+        "a numeric balance should not paint the same as an unclassed value: "
+        f"{styling}"
+    )
+    assert styling["fontSize"] > styling["plainFontSize"], styling
+
+
+def test_payment_form_repaints_when_the_theme_changes(page, frontend_url):
+    """Stripe Elements renders cross-origin and cannot inherit CSS variables.
+
+    Without an explicit update() the card form keeps whichever theme it
+    mounted under, so toggling to dark leaves a white form on a dark modal.
+    """
+
+    install_app_routes(page)
+    page.add_init_script("try { localStorage.setItem('rebbe-theme', 'light'); } catch (error) {}")
+    open_frontend(page, frontend_url, "index.html", {"width": 1280, "height": 900})
+    wait_for_signed_in_app(page)
+
+    page.locator("#userProfile").click()
+    page.locator("#settingsBtn").click()
+    page.locator("#settingsScreen:not(.hidden)").wait_for()
+    page.locator("#buyCreditsBtn").click()
+    page.wait_for_function(
+        "document.querySelector('#purchaseModal').getAttribute('aria-hidden') === 'false'"
+    )
+    page.wait_for_function("window.__stripeAppearances.created.length > 0")
+
+    created = page.evaluate("window.__stripeAppearances.created.at(-1)")
+    assert created["theme"] == "stripe", created
+
+    page.evaluate("window.RebbeTheme.apply('dark', true)")
+    page.wait_for_function("window.__stripeAppearances.updated.length > 0")
+
+    updated = page.evaluate("window.__stripeAppearances.updated.at(-1)")
+    assert updated["theme"] == "night", updated
+    assert updated["variables"]["colorBackground"] == "#161f2c", updated

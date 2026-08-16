@@ -181,8 +181,11 @@ textarea:disabled {
   font-weight: 700;
 }
 
+/* --brand-muted, not --brand-line-strong: the ordinals are text a sighted
+ * operator reads, and the line token is a border color that only reaches
+ * 2.04:1 on the rail in light mode. */
 .tab-index {
-  color: var(--brand-line-strong);
+  color: var(--brand-muted);
   font-size: 0.67rem;
   letter-spacing: 0.05em;
 }

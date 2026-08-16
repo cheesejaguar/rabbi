@@ -26,8 +26,29 @@ jobs:
       - name: Install dependencies
         run: uv sync --dev
 
+      # The browser is ~115MB and changes only when the pinned Playwright
+      # version does, so it is keyed on that version rather than on uv.lock.
+      - name: Resolve Playwright version
+        id: playwright
+        run: echo "version=$(uv run playwright --version | awk '{print $2}')" >> "$GITHUB_OUTPUT"
+
+      - name: Cache Playwright browsers
+        id: playwright-cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ steps.playwright.outputs.version }}
+
       - name: Install Chromium for browser tests
+        if: steps.playwright-cache.outputs.cache-hit != 'true'
         run: uv run playwright install --with-deps chromium
+
+      # The system libraries Chromium links against live outside the cached
+      # browser directory, so they are installed on a cache hit too. This is a
+      # fast apt-only path that skips the browser download.
+      - name: Install Chromium system dependencies
+        if: steps.playwright-cache.outputs.cache-hit == 'true'
+        run: uv run playwright install-deps chromium
 
       # There are ~46 pre-existing lint findings on the codebase today
       # (mostly unused imports in tests, plus a few unused locals and
@@ -42,14 +63,22 @@ jobs:
         run: |
           uv run pytest backend/tests/ \
             --ignore=backend/tests/test_frontend_browser.py \
+            --ignore=backend/tests/test_frontend_integration.py \
             --cov=backend/app \
             --cov-report=term-missing \
             --cov-report=xml \
             --cov-fail-under=60 \
             -v
 
+      # Deliberately blocking, unlike the lint and audit steps above: these
+      # cover accessibility, contrast, responsive reflow, and the payment and
+      # admin surfaces, and a regression in any of them should stop a merge.
       - name: Run browser interaction tests
-        run: uv run pytest backend/tests/test_frontend_browser.py --browser chromium -v
+        run: |
+          uv run pytest \
+            backend/tests/test_frontend_browser.py \
+            backend/tests/test_frontend_integration.py \
+            --browser chromium -v
 
       # pip-audit scans installed dependencies for known vulnerabilities.
       # continue-on-error is intentional: this is being introduced for
