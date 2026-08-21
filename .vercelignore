@@ -1,0 +1,11 @@
+# Repository-only design and verification artifacts
+.github/
+.impeccable/
+backend/tests/
+output/
+DESIGN.md
+PRODUCT.md
+
+# The image-generation masters that used to be excluded here are no longer in
+# the repository at all -- see .impeccable/assets-manifest.md. Everything left
+# under frontend/assets/images/ is served in production.

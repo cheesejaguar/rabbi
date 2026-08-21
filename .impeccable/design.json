@@ -1,0 +1,125 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-08-13T05:37:08Z",
+  "title": "Design System: rebbe.dev Braided Light",
+  "extensions": {
+    "colorMeta": {
+      "mineral-canvas": { "role": "neutral", "displayName": "Mineral Canvas", "canonical": "#f3f6fa", "tonalRamp": ["#17202d", "#2d3949", "#52647c", "#7d8da1", "#a9b7c8", "#c6d2e1", "#e4ebf3", "#f3f6fa"] },
+      "mineral-surface": { "role": "neutral", "displayName": "Mineral Surface", "canonical": "#fafcfe", "tonalRamp": ["#161f2c", "#34445a", "#53657e", "#8090a4", "#a9b7c8", "#c6d2e1", "#edf2f7", "#fafcfe"] },
+      "ink": { "role": "neutral", "displayName": "Deep Ink", "canonical": "#122033", "tonalRamp": ["#122033", "#26364a", "#405268", "#64758a", "#8c9bad", "#b6c1ce", "#dce3eb", "#f2f5f8"] },
+      "slate": { "role": "neutral", "displayName": "Reading Slate", "canonical": "#52647c", "tonalRamp": ["#17202d", "#29394d", "#40536b", "#52647c", "#78899e", "#a3afbe", "#ced6df", "#eef2f6"] },
+      "mineral-line": { "role": "neutral", "displayName": "Mineral Line", "canonical": "#c6d2e1", "tonalRamp": ["#1b2635", "#34445a", "#53657e", "#75879e", "#9fb0c6", "#c6d2e1", "#e2e8f0", "#f4f7fa"] },
+      "braid-indigo": { "role": "primary", "displayName": "Braid Indigo", "canonical": "#315da8", "tonalRamp": ["#12213d", "#193261", "#214784", "#315da8", "#5a7fc0", "#86a8e3", "#b8cbed", "#e4ebf6"] },
+      "braid-indigo-strong": { "role": "primary", "displayName": "Strong Braid Indigo", "canonical": "#214784", "tonalRamp": ["#101b31", "#172c52", "#214784", "#315da8", "#668bc8", "#9ab5e5", "#c9d7ef", "#edf2fa"] },
+      "night-canvas": { "role": "neutral", "displayName": "Night Canvas", "canonical": "#101722", "tonalRamp": ["#101722", "#202b3a", "#34445a", "#53657e", "#7d8da1", "#a9b7c8", "#d1dae4", "#eff4fa"] },
+      "night-indigo": { "role": "primary", "displayName": "Night Indigo", "canonical": "#86a8e3", "tonalRamp": ["#14233d", "#1e3352", "#294b79", "#416aa6", "#6488c3", "#86a8e3", "#b2c8ec", "#e7eef9"] },
+      "success": { "role": "tertiary", "displayName": "Semantic Success", "canonical": "#18734d", "tonalRamp": ["#0d271c", "#12452f", "#18734d", "#27976a", "#54b88e", "#86d0ad", "#bae5d1", "#e4f2eb"] },
+      "error": { "role": "tertiary", "displayName": "Semantic Error", "canonical": "#b23a3a", "tonalRamp": ["#351717", "#602424", "#8a3030", "#b23a3a", "#d05b5b", "#e58b8b", "#efbcbc", "#f8e8e8"] }
+    },
+    "typographyMeta": {
+      "display": { "displayName": "Source Loom Display", "purpose": "Public hero statements only." },
+      "headline": { "displayName": "Operational Headline", "purpose": "App greetings and admin view titles." },
+      "body": { "displayName": "Reading Body", "purpose": "Guidance, sources, explanations, and working copy." },
+      "label": { "displayName": "Source Label", "purpose": "Section eyebrows, status, and provenance metadata." }
+    },
+    "shadows": [
+      { "name": "material-lift", "value": "0 18px 48px rgba(28, 54, 89, 0.12)", "purpose": "Dialogs, menus, and selected proof surfaces in light mode." },
+      { "name": "material-lift-dark", "value": "0 20px 54px rgba(0, 0, 0, 0.28)", "purpose": "Equivalent floating surfaces in dark mode." },
+      { "name": "focus-halo", "value": "0 0 0 3px rgba(49, 93, 168, 0.28)", "purpose": "Keyboard focus paired with a visible indigo outline." }
+    ],
+    "motion": [
+      { "name": "state-standard", "value": "180ms ease", "purpose": "Transform, opacity, and color state changes in operational surfaces." },
+      { "name": "state-quick", "value": "160ms ease", "purpose": "Landing controls and compact feedback." },
+      { "name": "loom-draw", "value": "1200ms cubic-bezier(0.2, 0.8, 0.2, 1)", "purpose": "One-time SVG stroke explanation of the four-strand flow; disabled under reduced motion." }
+    ],
+    "breakpoints": [
+      { "name": "landing-wide", "value": "1180px" },
+      { "name": "landing-stack", "value": "860px" },
+      { "name": "landing-compact", "value": "560px" },
+      { "name": "app-rail-overlay", "value": "820px" },
+      { "name": "app-compact", "value": "640px" },
+      { "name": "admin-mobile", "value": "820px" },
+      { "name": "admin-summaries", "value": "720px" }
+    ]
+  },
+  "components": [
+    {
+      "name": "Primary Button",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "The single high-emphasis conversion or submit action in a local region.",
+      "html": "<button class=\"ds-btn-primary\">Ask a question</button>",
+      "css": ".ds-btn-primary{min-height:50px;padding:13px 20px;color:#fff;background:var(--brand-accent-strong,#214784);border:1px solid var(--brand-accent-strong,#214784);border-radius:10px;font:680 .96rem/1.2 'Hanken Grotesk',Arial,sans-serif;transition:transform 160ms ease,opacity 160ms ease}.ds-btn-primary:hover{transform:translateY(-2px)}.ds-btn-primary:active{transform:translateY(0);opacity:.82}.ds-btn-primary:focus-visible{outline:2px solid var(--brand-accent,#315da8);outline-offset:3px;box-shadow:var(--brand-focus,0 0 0 3px rgba(49,93,168,.28))}"
+    },
+    {
+      "name": "Quiet Button",
+      "kind": "button",
+      "refersTo": "button-quiet",
+      "description": "A lower-emphasis action that retains a visible boundary.",
+      "html": "<button class=\"ds-btn-quiet\">See sources</button>",
+      "css": ".ds-btn-quiet{min-height:44px;padding:10px 15px;color:var(--brand-accent-strong,#214784);background:transparent;border:1px solid var(--brand-line-strong,#9fb0c6);border-radius:8px;font:650 .88rem 'Hanken Grotesk',Arial,sans-serif;transition:background-color 180ms ease,border-color 180ms ease}.ds-btn-quiet:hover{background:var(--brand-accent-soft,#e4ebf6);border-color:var(--brand-accent,#315da8)}.ds-btn-quiet:focus-visible{outline:2px solid var(--brand-accent,#315da8);outline-offset:3px;box-shadow:var(--brand-focus,0 0 0 3px rgba(49,93,168,.28))}"
+    },
+    {
+      "name": "Labeled Field",
+      "kind": "input",
+      "refersTo": "input",
+      "description": "Persistent-label field for questions, filters, and settings.",
+      "html": "<label class=\"ds-field\"><span>Question</span><input dir=\"auto\" value=\"How can I begin?\"></label>",
+      "css": ".ds-field{display:grid;gap:7px;color:var(--brand-muted,#52647c);font:670 .76rem 'Hanken Grotesk',Arial,sans-serif}.ds-field input{min-height:44px;padding:10px 12px;color:var(--brand-text,#122033);background:var(--brand-surface,#fafcfe);border:1px solid var(--brand-line-strong,#9fb0c6);border-radius:8px;font-size:1rem}.ds-field input:hover{border-color:var(--brand-accent,#315da8)}.ds-field input:focus-visible{outline:2px solid var(--brand-accent,#315da8);outline-offset:3px;box-shadow:var(--brand-focus,0 0 0 3px rgba(49,93,168,.28))}"
+    },
+    {
+      "name": "Guidance Tag",
+      "kind": "chip",
+      "description": "A semantic pill that keeps the non-psak boundary attached to guidance.",
+      "html": "<span class=\"ds-guidance-tag\">Guidance, not psak</span>",
+      "css": ".ds-guidance-tag{display:inline-flex;align-items:center;min-height:28px;padding:5px 10px;color:var(--brand-accent-strong,#214784);background:var(--brand-accent-soft,#e4ebf6);border:1px solid var(--brand-line,#c6d2e1);border-radius:999px;font:700 .72rem 'Hanken Grotesk',Arial,sans-serif}"
+    },
+    {
+      "name": "Source Surface",
+      "kind": "card",
+      "refersTo": "surface-card",
+      "description": "A quiet bordered reading container for source-aware answers and references.",
+      "html": "<article class=\"ds-source-card\"><span>LOCALLY MATCHED</span><h3>Exodus 20:8-11</h3><p dir=\"auto\">A source note remains adjacent to the guidance it supports.</p></article>",
+      "css": ".ds-source-card{max-width:440px;padding:20px;color:var(--brand-text,#122033);background:var(--brand-surface,#fafcfe);border:1px solid var(--brand-line,#c6d2e1);border-radius:14px;font-family:'Hanken Grotesk',Arial,sans-serif}.ds-source-card span{color:var(--brand-accent,#315da8);font-size:.7rem;font-weight:720;letter-spacing:.1em}.ds-source-card h3{margin:10px 0 6px;font-size:1.15rem}.ds-source-card p{margin:0;color:var(--brand-muted,#52647c);line-height:1.55}.ds-source-card:hover{border-color:var(--brand-line-strong,#9fb0c6)}.ds-source-card:focus-within{outline:2px solid var(--brand-accent,#315da8);outline-offset:3px}"
+    },
+    {
+      "name": "Source Loom",
+      "kind": "custom",
+      "description": "The four-stage signature that makes the response mechanism visible.",
+      "html": "<div class=\"ds-loom\"><svg viewBox=\"0 0 200 64\" aria-label=\"Context, sources, ethics, and voice woven into one response\"><path d=\"M5 10 C45 10 45 54 85 54 S125 10 165 10 S185 32 195 32\"/><path d=\"M5 24 C45 24 45 40 85 40 S125 24 165 24 S185 32 195 32\"/><path d=\"M5 40 C45 40 45 24 85 24 S125 40 165 40 S185 32 195 32\"/><path d=\"M5 54 C45 54 45 10 85 10 S125 54 165 54 S185 32 195 32\"/></svg><ol><li>Context</li><li>Sources</li><li>Ethics</li><li>Voice</li></ol></div>",
+      "css": ".ds-loom{padding:20px;background:var(--brand-surface,#fafcfe);border:1px solid var(--brand-line,#c6d2e1);border-radius:14px;color:var(--brand-text,#122033);font-family:'Hanken Grotesk',Arial,sans-serif}.ds-loom svg{display:block;width:100%;height:64px}.ds-loom path{fill:none;stroke:var(--brand-accent,#315da8);stroke-width:2.5;stroke-linecap:round}.ds-loom ol{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin:12px 0 0;padding:0;list-style:none;color:var(--brand-muted,#52647c);font-size:.72rem}.ds-loom:hover path{stroke:var(--brand-accent-strong,#214784)}.ds-loom:focus-within{outline:2px solid var(--brand-accent,#315da8);outline-offset:3px}"
+    }
+  ],
+  "narrative": {
+    "northStar": "Braided Light",
+    "overview": "Braided Light makes source-aware Jewish guidance feel calm, serious, and humane. Four strands represent context, halachic reasoning, ethical review, and voice; they remain countable in the mark and explanatory moments, then resolve into one readable answer. The world pairs cool mineral surfaces with sparse indigo emphasis and image-native woven material. The public surface may persuade with scale and material, while the conversational app and admin become progressively quieter and denser. Across every mode, source legibility and the boundary between guidance and psak take precedence over spectacle.",
+    "keyCharacteristics": [
+      "Four-strand geometry and a reduced lowercase r are the owned signature.",
+      "Cool mineral light and dark surfaces carry one restrained indigo accent.",
+      "Source sheets, thin rules, and asymmetric layouts make provenance visible.",
+      "Hanken Grotesk stays direct and contemporary; Noto Sans Hebrew protects Hebrew reading.",
+      "Red and green appear only for genuine error and success states."
+    ],
+    "rules": [
+      { "name": "The One Indigo Rule", "body": "Indigo is the sole brand accent; it should organize attention, not coat the interface.", "section": "colors" },
+      { "name": "The Semantic Signal Rule", "body": "Reserve red and green for actual error and success. Never use them as decoration or product categories.", "section": "colors" },
+      { "name": "The Reading First Rule", "body": "Long-form answers use relaxed leading and constrained measure; operational density belongs in navigation, metrics, and labels.", "section": "typography" },
+      { "name": "The Material, Not Glass Rule", "body": "Blur may stabilize sticky chrome, but primary content should read as mineral paper, woven fiber, or translucent source sheets, not glassmorphism.", "section": "elevation" },
+      { "name": "The Meaningful Pill Rule", "body": "A 999px radius must communicate status, category, or toggle state; it is not a default button silhouette.", "section": "shapes" }
+    ],
+    "dos": [
+      "Do keep the four strands countable wherever the braid explains the product mechanism.",
+      "Do use real woven and translucent-sheet assets at identity-bearing moments, with quiet operational surfaces around them.",
+      "Do preserve persistent labels, visible focus, 44px targets, reduced-motion fallbacks, and dir=auto for user and source content.",
+      "Do keep guidance limits and human referral visually adjacent to the answer they qualify.",
+      "Do use locally vendored fonts, icons, and production imagery."
+    ],
+    "donts": [
+      "Don't reintroduce the Star of David as the product mark or reduce the braid to decorative squiggles.",
+      "Don't repeat generic equal-card grids when a reader, rail, loom, table, or divided metric field communicates the information better.",
+      "Don't use pills as the default shape, gradients as atmosphere, or red/green as ornamental brand colors.",
+      "Don't imitate sourced text with fake legible writing inside generated imagery.",
+      "Don't imply that source matching is claim-level verification or that the product provides binding psak."
+    ]
+  }
+}

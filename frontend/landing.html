@@ -1,223 +1,312 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>rebbe.dev — Torah wisdom and guidance, with heart</title>
-    <meta name="description" content="An AI study companion for Jewish life: ask questions of Torah, halacha, and meaning, and get thoughtful, source-grounded guidance from a progressive Modern Orthodox perspective. Guidance, not psak — and never a substitute for your rabbi.">
-    <link rel="canonical" href="https://rebbe.dev/">
-    <meta name="theme-color" content="#1a1a1a">
-    <link rel="icon" type="image/x-icon" href="/static/favicon.ico">
-    <link rel="apple-touch-icon" href="/static/apple-touch-icon.png">
-
-    <!-- Open Graph / social sharing -->
-    <meta property="og:type" content="website">
-    <meta property="og:url" content="https://rebbe.dev/">
-    <meta property="og:title" content="rebbe.dev — Torah wisdom and guidance, with heart">
-    <meta property="og:description" content="Ask questions of Torah, halacha, and meaning. Thoughtful, source-grounded answers from a progressive Modern Orthodox perspective.">
-    <meta property="og:image" content="https://rebbe.dev/static/og-image.png">
-    <meta name="twitter:card" content="summary_large_image">
-
-    <script type="application/ld+json">
-    {
-      "@context": "https://schema.org",
-      "@type": "WebApplication",
-      "name": "rebbe.dev",
-      "url": "https://rebbe.dev/",
-      "applicationCategory": "EducationalApplication",
-      "description": "An AI Torah study companion offering source-grounded guidance on Jewish law, practice, and meaning from a progressive Modern Orthodox perspective.",
-      "offers": {"@type": "Offer", "price": "0", "priceCurrency": "USD", "description": "Free to try; credit packages available."}
-    }
-    </script>
-
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-    <style>
-        * { box-sizing: border-box; margin: 0; padding: 0; }
-        body {
-            font-family: 'Inter', -apple-system, sans-serif;
-            background: #1a1a1a; color: #e8e8e8; line-height: 1.65;
-        }
-        a { color: #d4a853; text-decoration: none; }
-        .container { max-width: 880px; margin: 0 auto; padding: 0 24px; }
-        header {
-            display: flex; align-items: center; justify-content: space-between;
-            padding: 20px 24px; max-width: 980px; margin: 0 auto;
-        }
-        .brand { display: flex; align-items: center; gap: 10px; font-weight: 600; font-size: 1.05rem; color: #e8e8e8; }
-        .brand svg { color: #d4a853; }
-        .btn {
-            display: inline-block; background: #d4a853; color: #1a1a1a;
-            padding: 12px 28px; border-radius: 12px; font-weight: 600;
-            transition: all 0.15s ease;
-        }
-        .btn:hover { background: #e4bc6a; transform: translateY(-1px); }
-        .btn.ghost { background: none; color: #d4a853; border: 1px solid rgba(212,168,83,0.5); }
-        .btn.ghost:hover { background: rgba(212,168,83,0.1); }
-        .hero { text-align: center; padding: 72px 24px 56px; }
-        .hero h1 { font-size: clamp(1.9rem, 5vw, 3rem); line-height: 1.2; margin-bottom: 18px; }
-        .hero h1 em { color: #d4a853; font-style: normal; }
-        .hero p.lede { color: #b8b8b8; font-size: 1.1rem; max-width: 620px; margin: 0 auto 30px; }
-        .hero .cta-row { display: flex; gap: 14px; justify-content: center; flex-wrap: wrap; }
-        .hero .try-note { margin-top: 14px; color: #808080; font-size: 0.85rem; }
-        section { padding: 44px 0; }
-        section h2 { font-size: 1.5rem; margin-bottom: 22px; text-align: center; }
-        .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 16px; }
-        .card {
-            background: #232323; border: 1px solid #2e2e2e; border-radius: 14px; padding: 22px;
-        }
-        .card h3 { font-size: 1rem; margin-bottom: 8px; color: #d4a853; }
-        .card p { color: #b0b0b0; font-size: 0.92rem; }
-        .trust { background: #202020; border-top: 1px solid #2a2a2a; border-bottom: 1px solid #2a2a2a; }
-        .trust .inner { max-width: 700px; margin: 0 auto; }
-        .trust p { color: #b8b8b8; margin-bottom: 14px; }
-        .trust p strong { color: #e8e8e8; }
-        .faq details {
-            background: #232323; border: 1px solid #2e2e2e; border-radius: 12px;
-            padding: 16px 20px; margin-bottom: 10px;
-        }
-        .faq summary { cursor: pointer; font-weight: 500; }
-        .faq details p { color: #b0b0b0; margin-top: 10px; font-size: 0.93rem; }
-        .pricing-note { text-align: center; color: #b0b0b0; max-width: 560px; margin: 0 auto; }
-        .pricing-note strong { color: #d4a853; }
-        footer {
-            border-top: 1px solid #2a2a2a; padding: 28px 24px; text-align: center;
-            color: #808080; font-size: 0.85rem;
-        }
-        footer p { margin-bottom: 6px; }
-    </style>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>rebbe.dev | Thoughtful Jewish guidance, grounded in sources</title>
+  <meta name="description" content="Explore Jewish questions with a source-aware guidance companion that brings context, halachic reasoning, ethical review, and a thoughtful voice together.">
+  <link rel="canonical" href="https://rebbe.dev/">
+  <meta property="og:type" content="website">
+  <meta property="og:site_name" content="rebbe.dev">
+  <meta property="og:url" content="https://rebbe.dev/">
+  <meta property="og:title" content="Thoughtful Jewish guidance, grounded in sources.">
+  <meta property="og:description" content="A Jewish guidance companion for exploring sources, perspectives, and meaningful next steps.">
+  <meta property="og:image" content="https://rebbe.dev/static/assets/images/social-card.png">
+  <meta property="og:image:type" content="image/png">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+  <meta property="og:image:alt" content="rebbe.dev Braided Light identity and the words Thoughtful Jewish guidance, grounded in sources.">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Thoughtful Jewish guidance, grounded in sources.">
+  <meta name="twitter:description" content="A Jewish guidance companion for exploring sources, perspectives, and meaningful next steps.">
+  <meta name="twitter:image" content="https://rebbe.dev/static/assets/images/social-card.png">
+  <meta name="twitter:image:alt" content="rebbe.dev Braided Light identity and the words Thoughtful Jewish guidance, grounded in sources.">
+  <meta name="theme-color" content="#F3F6FA" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#101722" media="(prefers-color-scheme: dark)">
+  <link rel="icon" href="/static/favicon.ico" sizes="any">
+  <link rel="icon" type="image/png" sizes="32x32" href="/static/favicon-32x32.png">
+  <link rel="apple-touch-icon" href="/static/apple-touch-icon.png">
+  <link rel="stylesheet" href="/static/brand.css?v=2">
+  <link rel="stylesheet" href="/static/landing.css?v=1">
+  <script src="/static/theme.js?v=1"></script>
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "WebApplication",
+    "name": "rebbe.dev",
+    "url": "https://rebbe.dev/",
+    "applicationCategory": "EducationalApplication",
+    "operatingSystem": "Any",
+    "description": "A source-aware Jewish guidance companion for exploring thought, practice, law, ethics, and spirituality.",
+    "inLanguage": ["en", "he"]
+  }
+  </script>
 </head>
 <body>
-    <header>
-        <div class="brand">
-            <svg width="26" height="26" viewBox="0 0 600 700" fill="none" stroke="currentColor" stroke-width="40" stroke-linecap="round" stroke-linejoin="round">
-                <path d="M 47.631413,492.11477 552.36859,492.11491 300,54.999953 Z M 300,637.81981 552.36851,200.70493 47.631403,200.70481 Z"/>
+  <template id="impeccable-direction-contract">
+    THESIS: Four sources of judgment become one readable path, expressed as calm mineral surfaces crossed by a continuous indigo braid.
+    OWN-WORLD: rebbe.dev owns the four-strand lowercase r, source loom, translucent source sheets, and the distinction between context, sources, ethics, and voice.
+    STORY: A question enters as separate concerns, passes through sources and perspectives, and resolves into humane guidance with visible limits.
+    FIRST VIEWPORT: An asymmetric promise sits beside a real static Shabbat example, joined by a four-strand reasoning diagram and exact source references.
+    FORM: Hanken Grotesk and Noto Sans Hebrew, cool mineral palettes, thin rules, 14px structures, rectangular controls, authored SVG, and woven material.
+    FINISH: unreviewed and undocumented is unfinished; this build ends with the finish review, the verdict, and DESIGN.md
+  </template>
+  <a class="skip-link" href="#main-content">Skip to content</a>
+
+  <header class="site-header" aria-label="Primary navigation">
+    <a class="brand-lockup" href="/" aria-label="rebbe.dev home">
+      <img src="/static/assets/brand/braided-r.svg" alt="" width="34" height="34">
+      <span>rebbe<span class="brand-wordmark-dot">.dev</span></span>
+    </a>
+    <nav class="site-nav" aria-label="Main">
+      <a href="#method">How it works</a>
+      <a href="#sources">Sources</a>
+      <a href="#limits">Our limits</a>
+      <a href="#pricing">Pricing</a>
+    </nav>
+    <div class="header-actions">
+      <button class="theme-cycle" type="button" data-theme-cycle>
+        <span class="ph-icon ph-sun" aria-hidden="true"></span>
+        <span class="theme-label" data-theme-label>system</span>
+      </button>
+      <a class="text-action" href="/auth/login">Sign in</a>
+      <a class="button button-small" href="/auth/login">Ask a question</a>
+    </div>
+  </header>
+
+  <main id="main-content">
+    <section class="hero" aria-labelledby="hero-title">
+      <div class="hero-copy">
+        <h1 id="hero-title">Thoughtful Jewish guidance, grounded in sources.</h1>
+        <p class="hero-lede">Bring a real question. Explore the texts, tensions, and human context around it, then decide what your next step should be.</p>
+        <div class="hero-actions">
+          <a class="button" href="/auth/login">Ask a question <span class="ph-icon ph-arrow-right" aria-hidden="true"></span></a>
+          <a class="underlined-action" href="#example">See an example</a>
+        </div>
+        <p class="boundary-note"><span class="ph-icon ph-info" aria-hidden="true"></span> Guidance, not psak. For a personal halachic ruling, speak with a rabbi who knows you.</p>
+      </div>
+
+      <article class="guided-demo" id="example" aria-labelledby="example-title">
+        <header class="demo-question">
+          <div>
+            <p class="section-label">Your question</p>
+            <h2 id="example-title" dir="auto">How can I make Shabbat meaningful if I’m just beginning?</h2>
+          </div>
+          <span class="status-tag">Static example</span>
+        </header>
+
+        <div class="demo-answer">
+          <div class="reasoning-loom" aria-label="Four stages shape the example response">
+            <svg class="loom-svg" viewBox="0 0 120 430" role="img" aria-labelledby="loom-title loom-desc">
+              <title id="loom-title">Four-strand reasoning flow</title>
+              <desc id="loom-desc">Four lines weave through context, sources, ethics, and voice before forming the example response.</desc>
+              <g class="loom-strands" fill="none" stroke-linecap="round" stroke-width="3">
+                <path class="strand strand-one" pathLength="1" d="M28 20 C28 88 92 86 92 146 S28 205 28 266 S92 325 92 410"/>
+                <path class="strand strand-two" pathLength="1" d="M50 20 C50 88 72 90 72 146 S50 205 50 266 S72 325 72 410"/>
+                <path class="strand strand-three" pathLength="1" d="M72 20 C72 88 50 90 50 146 S72 205 72 266 S50 325 50 410"/>
+                <path class="strand strand-four" pathLength="1" d="M92 20 C92 88 28 86 28 146 S92 205 92 266 S28 325 28 410"/>
+              </g>
+              <g class="loom-nodes">
+                <circle cx="60" cy="72" r="7"/><circle cx="60" cy="169" r="7"/><circle cx="60" cy="266" r="7"/><circle cx="60" cy="363" r="7"/>
+              </g>
             </svg>
-            rebbe.dev
-        </div>
-        <a class="btn ghost" href="/auth/login">Sign in</a>
-    </header>
+            <ol class="loom-labels">
+              <li><span>01</span>Context</li>
+              <li><span>02</span>Sources</li>
+              <li><span>03</span>Ethics</li>
+              <li><span>04</span>Voice</li>
+            </ol>
+          </div>
 
-    <main>
-        <div class="hero">
-            <h1>Torah wisdom and guidance,<br><em>with heart</em></h1>
-            <p class="lede">
-                Ask questions of Torah, halacha, and Jewish life — and get thoughtful,
-                source-grounded answers that honor both the tradition and the person asking.
-                From a progressive Modern Orthodox perspective.
-            </p>
-            <div class="cta-row">
-                <a class="btn" href="/auth/login">Ask your first question</a>
+          <div class="example-response" aria-live="polite">
+            <div class="response-heading">
+              <div>
+                <p class="section-label">Example response</p>
+                <p class="response-title">Begin with one practice you can return to.</p>
+              </div>
+              <span class="guidance-tag">Guidance, not psak</span>
             </div>
-            <p class="try-note">Free to try — no payment required to start.</p>
-        </div>
-
-        <div class="container">
-            <section>
-                <h2>How it works</h2>
-                <div class="cards">
-                    <div class="card">
-                        <h3>Listens first</h3>
-                        <p>Before answering, the system considers <i>how</i> to respond — whether
-                        you're learning, struggling, or simply curious — and adjusts its tone
-                        and care accordingly.</p>
-                    </div>
-                    <div class="card">
-                        <h3>Grounded in the sources</h3>
-                        <p>Answers draw on a library of Tanakh, Mishnah, Talmud, Midrash,
-                        Rambam, Shulchan Aruch, and more — with citations shown so you can
-                        check every claim.</p>
-                    </div>
-                    <div class="card">
-                        <h3>The full landscape</h3>
-                        <p>Halacha is presented as a living conversation: majority views,
-                        minority opinions, and the principles underneath — never a single
-                        verdict pretending to be the only one.</p>
-                    </div>
-                    <div class="card">
-                        <h3>Dignity as a rule</h3>
-                        <p>Every response passes an ethical check: an answer that shames or
-                        harms the person asking is treated as a wrong answer, however
-                        technically correct.</p>
-                    </div>
-                </div>
-            </section>
-        </div>
-
-        <section class="trust">
-            <div class="container inner">
-                <h2>What this is — and what it isn't</h2>
-                <p><strong>This is guidance, not psak.</strong> rebbe.dev is an AI study
-                companion. It does not issue halachic rulings, and it will regularly point
-                you toward a rabbi who knows you personally for questions that deserve one.</p>
-                <p><strong>It is not therapy.</strong> If you're going through something
-                serious, it will encourage you to speak with a human — a rabbi, a counselor,
-                or a mental-health professional.</p>
-                <p><strong>It shows its sources.</strong> Citations that were checked against
-                the text library are marked as verified, so you can tell what was retrieved
-                from primary sources and what comes from the model's general knowledge.</p>
-                <p><strong>It rests when you do.</strong> On Shabbat and yom tov the site
-                gently notes the day — the conversation will be here after havdalah.</p>
+            <div class="response-copy" dir="auto">
+              <p><strong>Set apart a small piece of time.</strong> Choose a dependable point on Friday evening when work and ordinary tasks stop. The Torah frames Shabbat as both remembering creation and practicing freedom from servitude.</p>
+              <p><strong>Add delight, not pressure.</strong> A meal, candles, a song, a walk, or unrushed time with someone you love can make the distinction tangible. Isaiah links sacred time with delight, and rabbinic tradition praises honoring Shabbat.</p>
+              <p><strong>Let consistency come before completeness.</strong> Start with what you can sustain. Learn what feels meaningful, then ask which practice you want to deepen next.</p>
             </div>
-        </section>
-
-        <div class="container">
-            <section>
-                <h2>A d'var Torah every week</h2>
-                <p class="pricing-note">
-                    Each week brings an original teaching on the parsha — and you can
-                    <strong>sponsor the week's learning</strong> in memory or in honor of a
-                    loved one, in the tradition of dedicated Torah study.
-                </p>
-            </section>
-
-            <section>
-                <h2>Simple, honest pricing</h2>
-                <p class="pricing-note">
-                    Try it free. When you're ready for more, credit packages start at
-                    <strong>$1</strong> — enough for ten thoughtful conversations. No
-                    subscription required.
-                </p>
-            </section>
-
-            <section class="faq">
-                <h2>Questions people ask</h2>
-                <details>
-                    <summary>Is this a replacement for my rabbi?</summary>
-                    <p>No — and it will tell you so itself. Think of it as a knowledgeable
-                    study partner available at 2am: a starting point for deeper exploration,
-                    not a final word. For psak, lifecycle decisions, or anything weighty, it
-                    consistently recommends a rabbi who knows you.</p>
-                </details>
-                <details>
-                    <summary>What perspective does it answer from?</summary>
-                    <p>A progressive Modern Orthodox framework, presented pluralistically. You
-                    can also set your own denomination in your profile, and the sources and
-                    framing adapt accordingly.</p>
-                </details>
-                <details>
-                    <summary>Where do the answers come from?</summary>
-                    <p>A four-stage reasoning pipeline over a library of Jewish primary texts.
-                    Sources are cited with each answer, and citations that match passages
-                    retrieved from the library are marked verified.</p>
-                </details>
-                <details>
-                    <summary>Is my conversation private?</summary>
-                    <p>Conversations are stored to your private account so you can return to
-                    them, and are never shared publicly.</p>
-                </details>
-            </section>
-
-            <section style="text-align:center;">
-                <a class="btn" href="/auth/login">Start a conversation</a>
-            </section>
+          </div>
         </div>
-    </main>
 
-    <footer>
-        <p>rebbe.dev — guidance, not psak. Not a substitute for a rabbi who knows you personally, nor for professional care.</p>
-        <p>May your learning bring light.</p>
-    </footer>
+        <div class="source-tray" aria-labelledby="source-tray-title">
+          <div class="source-tray-intro">
+            <p class="section-label" id="source-tray-title">Source threads</p>
+            <p>These are careful paraphrases for orientation, not quotations or a complete source study.</p>
+          </div>
+          <div class="source-tabs" role="tablist" aria-label="Example sources">
+            <button type="button" role="tab" aria-selected="true" aria-controls="source-note" data-source="exodus">Exodus 20:8-11</button>
+            <button type="button" role="tab" aria-selected="false" aria-controls="source-note" data-source="deuteronomy" tabindex="-1">Deuteronomy 5:12-15</button>
+            <button type="button" role="tab" aria-selected="false" aria-controls="source-note" data-source="isaiah" tabindex="-1">Isaiah 58:13</button>
+            <button type="button" role="tab" aria-selected="false" aria-controls="source-note" data-source="shabbat" tabindex="-1">Shabbat 118b</button>
+          </div>
+          <p class="source-note" id="source-note" role="tabpanel" dir="auto">Shabbat is set apart from work and rooted in the memory of creation.</p>
+        </div>
+      </article>
+    </section>
+
+    <section class="method-section" id="method" aria-labelledby="method-title">
+      <div class="section-intro method-intro">
+        <h2 id="method-title">Four strands. One considered response.</h2>
+        <p>Each stage has a different job. The system keeps them visible so a polished answer does not hide its own limits.</p>
+      </div>
+      <div class="method-track">
+        <svg class="track-braid" viewBox="0 0 1000 84" preserveAspectRatio="none" aria-hidden="true">
+          <path d="M0 18 C125 18 125 66 250 66 S375 18 500 18 S625 66 750 66 S875 18 1000 18"/>
+          <path d="M0 34 C125 34 125 50 250 50 S375 34 500 34 S625 50 750 50 S875 34 1000 34"/>
+          <path d="M0 50 C125 50 125 34 250 34 S375 50 500 50 S625 34 750 34 S875 50 1000 50"/>
+          <path d="M0 66 C125 66 125 18 250 18 S375 66 500 66 S625 18 750 18 S875 66 1000 66"/>
+        </svg>
+        <ol class="method-steps">
+          <li>
+            <span class="step-number">01</span>
+            <div><h3>Read the context</h3><p>Notice emotion, urgency, relationships, and what kind of help the question calls for.</p></div>
+          </li>
+          <li>
+            <span class="step-number">02</span>
+            <div><h3>Gather source perspectives</h3><p>Surface relevant primary texts and explain how different authorities frame the issue.</p></div>
+          </li>
+          <li>
+            <span class="step-number">03</span>
+            <div><h3>Review the human stakes</h3><p>Consider dignity, safety, power, and the practical consequences of the guidance.</p></div>
+          </li>
+          <li>
+            <span class="step-number">04</span>
+            <div><h3>Shape a useful voice</h3><p>Bring the strands together in language that is clear about uncertainty and next steps.</p></div>
+          </li>
+        </ol>
+      </div>
+    </section>
+
+    <section class="sources-section" id="sources" aria-labelledby="sources-title">
+      <div class="sources-image-wrap">
+        <picture>
+          <source srcset="/static/assets/images/source-sheets.avif" type="image/avif">
+          <img src="/static/assets/images/source-sheets.jpg" alt="Abstract translucent sheets layered in cool blue light" width="1800" height="1200" loading="lazy" decoding="async">
+        </picture>
+        <div class="source-key" aria-hidden="true">
+          <span>Text</span><span>Context</span><span>Perspective</span>
+        </div>
+      </div>
+      <div class="sources-copy">
+        <h2 id="sources-title">A reference is useful when you know what it means.</h2>
+        <p>rebbe.dev can show two kinds of source references. The distinction matters.</p>
+        <dl class="definition-list">
+          <div>
+            <dt><span class="definition-mark retrieved"></span>Locally matched source</dt>
+            <dd>The system found relevant material in its local text library and matched the reference to that retrieved context. This supports traceability, but it is not a guarantee that every claim has been verified.</dd>
+          </div>
+          <div>
+            <dt><span class="definition-mark knowledge"></span>Model-knowledge citation</dt>
+            <dd>The reference comes from the model's learned knowledge rather than a local text match. Treat it as a lead for further study and verify it before relying on details.</dd>
+          </div>
+        </dl>
+      </div>
+    </section>
+
+    <section class="limits-section" id="limits" aria-labelledby="limits-title">
+      <div class="limits-heading">
+        <h2 id="limits-title">Some questions should leave the screen.</h2>
+      </div>
+      <div class="limits-body">
+        <p class="limits-lede">A useful companion should know when companionship is not enough.</p>
+        <ul class="limits-list">
+          <li><span class="ph-icon ph-users" aria-hidden="true"></span><div><strong>Personal halachic decisions</strong><p>A rabbi who knows your situation may weigh facts and obligations differently.</p></div></li>
+          <li><span class="ph-icon ph-heart" aria-hidden="true"></span><div><strong>Pastoral or mental health care</strong><p>Distress, abuse, self-harm, or immediate danger needs qualified human support.</p></div></li>
+          <li><span class="ph-icon ph-shield" aria-hidden="true"></span><div><strong>Honest system boundaries</strong><p>Ethical review and source matching are parts of the process, not guarantees of accuracy or safety.</p></div></li>
+        </ul>
+        <p class="privacy-note">Signed-in conversations are scoped to your account. Authorized administrators may review content for operations, moderation, and safety.</p>
+      </div>
+    </section>
+
+    <section class="learning-section" aria-labelledby="learning-title">
+      <div class="learning-copy">
+        <h2 id="learning-title">Stay with a question longer.</h2>
+        <p>A current d'var Torah creates room for slower reading beyond the conversation. It follows the weekly parsha when available, with holiday weeks and occasional generation gaps handled honestly.</p>
+        <a class="underlined-action" href="/auth/login">Open the reader</a>
+      </div>
+      <figure class="braid-figure">
+        <picture>
+          <source srcset="/static/assets/images/braid-macro.avif" type="image/avif">
+          <img src="/static/assets/images/braid-macro.jpg" alt="Indigo and silver strands woven together under raking light" width="1800" height="1200" loading="lazy" decoding="async">
+        </picture>
+        <figcaption>Context, sources, ethics, and voice remain distinct even as they form one response.</figcaption>
+      </figure>
+    </section>
+
+    <section class="pricing-section" id="pricing" aria-labelledby="pricing-title">
+      <div class="pricing-intro">
+        <h2 id="pricing-title">Two simple credit packages.</h2>
+        <p>Credits support question responses. Prices shown here match the current product catalog.</p>
+      </div>
+      <div class="price-ledger" aria-label="Credit packages">
+        <article>
+          <div><p class="package-name">Ten credits</p><p class="package-note">For a few focused questions</p></div>
+          <p class="package-price numeric"><span>$</span>1.00</p>
+          <a class="button button-quiet" href="/auth/login">Ask a question</a>
+        </article>
+        <article>
+          <div><p class="package-name">Twenty-five credits</p><p class="package-note">For an ongoing thread of study</p></div>
+          <p class="package-price numeric"><span>$</span>2.00</p>
+          <a class="button" href="/auth/login">Ask a question</a>
+        </article>
+      </div>
+    </section>
+
+    <section class="faq-section" aria-labelledby="faq-title">
+      <div>
+        <h2 id="faq-title">A few useful answers.</h2>
+      </div>
+      <div class="faq-list">
+        <details>
+          <summary>Is rebbe.dev a rabbi?</summary>
+          <p>No. It is a guidance companion that helps you explore sources and perspectives. It cannot issue binding psak or replace a rabbi who knows you.</p>
+        </details>
+        <details>
+          <summary>Which Jewish perspective does it use?</summary>
+          <p>The default is progressive Modern Orthodox, and signed-in users can share a denominational context. A response may still present multiple positions when the sources meaningfully differ.</p>
+        </details>
+        <details>
+          <summary>Are all citations verified?</summary>
+          <p>No. The app distinguishes a source matched in the local library from a citation based on model knowledge. A local match improves traceability but does not establish claim-level verification.</p>
+        </details>
+        <details>
+          <summary>Does the service close for Shabbat?</summary>
+          <p>No. The app may show a calendar notice for Shabbat or yom tov based on approximate local timing, but it remains available.</p>
+        </details>
+        <details>
+          <summary>Who can see my conversations?</summary>
+          <p>Ordinary users can access only their own signed-in history. Authorized administrators may review content for operations, moderation, and safety.</p>
+        </details>
+      </div>
+    </section>
+
+    <section class="final-cta" aria-labelledby="final-title">
+      <img class="final-mark" src="/static/assets/brand/braided-r.svg" alt="" width="76" height="76">
+      <div>
+        <h2 id="final-title">Start with curiosity. Leave with a clearer next step.</h2>
+      </div>
+      <a class="button" href="/auth/login">Ask a question <span class="ph-icon ph-arrow-right" aria-hidden="true"></span></a>
+    </section>
+  </main>
+
+  <footer class="site-footer">
+    <a class="brand-lockup" href="/" aria-label="rebbe.dev home">
+      <img src="/static/assets/brand/braided-r.svg" alt="" width="30" height="30">
+      <span>rebbe<span class="brand-wordmark-dot">.dev</span></span>
+    </a>
+    <p>Jewish guidance for learning and reflection. Not a substitute for professional, medical, legal, mental health, or rabbinic advice.</p>
+    <div class="footer-meta">
+      <a href="/privacy">Privacy</a>
+      <p class="numeric">© 2026 rebbe.dev</p>
+    </div>
+  </footer>
+
+  <script src="/static/landing.js?v=1" defer></script>
 </body>
 </html>

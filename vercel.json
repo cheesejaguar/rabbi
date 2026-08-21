@@ -8,6 +8,7 @@
     { "src": "/api/(.*)", "dest": "/api/index.py" },
     { "src": "/auth/(.*)", "dest": "/api/index.py" },
     { "src": "/admin", "dest": "/api/index.py" },
+    { "src": "/privacy/?", "dest": "/api/index.py" },
     { "src": "/robots.txt", "dest": "/api/index.py" },
     { "src": "/sitemap.xml", "dest": "/api/index.py" },
     { "src": "/", "dest": "/api/index.py" },

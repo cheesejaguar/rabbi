@@ -375,11 +375,21 @@ async def callback(request: Request, code: str = None, state: str = None, error:
             # to the full origin, so the parent window's next auth check
             # will succeed without reloading.
             html = (
-                "<!DOCTYPE html><html><head><title>Signed in</title></head>"
-                "<body style=\"background:#1a1a1a;color:#e8e8e8;"
-                "font-family:system-ui,sans-serif;text-align:center;"
-                "padding:40px;\">"
-                "<p>Signed in. You can close this window.</p>"
+                "<!DOCTYPE html><html lang=\"en\"><head>"
+                "<meta charset=\"UTF-8\">"
+                "<meta name=\"viewport\" content=\"width=device-width,initial-scale=1\">"
+                "<meta name=\"robots\" content=\"noindex,nofollow\">"
+                "<title>Signed in | rebbe.dev</title>"
+                "<link rel=\"stylesheet\" href=\"/static/brand.css?v=2\">"
+                "<link rel=\"stylesheet\" href=\"/static/auth.css?v=1\">"
+                "<script src=\"/static/theme.js?v=1\"></script>"
+                "</head><body><main class=\"auth-shell\">"
+                "<section class=\"auth-panel auth-panel-compact\">"
+                "<img class=\"auth-success-mark\" src=\"/static/assets/brand/"
+                "braided-r.svg\" alt=\"\" width=\"48\" height=\"48\">"
+                "<div class=\"auth-copy\"><h1>Signed in.</h1>"
+                "<p>You can return to your rebbe.dev conversation.</p></div>"
+                "</section></main>"
                 "<script>"
                 "(function(){try{"
                 "if(window.opener&&!window.opener.closed){"
@@ -435,56 +445,43 @@ async def logged_out():
     """
     html = """
     <!DOCTYPE html>
-    <html>
+    <html lang="en">
     <head>
-        <title>rebbe.dev - Login</title>
-        <link rel="preconnect" href="https://fonts.googleapis.com">
-        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-        <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
-        <style>
-            body {
-                font-family: 'Inter', -apple-system, sans-serif;
-                background: #1a1a1a;
-                color: #e8e8e8;
-                display: flex;
-                justify-content: center;
-                align-items: center;
-                min-height: 100vh;
-                margin: 0;
-            }
-            .container {
-                text-align: center;
-                padding: 40px;
-            }
-            .icon { margin-bottom: 16px; color: #d4a853; }
-            h1 { color: #e8e8e8; margin-bottom: 8px; font-size: 1.75rem; }
-            p { color: #a0a0a0; margin-bottom: 32px; font-size: 0.95rem; }
-            a {
-                display: inline-block;
-                background: #d4a853;
-                color: white;
-                padding: 14px 32px;
-                border-radius: 12px;
-                text-decoration: none;
-                font-weight: 500;
-                font-size: 1rem;
-                transition: all 0.15s ease;
-            }
-            a:hover { background: #e4bc6a; transform: translateY(-2px); }
-        </style>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <meta name="robots" content="noindex, nofollow">
+        <title>Signed out | rebbe.dev</title>
+        <link rel="icon" href="/static/favicon.ico" sizes="any">
+        <link rel="stylesheet" href="/static/brand.css?v=2">
+        <link rel="stylesheet" href="/static/auth.css?v=1">
+        <script src="/static/theme.js?v=1"></script>
     </head>
     <body>
-        <div class="container">
-            <div class="icon">
-                <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-                    <path d="M12 2L16.5 9H7.5L12 2Z"/>
-                    <path d="M12 22L7.5 15H16.5L12 22Z"/>
-                </svg>
-            </div>
-            <h1>rebbe.dev</h1>
-            <p>Sign in to continue</p>
-            <a href="/auth/login">Sign In</a>
-        </div>
+        <main class="auth-shell">
+            <section class="auth-panel" aria-labelledby="signed-out-title">
+                <header class="auth-header">
+                    <a class="brand-lockup" href="/" aria-label="rebbe.dev home">
+                        <img src="/static/assets/brand/braided-r.svg" alt="" width="40" height="40">
+                        <span>rebbe<span class="brand-wordmark-dot">.dev</span></span>
+                    </a>
+                    <button class="theme-cycle" type="button" data-theme-cycle>
+                        <span class="ph-icon ph-sun" aria-hidden="true"></span>
+                        <span class="sr-only" data-theme-label>system</span>
+                    </button>
+                </header>
+                <div class="auth-copy">
+                    <h1 id="signed-out-title">You are signed out.</h1>
+                    <p>Your conversations remain with your account. Sign in when you are ready to continue.</p>
+                </div>
+                <a class="auth-action" href="/auth/login">
+                    <span>Sign in</span>
+                    <span class="ph-icon ph-arrow-right" aria-hidden="true"></span>
+                </a>
+                <div class="auth-meta">
+                    <a href="/privacy">Privacy policy</a>
+                </div>
+            </section>
+        </main>
     </body>
     </html>
     """

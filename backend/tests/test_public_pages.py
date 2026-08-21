@@ -1,6 +1,8 @@
 """Tests for the public web surface: landing page, robots.txt, sitemap,
 and the Shabbat/yom tov calendar-status endpoint."""
 
+import json
+from pathlib import Path
 import sys
 import pytest
 from unittest.mock import patch, Mock, AsyncMock
@@ -41,8 +43,12 @@ class TestLandingPage:
     def test_unauthenticated_visitor_gets_landing_page(self, public_client):
         response = public_client.get("/")
         assert response.status_code == 200
-        assert "Torah wisdom and guidance" in response.text
+        assert "Thoughtful Jewish guidance, grounded in sources." in response.text
         assert "guidance, not psak" in response.text.lower()
+        assert "How can I make Shabbat meaningful if I’m just beginning?" in response.text
+        assert "Static example" in response.text
+        assert '"price": "0"' not in response.text
+        assert 'href="/privacy"' in response.text
 
     def test_authenticated_user_gets_app(self, public_client):
         with patch('app.main.get_current_user', return_value=AUTH_USER):
@@ -62,6 +68,55 @@ class TestLandingPage:
         response = public_client.get("/sitemap.xml")
         assert response.status_code == 200
         assert "<urlset" in response.text
+        assert "<loc>https://rebbe.dev/privacy</loc>" in response.text
+
+
+class TestPrivacyPolicy:
+    """Test that the policy remains public, substantive, and deployable."""
+
+    def test_anonymous_privacy_policy_is_direct_and_crawlable(self, public_client):
+        response = public_client.get("/privacy")
+
+        assert response.status_code == 200
+        assert response.history == []
+        assert response.headers["content-type"].startswith("text/html")
+        assert "Privacy Policy | rebbe.dev" in response.text
+        assert '<link rel="canonical" href="https://rebbe.dev/privacy">' in response.text
+        assert "August 13, 2026" in response.text
+        assert "Information we process" in response.text
+        assert "AI and text-to-speech processing" in response.text
+        assert "Retention and deletion" in response.text
+        assert "WorkOS" in response.text
+        assert "Stripe" in response.text
+        assert "ElevenLabs" in response.text
+        assert "do not currently have an automatic expiration schedule" in response.text
+
+    def test_authenticated_visitor_still_gets_policy(self, public_client):
+        with patch('app.main.get_current_user', return_value=AUTH_USER):
+            response = public_client.get("/privacy")
+
+        assert response.status_code == 200
+        assert "Privacy Policy | rebbe.dev" in response.text
+        assert 'id="welcomeScreen"' not in response.text
+
+    def test_trailing_slash_canonicalizes_without_auth_redirect(self, public_client):
+        response = public_client.get("/privacy/", follow_redirects=False)
+
+        assert response.status_code == 307
+        assert response.headers["location"].endswith("/privacy")
+
+    def test_vercel_privacy_route_precedes_frontend_catchall(self):
+        root = Path(__file__).resolve().parents[2]
+        routes = json.loads((root / "vercel.json").read_text())["routes"]
+        privacy_index = next(
+            index for index, route in enumerate(routes) if route["src"] == "/privacy/?"
+        )
+        catchall_index = next(
+            index for index, route in enumerate(routes) if route["src"] == "/(.*)"
+        )
+
+        assert routes[privacy_index]["dest"] == "/api/index.py"
+        assert privacy_index < catchall_index
 
 
 class TestCalendarStatusEndpoint:

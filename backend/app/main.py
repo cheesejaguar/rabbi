@@ -291,6 +291,8 @@ class AuthMiddleware(BaseHTTPMiddleware):
     # Paths that don't require authentication (exact match)
     PUBLIC_PATHS = {
         "/",  # Public landing page for visitors / app for signed-in users
+        "/privacy",
+        "/privacy/",
         "/robots.txt",
         "/sitemap.xml",
         "/auth/login",
@@ -1313,7 +1315,16 @@ if os.path.exists(frontend_path):
     # Mount the frontend directory at /static for CSS, JS, and asset files
     app.mount("/static", StaticFiles(directory=frontend_path), name="static")
 
-    @app.get("/")
+    # The public, crawlable routes below answer HEAD as well as GET. FastAPI's
+    # @app.get registers GET alone (unlike Starlette's plain Route, which adds
+    # HEAD for free), so a bare @app.get returns 405 to the HEAD probes that
+    # crawlers, link checkers, and uptime monitors send before fetching.
+    @app.api_route("/privacy", methods=["GET", "HEAD"], include_in_schema=False)
+    async def serve_privacy_policy():
+        """Serve the public, crawlable privacy policy."""
+        return FileResponse(os.path.join(frontend_path, "privacy.html"))
+
+    @app.api_route("/", methods=["GET", "HEAD"])
     async def serve_frontend(request: Request):
         """Serve the app to signed-in users, the public landing page to visitors.
 
@@ -1329,7 +1340,7 @@ if os.path.exists(frontend_path):
             return FileResponse(os.path.join(frontend_path, "index.html"))
         return FileResponse(os.path.join(frontend_path, "landing.html"))
 
-    @app.get("/robots.txt", include_in_schema=False)
+    @app.api_route("/robots.txt", methods=["GET", "HEAD"], include_in_schema=False)
     async def robots_txt():
         """Serve crawler directives: index the public site, not the API."""
         content = (
@@ -1342,13 +1353,14 @@ if os.path.exists(frontend_path):
         )
         return Response(content=content, media_type="text/plain")
 
-    @app.get("/sitemap.xml", include_in_schema=False)
+    @app.api_route("/sitemap.xml", methods=["GET", "HEAD"], include_in_schema=False)
     async def sitemap_xml():
-        """Serve a minimal sitemap for the public landing page."""
+        """Serve a minimal sitemap for public, crawlable pages."""
         content = (
             '<?xml version="1.0" encoding="UTF-8"?>\n'
             '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n'
             f"  <url><loc>{settings.public_base_url}/</loc><changefreq>weekly</changefreq></url>\n"
+            f"  <url><loc>{settings.public_base_url}/privacy</loc><changefreq>yearly</changefreq></url>\n"
             "</urlset>\n"
         )
         return Response(content=content, media_type="application/xml")

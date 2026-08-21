@@ -31,7 +31,13 @@ Severity: **critical** = blocks being a trustworthy paid service ·
 > tzedakah sponsorship flow — chai-multiple tiers, dedications shown with the
 > weekly d'var Torah, webhook fulfillment, and an admin view.
 >
-> Everything else below remains open.
+> *Privacy round:* a public, crawlable Privacy Policy now inventories account,
+> conversation, AI-provider, text-to-speech, payment, analytics, browser-storage,
+> admin-access, retention, and deletion behavior. It is linked from anonymous,
+> signed-in, and signed-out surfaces. Terms, consent controls, account-wide
+> deletion/export, and a defined retention schedule remain open.
+>
+> Everything else below remains open unless explicitly marked as addressed.
 
 ---
 
@@ -45,8 +51,10 @@ Severity: **critical** = blocks being a trustworthy paid service ·
    pastoral agent's parse-failure fallback fails *open* (critical, M).
    The new admin crisis queue surfaces flagged messages, but real-time
    notification and a hard-coded crisis-resources response are still missing.
-3. **No Terms of Service or Privacy Policy** while charging money and storing
-   religious/emotional conversations — a legal non-starter (critical, M).
+3. **No Terms of Service**, and privacy compliance still lacks consent,
+   account-wide deletion/export, and a defined retention schedule while storing
+   religious and emotional conversations (critical, M). A transparent Privacy
+   Policy is now present, but it does not replace those controls.
 4. **RAG citations are never shown to users** (and are unverified LLM output)
    — verifiable sources are the core trust feature of a paid Torah product
    (critical, M).
@@ -120,9 +128,11 @@ Severity: **critical** = blocks being a trustworthy paid service ·
   ideation leaves no reviewable trace.
 - **[critical/M] No Terms of Service.** No page, route, or link — while taking
   payments for counseling-adjacent output.
-- **[critical/M] No Privacy Policy.** Stores religious affiliation (GDPR
-  Art. 9 special-category), emotional conversations, IPs, fingerprints, and
-  anonymous analytics with no privacy notice.
+- **[addressed/M] Privacy Policy.** A public policy now discloses religious and
+  emotional conversation data, AI and service providers, IP and abuse signals,
+  first-party analytics, administrator access, browser storage, public
+  dedications, and current retention/deletion limits. It does not by itself
+  resolve consent, deletion/export, or retention-control gaps below.
 - **[high/M] No account deletion (right to erasure).** Schema supports cascade
   deletion but no endpoint or UI exists.
 - **[high/S] No "not therapy" disclaimer.** Only the halachic "not psak"

@@ -1,2903 +1,2127 @@
-/* ============================================================
- * REBBE.DEV - Dark-Themed Chat Interface Stylesheet
- * ============================================================
- *
- * A dark-mode-first design system for a Torah wisdom chatbot UI.
- * Built with CSS custom properties (variables) for consistent
- * theming, using a warm charcoal palette accented with gold
- * (#d4a853) as the primary brand color.
- *
- * DESIGN STRATEGY:
- * - All colors, radii, shadows, and transitions are tokenized
- *   as CSS custom properties in :root for single-source theming.
- * - Dark backgrounds (#1a1a1a - #333333) reduce eye strain and
- *   convey a contemplative, scholarly atmosphere.
- * - Gold accent evokes traditional Torah scroll ornamentation.
- * - Mobile-first responsive approach with progressive enhancement.
- * - Respects prefers-reduced-motion for accessibility.
- * - iOS safe-area support for notched devices.
- *
- * TABLE OF CONTENTS:
- * ------------------
- *  1. CSS Custom Properties (:root)          ~line 40
- *  2. Reset & Base Styles                    ~line 100
- *  3. App Container & Layout Shell           ~line 120
- *  4. Sidebar (Navigation Drawer)            ~line 140
- *     - Header, Toggle, Content, Footer
- *     - Conversation List & Menus
- *     - User Profile & Dropdown
- *  5. Main Content Area                      ~line 440
- *  6. Menu Button (Sidebar Toggle)           ~line 460
- *  7. Sidebar Overlay (Mobile Backdrop)      ~line 510
- *  8. Mobile Sidebar Responsive (768px)      ~line 540
- *  9. Utility Classes                        ~line 580
- * 10. Welcome Screen                         ~line 590
- *     - Greeting, Input, Suggestions
- *     - Disclaimer
- * 11. Chat Screen                            ~line 790
- *     - Chat Header & Navigation
- *     - Logout & User Menu
- *     - User Avatar & Dropdown
- *     - Login Prompt Popover
- * 12. Chat Messages                          ~line 1080
- *     - Message Bubbles (User & Assistant)
- *     - Streaming Cursor
- *     - Referral Notice
- * 13. Chat Input Area                        ~line 1200
- * 14. Loading & Typing Indicators            ~line 1240
- * 15. Scrollbar Styling                      ~line 1340
- * 16. Mobile Responsive (640px)              ~line 1360
- * 17. iOS Safe Area Support                  ~line 1410
- * 18. Accessibility (Reduced Motion)         ~line 1420
- * 19. Selection Color                        ~line 1430
- * 20. Settings Screen                        ~line 1440
- *     - Header, Content, Cards, Rows
- *     - Profile Settings (Denomination, Bio)
- * 21. Message Action Buttons                 ~line 1580
- *     - Copy, Speak, Feedback
- *     - Toast Notifications
- * 22. Purchase Credits Modal                 ~line 1670
- *     - Package Selection Cards
- *     - Stripe Payment Element
- *     - Payment Status Feedback
- * 23. Buy Credits & Save Profile Buttons     ~line 1890
- * 24. D'var Torah Section                    ~line 2080
- *     - Welcome Screen Card (Preview)
- *     - Full-Screen Reading View
- *     - Mobile Responsive
- *
- * BROWSER SUPPORT NOTES:
- * - Uses dvh (dynamic viewport height) with vh fallback
- * - Uses -webkit-overflow-scrolling for iOS momentum scroll
- * - Uses backdrop-filter for glass-morphism (modal overlay)
- * - Uses env(safe-area-inset-bottom) for iPhone notch support
- * - Custom scrollbar styling targets WebKit browsers only
- * ============================================================ */
-
-/* ============================================================
- * 1. CSS CUSTOM PROPERTIES
- * Design tokens defining the entire visual language of the app.
- * Changing values here propagates throughout every component.
- * ============================================================ */
 :root {
-
-    /* --- Background Colors --- */
-    /* Three-tier background hierarchy for visual depth:
-     * primary (darkest) > secondary (panels) > tertiary (hover/active states) */
-    --bg-primary: #1a1a1a;       /* Page background, main content area */
-    --bg-secondary: #2a2a2a;     /* Sidebar, cards, dropdowns, message bubbles */
-    --bg-tertiary: #333333;      /* Hover states, active items, icon backgrounds */
-    --bg-input: #2f2f2f;         /* Text input fields, slightly lighter than secondary */
-
-    /* --- Text Colors --- */
-    /* Three-tier text hierarchy for readability on dark backgrounds */
-    --text-primary: #e8e8e8;     /* Headings, body text, high-emphasis content */
-    --text-secondary: #a0a0a0;   /* Secondary labels, inactive items, descriptions */
-    --text-muted: #6b6b6b;       /* Timestamps, placeholders, tertiary info */
-
-    /* --- Accent & Brand Colors --- */
-    /* Gold (#d4a853) serves as the primary brand color, evoking the
-     * warmth of Torah scroll ornamentation and traditional Judaica */
-    --accent: #d4a853;           /* Primary gold brand color - buttons, icons, links */
-    --accent-hover: #e4bc6a;     /* Lighter gold for hover states */
-    --accent-glow: rgba(212, 168, 83, 0.3); /* Semi-transparent gold for glows/rings */
-
-    /* --- Border Colors --- */
-    --border-color: #3a3a3a;     /* Default borders - subtle separation */
-    --border-light: #444444;     /* Hover/focus borders - slightly more visible */
-
-    /* --- Semantic Colors --- */
-    --success: #4ade80;          /* Payment success, positive confirmations */
-    --warning: #fbbf24;          /* Referral notices, caution indicators */
-
-    /* --- Shadows --- */
-    /* Progressive shadow depth using high-opacity black for dark theme.
-     * Shadows must be stronger on dark backgrounds to be perceptible. */
-    --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3);   /* Subtle lift - buttons */
-    --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.4);   /* Cards, loading indicators */
-    --shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.5);   /* Dropdowns, modals, overlays */
-
-    /* --- Border Radii --- */
-    /* Consistent rounding scale from subtle to fully rounded */
-    --radius-sm: 8px;            /* Buttons, small cards, action items */
-    --radius-md: 12px;           /* Cards, dropdowns, input containers */
-    --radius-lg: 20px;           /* Message bubbles, large input containers */
-    --radius-full: 9999px;       /* Pill shapes - suggestion chips, badges, loading dots */
-
-    /* --- Transitions --- */
-    /* Three-speed easing scale for consistent motion design */
-    --transition-fast: 150ms ease;    /* Hover states, button feedback */
-    --transition-normal: 250ms ease;  /* Panel slides, visibility toggles */
-    --transition-slow: 350ms ease;    /* Complex layout transitions */
+    --app-rail: 292px;
+    --app-rail-collapsed: 76px;
+    --app-content: 1180px;
+    --app-reading: 760px;
+    --app-transition: 180ms ease;
 }
 
-/* ============================================================
- * 2. RESET & BASE STYLES
- * Normalize browser defaults and establish baseline typography.
- * Uses border-box model globally and sets up font smoothing
- * for crisp text rendering on dark backgrounds.
- * ============================================================ */
-*, *::before, *::after {
-    box-sizing: border-box;
+html,
+body {
+    width: 100%;
+    min-width: 320px;
+    min-height: 100%;
     margin: 0;
-    padding: 0;
-}
-
-html {
-    font-size: 16px;
-    -webkit-text-size-adjust: 100%; /* Prevent iOS font-size inflation on orientation change */
 }
 
 body {
-    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-    background-color: var(--bg-primary);
-    color: var(--text-primary);
-    line-height: 1.6;
-    min-height: 100vh;
-    min-height: 100dvh; /* Dynamic viewport height - accounts for mobile browser chrome (address bar) */
-    overflow: hidden;    /* Prevent body scroll; scrolling is handled by inner containers */
-    -webkit-font-smoothing: antialiased;  /* Smoother font rendering on macOS/iOS */
-    -moz-osx-font-smoothing: grayscale;   /* Smoother font rendering on Firefox/macOS */
+    color: var(--brand-text);
+    background: var(--brand-canvas);
+    font-family: var(--brand-font);
+    overflow: hidden;
 }
 
-/* ============================================================
- * 3. APP CONTAINER & LAYOUT SHELL
- * The top-level flex containers that establish the sidebar +
- * main content two-column layout. Uses dvh with vh fallback
- * for full-height on all devices including mobile.
- * ============================================================ */
+button,
+input,
+select,
+textarea {
+    color: inherit;
+}
+
+button,
+a,
+select {
+    min-height: 44px;
+}
+
+button {
+    font: inherit;
+}
+
+button:disabled {
+    cursor: not-allowed;
+    opacity: 0.48;
+}
+
+svg {
+    display: block;
+}
+
+.ph-dots {
+    --ph-url: url("/static/assets/icons/dots-three-vertical.svg");
+}
+
+.hidden {
+    display: none !important;
+}
+
 .app-container {
-    height: 100vh;
-    height: 100dvh; /* dvh fallback: recalculates when mobile address bar shows/hides */
     display: flex;
-    position: relative;
-    overflow: hidden; /* Clips sidebar slide animation on mobile */
-}
-
-.app {
+    width: 100%;
     height: 100vh;
     height: 100dvh;
-    display: flex;
-    flex-direction: column;
-    position: relative;
+    overflow: hidden;
 }
 
-/* ============================================================
- * 4. SIDEBAR (Navigation Drawer)
- * Left-side navigation panel containing conversation history,
- * new-chat button, and user profile. Collapsible on desktop
- * via width animation; slides off-screen on mobile via
- * transform for GPU-accelerated animation.
- *
- * Key design decisions:
- * - Fixed 260px width provides room for conversation titles
- * - z-index: 50 places it above main content but below overlays
- * - overflow: hidden clips content during collapse animation
- * ============================================================ */
+/* Conversation rail */
 .sidebar {
-    width: 260px;
-    min-width: 260px;
-    height: 100%;
-    background: var(--bg-secondary);
-    border-right: 1px solid var(--border-color);
+    position: relative;
+    z-index: 60;
     display: flex;
+    flex: 0 0 var(--app-rail);
     flex-direction: column;
-    transition: width var(--transition-normal), min-width var(--transition-normal);
-    z-index: 50; /* Above main content, below mobile overlay (z:60) and modals (z:200) */
-    overflow: hidden; /* Clips child content when sidebar collapses to 0 width */
-}
-
-/* Collapsed state: sidebar shrinks to zero width on desktop */
-.sidebar.collapsed {
-    width: 0;
+    width: var(--app-rail);
     min-width: 0;
-    border-right: none;
+    height: 100%;
+    background: var(--brand-surface);
+    border-right: 1px solid var(--brand-line);
+    transition: width var(--app-transition), flex-basis var(--app-transition), transform var(--app-transition);
 }
 
-/* --- Sidebar Header: New Chat button + collapse toggle --- */
+.sidebar-brand-row,
 .sidebar-header {
     display: flex;
     align-items: center;
+    gap: 10px;
+    padding-inline: 18px;
+}
+
+.sidebar-brand-row {
     justify-content: space-between;
-    padding: 12px;
-    border-bottom: 1px solid var(--border-color);
+    min-height: 76px;
+    border-bottom: 1px solid var(--brand-line);
 }
 
-/* New Chat button - ghost style with border, fills available width */
-.new-chat-btn {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    padding: 10px 14px;
-    background: transparent;
-    border: 1px solid var(--border-color);
-    border-radius: var(--radius-md);
-    color: var(--text-primary);
-    font-family: inherit;
-    font-size: 0.875rem;
-    font-weight: 500;
-    cursor: pointer;
-    transition: all var(--transition-fast);
-    flex: 1;        /* Fills remaining width beside the toggle button */
-    margin-right: 8px;
+.sidebar-brand-row .theme-cycle {
+    flex: 0 0 44px;
+    padding: 0;
 }
 
-.new-chat-btn:hover {
-    background: var(--bg-tertiary);
-    border-color: var(--border-light);
+.sidebar-header {
+    padding-top: 18px;
+    padding-bottom: 14px;
 }
 
-/* Gold-colored plus icon inside the new-chat button */
-.new-chat-btn svg {
-    color: var(--accent);
-}
-
-/* Sidebar collapse/expand toggle button - square icon button */
-.sidebar-toggle {
-    width: 36px;
-    height: 36px;
-    display: flex;
+.new-chat-btn,
+.sidebar-toggle,
+.menu-btn,
+.back-btn,
+.modal-close,
+.send-btn,
+.action-btn,
+.calendar-banner-close {
+    display: inline-flex;
     align-items: center;
     justify-content: center;
+    color: var(--brand-muted);
     background: transparent;
-    border: none;
-    border-radius: var(--radius-sm);
-    color: var(--text-secondary);
+    border: 1px solid transparent;
+    border-radius: var(--brand-radius-small);
     cursor: pointer;
-    transition: all var(--transition-fast);
+    transition: color var(--app-transition), background-color var(--app-transition), border-color var(--app-transition), transform var(--app-transition);
 }
 
-.sidebar-toggle:hover {
-    background: var(--bg-tertiary);
-    color: var(--text-primary);
+.new-chat-btn {
+    flex: 1 1 auto;
+    justify-content: flex-start;
+    gap: 10px;
+    padding: 0 14px;
+    color: #ffffff;
+    background: var(--brand-accent-strong);
+    border-color: var(--brand-accent-strong);
+    font-weight: 650;
 }
 
-/* --- Sidebar Content: Scrollable conversation list area --- */
+:root[data-theme="dark"] .new-chat-btn {
+    color: #101722;
+    background: var(--brand-accent);
+    border-color: var(--brand-accent);
+}
+
+.new-chat-btn:hover:not(:disabled) {
+    transform: translateY(-1px);
+}
+
+.sidebar-toggle,
+.menu-btn,
+.back-btn,
+.modal-close {
+    flex: 0 0 44px;
+    width: 44px;
+    border-color: var(--brand-line);
+}
+
+.sidebar-toggle:hover,
+.menu-btn:hover,
+.back-btn:hover,
+.modal-close:hover,
+.theme-cycle:hover {
+    color: var(--brand-text);
+    background: var(--brand-accent-soft);
+    border-color: var(--brand-line-strong);
+}
+
 .sidebar-content {
-    flex: 1;
+    flex: 1 1 auto;
+    min-height: 0;
+    padding: 0 12px 18px;
     overflow-y: auto;
-    -webkit-overflow-scrolling: touch; /* Enables momentum (rubber-band) scrolling on iOS */
-    padding: 12px;
 }
 
-/* --- Conversations Section --- */
 .conversations-section {
-    margin-bottom: 16px;
+    min-width: 0;
 }
 
-/* Section label - small uppercase heading for grouping (e.g., "Recent") */
 .section-title {
-    font-size: 0.75rem;
-    font-weight: 500;
-    color: var(--text-muted);
+    margin: 6px 8px 10px;
+    color: var(--brand-muted);
+    font-size: 0.72rem;
+    font-weight: 700;
+    letter-spacing: 0.1em;
     text-transform: uppercase;
-    letter-spacing: 0.05em;
-    padding: 8px 8px 12px;
 }
 
 .conversations-list {
-    display: flex;
-    flex-direction: column;
-    gap: 2px; /* Minimal gap keeps items tight like a native list */
+    display: grid;
+    gap: 4px;
 }
 
-/* Individual conversation item - styled as a full-width button for accessibility */
 .conversation-item {
+    position: relative;
     display: flex;
     align-items: center;
-    gap: 10px;
-    padding: 10px 12px;
-    border-radius: var(--radius-sm);
-    color: var(--text-secondary);
-    text-decoration: none;
-    font-size: 0.875rem;
-    cursor: pointer;
-    transition: all var(--transition-fast);
-    overflow: hidden; /* Enables text-overflow: ellipsis on title child */
-    background: transparent;
-    border: none;
-    width: 100%;
-    text-align: left;
-    font-family: inherit;
+    min-width: 0;
+    border-radius: var(--brand-radius-small);
 }
 
-.conversation-item:hover {
-    background: var(--bg-tertiary);
-    color: var(--text-primary);
+.conversation-item:hover,
+.conversation-item.active {
+    background: var(--brand-accent-soft);
 }
 
 .conversation-item.active {
-    background: var(--bg-tertiary);
-    color: var(--text-primary);
+    box-shadow: inset 3px 0 0 var(--brand-accent);
 }
 
-/* Conversation title - truncates with ellipsis when too long */
-.conversation-title {
-    flex: 1;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-}
-
-/* ============================================================
- * Conversation Context Menu
- * Three-dot menu on each conversation item. Hidden by default,
- * revealed on hover via opacity transition for a clean look.
- * ============================================================ */
-.conversation-menu {
-    position: relative;
-    flex-shrink: 0;
-}
-
-/* Menu button - invisible until parent conversation-item is hovered */
-.conversation-menu-btn {
-    opacity: 0; /* Hidden by default; shown on conversation-item hover */
-    width: 28px;
-    height: 28px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
+.conversation-open {
+    flex: 1 1 auto;
+    min-width: 0;
+    padding: 0 40px 0 12px;
+    color: var(--brand-muted);
     background: transparent;
-    border: none;
-    border-radius: var(--radius-sm);
-    color: var(--text-muted);
+    border: 0;
+    text-align: left;
     cursor: pointer;
-    transition: opacity var(--transition-fast), background var(--transition-fast);
-    z-index: 5; /* Above conversation text but below dropdown */
 }
 
-/* Reveal menu button when hovering the conversation row */
-.conversation-item:hover .conversation-menu-btn {
-    opacity: 1;
+.conversation-item.active .conversation-open,
+.conversation-open:hover {
+    color: var(--brand-text);
+}
+
+.conversation-title {
+    display: block;
+    overflow: hidden;
+    font-size: 0.9rem;
+    font-weight: 550;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.conversation-menu {
+    position: absolute;
+    right: 2px;
+    top: 0;
+}
+
+.conversation-menu-btn {
+    display: grid;
+    width: 40px;
+    min-height: 44px;
+    place-items: center;
+    color: var(--brand-muted);
+    background: transparent;
+    border: 0;
+    border-radius: var(--brand-radius-small);
+    cursor: pointer;
 }
 
 .conversation-menu-btn:hover {
-    background: var(--bg-tertiary);
-    color: var(--text-primary);
+    color: var(--brand-text);
+    background: var(--brand-surface-raised);
 }
 
-/* Dropdown menu - uses position: fixed for proper placement
- * regardless of sidebar scroll position */
-.conversation-dropdown {
-    position: fixed; /* Escapes sidebar overflow:hidden clipping */
-    min-width: 140px;
-    background: var(--bg-secondary);
-    border: 1px solid var(--border-color);
-    border-radius: var(--radius-md);
-    box-shadow: var(--shadow-lg);
-    z-index: 1000; /* Highest layer - above all other UI elements */
-    animation: dropdownIn 0.15s ease;
+.conversations-empty {
+    margin: 12px 8px;
+    padding: 16px 12px;
+    color: var(--brand-muted);
+    border: 1px dashed var(--brand-line);
+    border-radius: var(--brand-radius-small);
+    font-size: 0.88rem;
+    line-height: 1.4;
 }
 
-.conversation-dropdown .dropdown-item {
-    width: 100%;
-    padding: 10px 14px;
-    border: none;
-    background: transparent;
-    font-family: inherit;
-    cursor: pointer;
-}
-
-/* --- Sidebar Footer: User profile and settings access --- */
 .sidebar-footer {
+    position: relative;
     padding: 12px;
-    border-top: 1px solid var(--border-color);
-    position: relative; /* Anchor for absolutely-positioned user dropdown */
+    border-top: 1px solid var(--brand-line);
 }
 
 .user-profile {
-    display: flex;
+    display: grid;
+    grid-template-columns: 40px minmax(0, 1fr) 32px;
     align-items: center;
-    gap: 10px;
-    padding: 8px;
-    border-radius: var(--radius-sm);
+    width: 100%;
+    min-height: 56px;
+    padding: 7px;
+    color: var(--brand-text);
+    background: transparent;
+    border: 1px solid transparent;
+    border-radius: var(--brand-radius-small);
+    text-align: left;
     cursor: pointer;
-    transition: all var(--transition-fast);
 }
 
-.user-profile:hover {
-    background: var(--bg-tertiary);
+.user-profile:hover,
+.user-profile[aria-expanded="true"] {
+    background: var(--brand-accent-soft);
+    border-color: var(--brand-line);
 }
 
-/* Smaller avatar variant for the sidebar footer */
-.sidebar-footer .user-avatar {
-    width: 32px;
-    height: 32px;
-    font-size: 0.875rem;
+.user-avatar {
+    display: grid;
+    width: 36px;
+    height: 36px;
+    place-items: center;
+    color: var(--brand-accent-strong);
+    background: var(--brand-accent-soft);
+    border: 1px solid var(--brand-line);
+    border-radius: 50%;
+    font-weight: 750;
 }
 
 .user-details {
-    flex: 1;
-    overflow: hidden; /* Enables text truncation on child elements */
+    display: grid;
+    min-width: 0;
+    padding-inline: 8px;
 }
 
-.sidebar-footer .user-name {
-    font-size: 0.875rem;
-    font-weight: 500;
-    white-space: nowrap;
+.user-context {
+    color: var(--brand-muted);
+    font-size: 0.7rem;
+    font-weight: 650;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+}
+
+.user-name {
     overflow: hidden;
+    font-size: 0.91rem;
+    font-weight: 650;
     text-overflow: ellipsis;
+    white-space: nowrap;
 }
 
-/* User menu toggle - three-dot or chevron button in sidebar footer */
 .user-menu-toggle {
-    width: 28px;
-    height: 28px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    background: transparent;
-    border: none;
-    border-radius: var(--radius-sm);
-    color: var(--text-muted);
-    cursor: pointer;
-    transition: all var(--transition-fast);
+    color: var(--brand-muted);
+    font-size: 1.25rem;
+    text-align: center;
 }
 
-.user-menu-toggle:hover {
-    background: var(--bg-secondary);
-    color: var(--text-primary);
-}
-
-/* User dropdown in sidebar - fixed positioning to escape overflow clipping */
-.sidebar-footer .user-dropdown {
+.user-dropdown,
+.conversation-dropdown {
     position: fixed;
-    top: auto;
-    right: auto;
-    min-width: 200px;
-    z-index: 1000; /* Same z-index tier as conversation dropdown */
+    z-index: 120;
+    min-width: 180px;
+    padding: 6px;
+    background: var(--brand-surface-raised);
+    border: 1px solid var(--brand-line);
+    border-radius: var(--brand-radius-small);
+    box-shadow: var(--brand-shadow-material);
 }
 
-/* ============================================================
- * 5. MAIN CONTENT AREA
- * The primary content region to the right of the sidebar.
- * Uses min-width/min-height: 0 to allow flex children to
- * shrink below their content size (prevents flex overflow).
- * ============================================================ */
-.main-content {
-    flex: 1;
+.dropdown-item {
     display: flex;
-    flex-direction: column;
-    min-width: 0;  /* Prevents flex item from overflowing when content is wider than container */
-    min-height: 0; /* Allows flex children (chat messages) to scroll properly */
-    overflow: hidden;
-    position: relative;
-}
-
-/* ============================================================
- * 6. MENU BUTTON (Sidebar Toggle for Collapsed/Mobile State)
- * Hamburger menu button that appears when the sidebar is
- * collapsed on desktop or always visible on mobile. Shown/hidden
- * via the adjacent sibling combinator (~) targeting sidebar state.
- * ============================================================ */
-.menu-btn {
-    width: 40px;
-    height: 40px;
-    border-radius: var(--radius-md);
-    background: transparent;
-    border: 1px solid var(--border-color);
-    cursor: pointer;
-    display: none; /* Hidden by default; shown via sibling selector or media query */
     align-items: center;
+    width: 100%;
+    gap: 10px;
+    padding: 0 12px;
+    color: var(--brand-text);
+    background: transparent;
+    border: 0;
+    border-radius: 6px;
+    font-size: 0.9rem;
+    text-align: left;
+    text-decoration: none;
+    cursor: pointer;
+}
+
+.dropdown-item:hover {
+    background: var(--brand-accent-soft);
+}
+
+.dropdown-item-danger {
+    color: var(--brand-error);
+}
+
+.dropdown-divider {
+    height: 1px;
+    margin: 5px 6px;
+    background: var(--brand-line);
+}
+
+.sidebar.collapsed {
+    flex-basis: var(--app-rail-collapsed);
+    width: var(--app-rail-collapsed);
+}
+
+.sidebar.collapsed .brand-lockup span,
+.sidebar.collapsed .theme-cycle,
+.sidebar.collapsed .new-chat-btn span:not(.ph-icon),
+.sidebar.collapsed .sidebar-content,
+.sidebar.collapsed .user-details,
+.sidebar.collapsed .user-menu-toggle {
+    display: none;
+}
+
+.sidebar.collapsed .sidebar-brand-row,
+.sidebar.collapsed .sidebar-header {
     justify-content: center;
-    color: var(--text-secondary);
-    transition: all var(--transition-fast);
+    padding-inline: 10px;
 }
 
-.menu-btn:hover {
-    background: var(--bg-secondary);
-    color: var(--text-primary);
+.sidebar.collapsed .new-chat-btn {
+    flex: 0 0 44px;
+    justify-content: center;
+    width: 44px;
+    padding: 0;
 }
 
-/* Show menu button when sidebar is collapsed on desktop.
- * Uses the general sibling combinator (~) to target the menu button
- * inside main-content when the sidebar has the .collapsed class. */
-.sidebar.collapsed ~ .main-content .menu-btn {
+.sidebar.collapsed .sidebar-header {
+    flex-direction: column;
+}
+
+.sidebar.collapsed .user-profile {
+    display: grid;
+    grid-template-columns: 1fr;
+    place-items: center;
+}
+
+/* Main surfaces */
+.main-content {
+    position: relative;
+    flex: 1 1 auto;
+    min-width: 0;
+    height: 100%;
+    background: var(--brand-canvas);
+    overflow: hidden;
+}
+
+.calendar-banner {
+    position: absolute;
+    z-index: 50;
+    top: 12px;
+    left: 50%;
     display: flex;
+    align-items: center;
+    width: min(680px, calc(100% - 32px));
+    min-height: 48px;
+    gap: 12px;
+    padding: 8px 8px 8px 16px;
+    color: var(--brand-text);
+    background: var(--brand-warning-soft);
+    border: 1px solid var(--brand-warning);
+    border-radius: var(--brand-radius-small);
+    box-shadow: var(--brand-shadow-material);
+    transform: translateX(-50%);
 }
 
-/* Welcome screen menu button - absolutely positioned in top-left corner */
+.calendar-banner-text {
+    flex: 1 1 auto;
+    font-size: 0.88rem;
+    line-height: 1.4;
+}
+
+.calendar-banner-close {
+    flex: 0 0 44px;
+    width: 44px;
+    color: var(--brand-warning);
+    font-size: 1.4rem;
+}
+
+.welcome-screen,
+.settings-screen,
+.dvar-torah-screen {
+    height: 100%;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+}
+
 .welcome-menu-btn {
     position: absolute;
-    top: 16px;
-    left: 16px;
-}
-
-/* ============================================================
- * 7. SIDEBAR OVERLAY (Mobile Backdrop)
- * Semi-transparent dark overlay that appears behind the sidebar
- * on mobile when the sidebar is open. Clicking it closes the
- * sidebar. Uses visibility + opacity for animated show/hide.
- * ============================================================ */
-.sidebar-overlay {
-    position: fixed;
-    top: 0;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    background: rgba(0, 0, 0, 0.5);
-    z-index: 40; /* Below sidebar (z:60 on mobile) but above main content */
-    opacity: 0;
-    visibility: hidden; /* visibility:hidden removes from tab order when not shown */
-    transition: all var(--transition-normal);
-}
-
-.sidebar-overlay.visible {
-    opacity: 1;
-    visibility: visible;
-}
-
-/* Empty state shown when user has no conversation history */
-.conversations-empty {
-    padding: 20px;
-    text-align: center;
-    color: var(--text-muted);
-    font-size: 0.875rem;
-}
-
-/* ============================================================
- * 8. MOBILE SIDEBAR RESPONSIVE (max-width: 768px)
- * On tablet/mobile screens, the sidebar becomes a fixed overlay
- * drawer that slides in from the left via CSS transform.
- * The sidebar toggle in the header is hidden; a close button
- * inside the open sidebar replaces it.
- *
- * Breakpoint: 768px - standard tablet portrait breakpoint.
- * ============================================================ */
-@media (max-width: 768px) {
-    .sidebar {
-        position: fixed;
-        left: 0;
-        top: 0;
-        bottom: 0;
-        transform: translateX(-100%); /* Slide off-screen left by default */
-        z-index: 60; /* Above the overlay (z:40) */
-    }
-
-    /* Slide sidebar into view when open */
-    .sidebar.open {
-        transform: translateX(0);
-    }
-
-    /* Keep sidebar hidden when collapsed on mobile */
-    .sidebar.collapsed {
-        transform: translateX(-100%);
-    }
-
-    /* Always show hamburger menu button on mobile */
-    .menu-btn {
-        display: flex;
-    }
-
-    /* Hide the collapse toggle in the sidebar header on mobile */
-    .sidebar-toggle {
-        display: none;
-    }
-
-    /* Show close button inside sidebar when it is open on mobile */
-    .sidebar.open .sidebar-toggle {
-        display: flex;
-    }
-
-    /* Bump the conversation three-dot menu button up from 28x28px to a
-     * 36x36px touch target for better usability on mobile. */
-    .conversation-menu-btn {
-        width: 36px;
-        height: 36px;
-    }
-}
-
-/* ============================================================
- * 9. UTILITY CLASSES
- * General-purpose helper classes used by JavaScript to toggle
- * element visibility.
- * ============================================================ */
-.hidden {
-    display: none !important; /* !important ensures override of any display value */
-}
-
-/* Momentary fade used by updateTextWithFade() in app.js when swapping small
- * pieces of text in place (credits balance, sidebar user name/avatar) so the
- * change doesn't pop instantly. */
-.text-fade-out {
-    opacity: 0;
-    transition: opacity var(--transition-fast);
-}
-
-/* ============================================================
- * 10. WELCOME SCREEN
- * The landing screen shown before a chat begins. Centers
- * content vertically and horizontally with a greeting, input
- * field, suggestion chips, and a disclaimer footer.
- * Uses staggered slide-up animations for a polished entrance.
- * ============================================================ */
-.welcome-screen {
-    flex: 1;
-    display: flex;
-    flex-direction: column;
-    justify-content: center;
-    align-items: center;
-    padding: 24px;
-    animation: fadeIn 0.5s ease;
-    position: relative; /* Anchor for absolutely-positioned disclaimer & menu btn */
-}
-
-/* --- fadeIn Animation ---
- * Gentle opacity + vertical slide for welcome screen entrance. */
-@keyframes fadeIn {
-    from {
-        opacity: 0;
-        transform: translateY(10px);
-    }
-    to {
-        opacity: 1;
-        transform: translateY(0);
-    }
+    z-index: 20;
+    top: 18px;
+    left: 18px;
+    display: none;
 }
 
 .welcome-content {
-    width: 100%;
-    max-width: 680px; /* Constrains content width for comfortable reading */
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 32px;
+    width: min(var(--app-content), 100%);
+    min-height: 100%;
+    margin: 0 auto;
+    padding: clamp(64px, 8vh, 104px) clamp(24px, 5vw, 72px) 32px;
 }
 
-/* --- Greeting Text ---
- * Large welcome heading with responsive font size using clamp().
- * clamp(1.75rem, 5vw, 2.5rem) scales fluidly between min and max. */
-.greeting {
-    display: flex;
-    align-items: center;
-    gap: 16px;
-    font-size: clamp(1.75rem, 5vw, 2.5rem); /* Fluid typography: min 28px, preferred 5vw, max 40px */
-    font-weight: 500;
-    color: var(--text-primary);
-    animation: slideDown 0.6s ease;
+.welcome-intro {
+    max-width: 760px;
+    margin-bottom: clamp(34px, 6vh, 64px);
 }
 
-/* --- slideDown Animation ---
- * Greeting drops in from above with fade. */
-@keyframes slideDown {
-    from {
-        opacity: 0;
-        transform: translateY(-20px);
-    }
-    to {
-        opacity: 1;
-        transform: translateY(0);
-    }
-}
-
-/* Torah-themed icon beside the greeting (Star of David / menorah) */
 .greeting-icon {
-    color: var(--accent);
-    width: 1.2em;  /* Size relative to parent font-size for proportional scaling */
-    height: 1.2em;
-    vertical-align: middle;
-    animation: gentlePulse 3s ease-in-out infinite;
+    float: left;
+    width: 42px;
+    height: 42px;
+    margin: 1px 15px 18px 0;
 }
 
-/* --- gentlePulse Animation ---
- * Subtle scale breathing effect on the greeting icon.
- * Creates a warm, living feel without being distracting. */
-@keyframes gentlePulse {
-    0%, 100% {
-        opacity: 1;
-        transform: scale(1);
-    }
-    50% {
-        opacity: 0.8;
-        transform: scale(1.05);
-    }
+.greeting {
+    margin: 0;
+    font-size: clamp(2.35rem, 5vw, 4.5rem);
+    font-weight: 580;
+    letter-spacing: -0.04em;
+    line-height: 0.98;
 }
 
-/* Skeleton placeholder shown in place of the greeting text while
- * loadGreeting() is in flight. Sized to roughly match the text it replaces. */
-.greeting-skeleton {
-    width: 240px;
-    height: 1.2em;
+.welcome-deck {
+    max-width: 680px;
+    margin: 24px 0 0;
+    clear: both;
+    color: var(--brand-muted);
+    font-size: clamp(1rem, 2vw, 1.18rem);
+    line-height: 1.6;
 }
 
-/* ============================================================
- * Welcome Screen Input Container
- * The main text input area on the welcome screen. Uses a large
- * border-radius for a modern rounded-pill appearance. The
- * focus-within pseudo-class highlights the entire container
- * when the textarea inside receives focus.
- * ============================================================ */
-.input-container {
+.welcome-grid {
+    display: grid;
+    grid-template-columns: minmax(0, 1.5fr) minmax(280px, 0.72fr);
+    gap: clamp(24px, 4vw, 54px);
+    align-items: start;
+}
+
+.welcome-primary {
+    min-width: 0;
+}
+
+.composer {
+    padding: 16px;
+    background: var(--brand-surface-raised);
+    border: 1px solid var(--brand-line-strong);
+    border-radius: var(--brand-radius);
+    box-shadow: 0 12px 32px rgba(28, 54, 89, 0.08);
+}
+
+:root[data-theme="dark"] .composer {
+    box-shadow: 0 12px 32px rgba(0, 0, 0, 0.18);
+}
+
+.composer:focus-within {
+    border-color: var(--brand-accent);
+    box-shadow: var(--brand-focus);
+}
+
+.composer-label {
+    display: block;
+    margin-bottom: 7px;
+    color: var(--brand-text);
+    font-size: 0.82rem;
+    font-weight: 700;
+}
+
+.composer textarea {
+    display: block;
     width: 100%;
-    background: var(--bg-input);
-    border: 1px solid var(--border-color);
-    border-radius: var(--radius-lg);
-    padding: 16px 20px;
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    transition: all var(--transition-normal);
-    animation: slideUp 0.6s ease 0.1s both; /* Staggered entrance: 0.1s delay after greeting */
-}
-
-/* --- slideUp Animation ---
- * Elements slide upward and fade in. Used by input, suggestions,
- * and other welcome screen components with staggered delays. */
-@keyframes slideUp {
-    from {
-        opacity: 0;
-        transform: translateY(20px);
-    }
-    to {
-        opacity: 1;
-        transform: translateY(0);
-    }
-}
-
-/* Focus ring on the input container when textarea is focused.
- * Uses box-shadow instead of outline for rounded-corner compatibility. */
-.input-container:focus-within {
-    border-color: var(--border-light);
-    box-shadow: 0 0 0 1px var(--border-light);
-}
-
-/* Textarea inside input container - grows with content up to max-height */
-.input-container textarea {
-    flex: 1;
+    min-height: 68px;
+    max-height: 200px;
+    padding: 4px 0 12px;
+    color: var(--brand-text);
     background: transparent;
-    border: none;
-    outline: none;
-    color: var(--text-primary);
-    font-family: inherit;
-    font-size: 1rem;
+    border: 0;
+    font-size: clamp(1rem, 2vw, 1.12rem);
     line-height: 1.5;
-    resize: none;        /* Disable manual resize handle; height managed by JS */
-    min-height: 24px;    /* Single line minimum */
-    max-height: 200px;   /* Cap height to prevent textarea from dominating viewport */
+    resize: none;
 }
 
-.input-container textarea::placeholder {
-    color: var(--text-muted);
+.composer textarea:focus {
+    outline: none;
+    box-shadow: none;
+}
+
+.composer textarea::placeholder,
+.settings-textarea::placeholder,
+.sponsor-input::placeholder {
+    color: var(--brand-muted);
+    opacity: 0.75;
 }
 
 .input-actions {
     display: flex;
     align-items: center;
-    gap: 8px;
+    justify-content: space-between;
+    min-height: 44px;
+    gap: 16px;
+    border-top: 1px solid var(--brand-line);
+    padding-top: 10px;
 }
 
-/* ============================================================
- * Send Button
- * Primary action button with the gold brand color. Includes
- * subtle lift on hover and press-down effect on active for
- * tactile feedback.
- * ============================================================ */
+.composer-hint {
+    color: var(--brand-muted);
+    font-size: 0.78rem;
+}
+
 .send-btn {
-    width: 40px;
-    height: 40px;
-    border-radius: var(--radius-md);
-    background: var(--accent);
-    border: none;
-    cursor: pointer;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    color: white;
-    transition: all var(--transition-fast);
-    flex-shrink: 0; /* Prevent button from shrinking when textarea expands */
+    flex: 0 0 44px;
+    width: 44px;
+    color: #ffffff;
+    background: var(--brand-accent-strong);
+    border-color: var(--brand-accent-strong);
 }
 
-.send-btn:hover {
-    background: var(--accent-hover);
-    transform: translateY(-1px); /* Subtle lift effect on hover */
+:root[data-theme="dark"] .send-btn {
+    color: #101722;
+    background: var(--brand-accent);
+    border-color: var(--brand-accent);
 }
 
-.send-btn:active {
-    transform: translateY(0) scale(0.98); /* Press-down effect */
+.send-btn:hover:not(:disabled) {
+    transform: translateX(2px);
 }
 
-.send-btn:disabled {
-    opacity: 0.5;
-    cursor: not-allowed;
-    transform: none;
-}
-
-/* --- Send Button Spinner ---
- * Shown in place of the arrow icon while a response is streaming.
- * Hidden by default (display: none); .send-btn.loading reveals it and
- * hides the arrow icon instead. Uses the same border-based CSS spinner
- * technique as .saving-spinner (see Buy Credits & Save Profile Buttons
- * section) for visual consistency. */
-.send-spinner {
+.send-spinner,
+.purchase-spinner,
+.saving-spinner {
     display: none;
-    width: 16px;
-    height: 16px;
-    border: 2px solid rgba(255, 255, 255, 0.4);
-    border-top-color: transparent; /* Creates the spinning gap */
+    width: 17px;
+    height: 17px;
+    border: 2px solid currentColor;
+    border-right-color: transparent;
     border-radius: 50%;
-    animation: spin 0.8s linear infinite;
+    animation: spin 700ms linear infinite;
 }
 
-/* When loading, hide the arrow icon and show the spinner in its place */
 .send-btn.loading .send-icon {
     display: none;
 }
 
-.send-btn.loading .send-spinner {
-    display: inline-block;
+.send-btn.loading .send-spinner,
+.purchase-spinner:not(.hidden),
+.saving-spinner {
+    display: block;
 }
 
-/* ============================================================
- * Suggestion Chips
- * Pill-shaped prompt suggestions on the welcome screen.
- * Staggered slide-up animation (0.2s delay) for sequential
- * appearance after the input container.
- * ============================================================ */
-.suggestions {
+.prompt-section {
+    margin-top: 26px;
+}
+
+.prompt-heading {
     display: flex;
-    flex-wrap: wrap;
-    justify-content: center;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 12px;
+}
+
+.prompt-heading h2,
+.weekly-panel h2 {
+    margin: 0;
+    font-size: 0.98rem;
+    font-weight: 700;
+    letter-spacing: -0.01em;
+}
+
+.prompt-heading > span {
+    color: var(--brand-muted);
+    font-size: 0.78rem;
+}
+
+.suggestions {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 10px;
-    animation: slideUp 0.6s ease 0.2s both; /* 0.2s stagger after input (0.1s) */
 }
 
 .suggestion-chip {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    padding: 10px 16px;
+    display: grid;
+    grid-template-columns: 24px minmax(0, 1fr);
+    align-items: start;
+    min-height: 78px;
+    gap: 11px;
+    padding: 15px;
+    color: var(--brand-text);
     background: transparent;
-    border: 1px solid var(--border-color);
-    border-radius: var(--radius-full); /* Full pill shape */
-    color: var(--text-secondary);
-    font-family: inherit;
-    font-size: 0.875rem;
+    border: 1px solid var(--brand-line);
+    border-radius: var(--brand-radius-small);
+    text-align: left;
     cursor: pointer;
-    transition: all var(--transition-fast);
+    transition: background-color var(--app-transition), border-color var(--app-transition), transform var(--app-transition);
 }
 
 .suggestion-chip:hover {
-    background: var(--bg-secondary);
-    border-color: var(--border-light);
-    color: var(--text-primary);
-    transform: translateY(-2px); /* Float-up effect on hover */
+    background: var(--brand-surface);
+    border-color: var(--brand-accent);
+    transform: translateY(-2px);
 }
 
-.suggestion-chip:active {
-    transform: translateY(0);
+.suggestion-chip > .ph-icon {
+    margin-top: 2px;
+    color: var(--brand-accent);
+    font-size: 1.15rem;
 }
 
-.suggestion-chip svg {
-    opacity: 0.7;
+.suggestion-chip strong,
+.suggestion-chip small {
+    display: block;
 }
 
-/* ============================================================
- * Disclaimer
- * Legal/informational text pinned to the bottom of the welcome
- * screen. Absolutely positioned so it stays at the bottom
- * regardless of content height.
- * ============================================================ */
-.disclaimer {
-    position: absolute;
-    bottom: 24px;
-    left: 0;
-    right: 0;
-    margin: 0 auto;
-    color: var(--text-muted);
-    font-size: 0.75rem;
-    text-align: center;
-    max-width: 400px;
-    padding: 0 24px;
-    animation: fadeIn 0.6s ease 0.4s both; /* 0.4s stagger - appears last */
+.suggestion-chip strong {
+    margin-bottom: 3px;
+    font-size: 0.92rem;
 }
 
-/* ============================================================
- * 11. CHAT SCREEN
- * The active conversation view. Fills the main content area
- * with a column layout: header, scrollable messages, and
- * input area at the bottom.
- *
- * Uses slideInRight animation for a page-transition feel
- * when navigating from welcome screen to chat.
- * ============================================================ */
-.chat-screen {
-    flex: 1;
-    display: flex;
-    flex-direction: column;
-    min-height: 0; /* Critical: allows flex child (chat-messages) to scroll instead of overflow */
-    overflow: hidden;
-    animation: slideInRight 0.3s ease;
+.suggestion-chip small {
+    color: var(--brand-muted);
+    font-size: 0.78rem;
+    line-height: 1.35;
 }
 
-/* --- slideInRight Animation ---
- * Horizontal slide + fade for screen transitions (chat, settings, d'var torah). */
-@keyframes slideInRight {
-    from {
-        opacity: 0;
-        transform: translateX(20px);
-    }
-    to {
-        opacity: 1;
-        transform: translateX(0);
-    }
-}
-
-/* ============================================================
- * Chat Header
- * Sticky header bar with back button, chat title, and action
- * buttons. Uses position: sticky to remain visible while
- * messages scroll beneath it.
- * ============================================================ */
-.chat-header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: 16px 20px;
-    background: var(--bg-primary);
-    border-bottom: 1px solid var(--border-color);
+.weekly-panel {
     position: sticky;
-    top: 0;
-    z-index: 10; /* Above scrolling messages but below dropdowns/modals */
+    top: 32px;
+    padding: 20px;
+    background: var(--brand-surface);
+    border: 1px solid var(--brand-line);
+    border-radius: var(--brand-radius);
 }
 
-/* Back button - returns to welcome screen */
-.back-btn {
-    width: 40px;
-    height: 40px;
-    border-radius: var(--radius-md);
-    background: transparent;
-    border: 1px solid var(--border-color);
-    cursor: pointer;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    color: var(--text-secondary);
-    transition: all var(--transition-fast);
-}
-
-.back-btn:hover {
-    background: var(--bg-secondary);
-    color: var(--text-primary);
-}
-
-.chat-title {
-    font-size: 1rem;
-    font-weight: 600;
-    color: var(--text-primary);
-}
-
-/* Invisible spacer matching back-btn width to center the chat title */
-.header-spacer {
-    width: 40px;
-}
-
-/* ============================================================
- * Logout & Authentication Buttons
- * Icon buttons for signing out, positioned in the header area.
- * Two variants: inline (chat header) and absolute (welcome screen).
- * ============================================================ */
-.logout-btn {
-    width: 40px;
-    height: 40px;
-    border-radius: var(--radius-md);
-    background: transparent;
-    border: 1px solid var(--border-color);
-    cursor: pointer;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    color: var(--text-secondary);
-    transition: all var(--transition-fast);
-}
-
-.logout-btn:hover {
-    background: var(--bg-secondary);
-    color: var(--text-primary);
-    border-color: var(--border-light);
-}
-
-/* Welcome screen logout - pinned to top-right corner */
-.welcome-logout-btn {
-    position: absolute;
-    top: 16px;
-    right: 16px;
-    width: 40px;
-    height: 40px;
-    border-radius: var(--radius-md);
-    background: transparent;
-    border: 1px solid var(--border-color);
-    cursor: pointer;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    color: var(--text-secondary);
-    transition: all var(--transition-fast);
-}
-
-/* ============================================================
- * User Menu & Avatar
- * Dropdown menu triggered by clicking the user's avatar.
- * Contains user info, settings link, and sign-out option.
- * Uses dropdownIn animation for a subtle reveal.
- * ============================================================ */
-.user-menu {
-    position: relative; /* Anchor for the dropdown */
-}
-
-/* On welcome screen, position the user menu in the top-right corner */
-.welcome-screen .user-menu {
-    position: absolute;
-    top: 16px;
-    right: 16px;
-}
-
-.user-menu-btn {
-    background: transparent;
-    border: none;
-    cursor: pointer;
-    padding: 0;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-}
-
-/* User avatar - circular with gold background and white initial letter */
-.user-avatar {
-    width: 40px;
-    height: 40px;
-    border-radius: 50%;
-    background: var(--accent);
-    color: white;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-weight: 600;
-    font-size: 1rem;
-    text-transform: uppercase;
-    transition: all var(--transition-fast);
-}
-
-.user-menu-btn:hover .user-avatar {
-    background: var(--accent-hover);
-    transform: scale(1.05);
-}
-
-/* User dropdown panel - anchored below the avatar with right alignment */
-.user-dropdown {
-    position: absolute;
-    top: calc(100% + 8px); /* 8px gap below the avatar */
-    right: 0;
-    min-width: 220px;
-    background: var(--bg-secondary);
-    border: 1px solid var(--border-color);
-    border-radius: var(--radius-md);
-    box-shadow: var(--shadow-lg);
-    z-index: 100; /* Above chat content, below modals (z:200) */
-    animation: dropdownIn 0.15s ease;
-}
-
-/* --- dropdownIn Animation ---
- * Dropdown menus slide down from a slight offset with fade-in. */
-@keyframes dropdownIn {
-    from {
-        opacity: 0;
-        transform: translateY(-8px);
-    }
-    to {
-        opacity: 1;
-        transform: translateY(0);
-    }
-}
-
-/* --- User Info Block inside dropdown --- */
-.user-info {
-    padding: 12px 16px;
-    display: flex;
-    flex-direction: column;
-    gap: 2px;
-}
-
-.user-name {
-    font-weight: 600;
-    color: var(--text-primary);
-    font-size: 0.9rem;
-}
-
-.user-email {
-    font-size: 0.8rem;
-    color: var(--text-muted);
-}
-
-/* Thin horizontal line separating dropdown sections */
-.dropdown-divider {
-    height: 1px;
-    background: var(--border-color);
-    margin: 4px 0;
-}
-
-/* Dropdown menu item - styled as a full-width button for accessibility */
-.dropdown-item {
+.weekly-panel-heading {
     display: flex;
     align-items: center;
     gap: 10px;
-    padding: 10px 16px;
-    color: var(--text-secondary);
-    text-decoration: none;
-    font-size: 0.875rem;
-    transition: all var(--transition-fast);
-    background: transparent;
-    border: none;
-    width: 100%;
-    text-align: left;
-    font-family: inherit;
-    cursor: pointer;
+    padding-bottom: 14px;
+    border-bottom: 1px solid var(--brand-line);
 }
 
-.dropdown-item:hover {
-    background: var(--bg-tertiary);
-    color: var(--text-primary);
+.weekly-panel-heading .ph-icon {
+    color: var(--brand-accent);
 }
 
-.dropdown-item svg {
-    opacity: 0.7;
+.dvar-torah-card {
+    display: grid;
+    gap: 14px;
+    padding: 18px 0 4px;
 }
 
-.dropdown-item:hover svg {
-    opacity: 1;
-}
-
-/* Danger variant for destructive actions (e.g., "Sign Out") */
-.dropdown-item-danger {
-    color: #ef4444;
-}
-
-.dropdown-item-danger:hover {
-    background: rgba(239, 68, 68, 0.1); /* Subtle red tint on hover */
-    color: #ef4444;
-}
-
-/* ============================================================
- * Login Prompt Popover
- * A floating popover that nudges guest users to sign in.
- * Positioned fixed at the bottom of the viewport with a
- * centered horizontal offset. Animates in via opacity +
- * translateY transition when the .visible class is toggled.
- * ============================================================ */
-.login-prompt {
-    position: fixed;
-    bottom: 100px;
-    left: 50%;
-    transform: translateX(-50%) translateY(20px); /* Centered + offset down when hidden */
-    background: var(--bg-secondary);
-    border: 1px solid var(--border-color);
-    border-radius: var(--radius-md);
-    box-shadow: var(--shadow-lg);
-    padding: 20px 24px;
-    z-index: 200; /* Same tier as modals - above all other content */
-    opacity: 0;
-    visibility: hidden;
-    transition: all var(--transition-normal);
-}
-
-/* Visible state: slides up into position */
-.login-prompt.visible {
-    opacity: 1;
-    visibility: visible;
-    transform: translateX(-50%) translateY(0);
-}
-
-.login-prompt-content {
-    display: flex;
-    align-items: center;
-    gap: 16px;
-}
-
-.login-prompt-content p {
-    margin: 0;
-    color: var(--text-primary);
-    font-size: 0.95rem;
-}
-
-/* Gold CTA button inside the login prompt */
-.login-prompt-btn {
-    background: var(--accent);
-    color: white;
-    padding: 10px 20px;
-    border: none;
-    border-radius: var(--radius-sm);
-    text-decoration: none;
-    font-family: inherit;
-    font-weight: 500;
-    font-size: 0.9rem;
-    cursor: pointer;
-    transition: all var(--transition-fast);
-    white-space: nowrap;
-}
-
-.login-prompt-btn:hover {
-    background: var(--accent-hover);
-}
-
-/* Close button (X) for dismissing the login prompt */
-.login-prompt-close {
-    background: none;
-    border: none;
-    color: var(--text-muted);
-    font-size: 1.5rem;
-    cursor: pointer;
-    padding: 0;
-    line-height: 1;
-    margin-left: 8px;
-}
-
-.login-prompt-close:hover {
-    color: var(--text-primary);
-}
-
-/* ============================================================
- * 12. CHAT MESSAGES
- * The scrollable message area containing user and assistant
- * message bubbles. Uses flex-direction: column to stack
- * messages vertically with consistent spacing.
- *
- * Key behaviors:
- * - overscroll-behavior: contain prevents pull-to-refresh
- *   and scroll chaining to the parent/body
- * - scroll-behavior: smooth for auto-scroll to new messages
- * - Messages self-align via align-self (user=end, assistant=start)
- * ============================================================ */
-.chat-messages {
-    flex: 1;
-    min-height: 0; /* Required for flex overflow scrolling */
-    overflow-y: auto;
-    -webkit-overflow-scrolling: touch; /* iOS momentum scrolling */
-    overscroll-behavior: contain; /* Prevents scroll from chaining to parent or triggering pull-to-refresh */
-    padding: 20px;
-    display: flex;
-    flex-direction: column;
-    gap: 20px;
-    scroll-behavior: smooth; /* Smooth auto-scroll when new messages are appended */
-}
-
-.message {
-    max-width: 85%; /* Prevent messages from spanning full width for readability */
-    animation: messageIn 0.3s ease;
-}
-
-/* --- messageIn Animation ---
- * Each new message fades in with a slight upward slide. */
-@keyframes messageIn {
-    from {
-        opacity: 0;
-        transform: translateY(10px);
-    }
-    to {
-        opacity: 1;
-        transform: translateY(0);
-    }
-}
-
-/* User messages align to the right side */
-.message.user {
-    align-self: flex-end;
-}
-
-/* Assistant messages align to the left side */
-.message.assistant {
-    align-self: flex-start;
-}
-
-/* Message bubble styling - rounded with a flattened corner to
- * create a speech-bubble tail effect */
-.message-content {
-    padding: 14px 18px;
-    border-radius: var(--radius-lg);
-    line-height: 1.6;
-    white-space: pre-wrap; /* Preserves line breaks from the chat text */
-    word-wrap: break-word; /* Prevents long URLs/words from overflowing */
-}
-
-/* User messages: gold background with flattened bottom-right corner */
-.message.user .message-content {
-    background: var(--accent);
-    color: white;
-    border-bottom-right-radius: var(--radius-sm); /* Flattened corner creates "tail" pointing right */
-}
-
-/* Assistant messages: dark background with flattened bottom-left corner */
-.message.assistant .message-content {
-    background: var(--bg-secondary);
-    color: var(--text-primary);
-    border-bottom-left-radius: var(--radius-sm); /* Flattened corner creates "tail" pointing left */
-}
-
-/* Message metadata row (timestamp, etc.) */
-.message-meta {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    margin-top: 6px;
-    padding: 0 4px;
-}
-
-/* User message meta aligns right to match the message alignment */
-.message.user .message-meta {
-    justify-content: flex-end;
-}
-
-.message-time {
-    font-size: 0.7rem;
-    color: var(--text-muted);
-}
-
-/* ============================================================
- * Streaming Cursor
- * An animated blinking cursor that appears at the end of
- * assistant messages while they are being streamed in real-time.
- * Mimics a text editor cursor for a "typing" feel.
- * ============================================================ */
-.message-content.streaming .cursor {
-    display: inline-block;
-    width: 2px;
-    height: 1.1em;
-    background: var(--accent);
-    margin-left: 2px;
-    vertical-align: text-bottom; /* Aligns cursor baseline with text */
-    animation: blink 0.7s infinite;
-}
-
-/* --- blink Animation ---
- * Simple on/off blink for the streaming text cursor. */
-@keyframes blink {
-    0%, 50% { opacity: 1; }
-    51%, 100% { opacity: 0; }
-}
-
-/* ============================================================
- * Referral Notice
- * A warning banner shown when a human rabbi referral is
- * recommended. Uses the warning color palette (amber/yellow)
- * with a subtle tinted background.
- * ============================================================ */
-.referral-notice {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    margin: 0 20px 16px;
-    padding: 14px 18px;
-    background: rgba(251, 191, 36, 0.1); /* Semi-transparent warning yellow */
-    border: 1px solid rgba(251, 191, 36, 0.3);
-    border-radius: var(--radius-md);
-    animation: slideUp 0.3s ease;
-}
-
-.referral-icon {
-    font-size: 1.25rem;
-}
-
-.referral-notice p {
-    font-size: 0.875rem;
-    color: var(--warning);
-    line-height: 1.5;
-}
-
-/* ============================================================
- * 13. CHAT INPUT AREA
- * The fixed input area at the bottom of the chat screen.
- * Contains a textarea and send button within a rounded
- * container, capped at the same max-width as the welcome
- * screen input for visual consistency.
- * ============================================================ */
-.chat-input-area {
-    padding: 16px 20px;
-    background: var(--bg-primary);
-    border-top: 1px solid var(--border-color);
-    display: flex;
-    justify-content: center;
-}
-
-.chat-input-container {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    background: var(--bg-input);
-    border: 1px solid var(--border-color);
-    border-radius: var(--radius-lg);
-    padding: 12px 16px;
-    transition: all var(--transition-normal);
-    width: 100%;
-    max-width: 680px; /* Matches welcome-content max-width for consistency */
-}
-
-.chat-input-container:focus-within {
-    border-color: var(--border-light);
-}
-
-.chat-input-container textarea {
-    flex: 1;
-    background: transparent;
-    border: none;
-    outline: none;
-    color: var(--text-primary);
-    font-family: inherit;
-    font-size: 1rem;
-    line-height: 1.5;
-    resize: none;
-    min-height: 24px;
-    max-height: 150px; /* Slightly shorter than welcome input to save space */
-}
-
-.chat-input-container textarea::placeholder {
-    color: var(--text-muted);
-}
-
-/* ============================================================
- * 14. LOADING & TYPING INDICATORS
- * Three indicator styles:
- * 1. Loading indicator: fixed pill at bottom of viewport
- *    with bouncing dots (shown during initial API call).
- * 2. Typing indicator: inline message bubble with phase text
- *    and bouncing dots (shown during multi-agent pipeline).
- * 3. Skeleton/shimmer placeholders: block-shaped placeholders
- *    shown while content (greeting, d'var Torah, settings,
- *    conversation list) is still loading.
- * ============================================================ */
-
-/* --- Skeleton / Shimmer Loaders ---
- * Generic placeholder blocks used anywhere content is fetched
- * asynchronously. Apply `.skeleton` plus a sizing class (or inline
- * width/height) to a <div>. The shimmer sweeps left-to-right using a
- * moving gradient highlight against the tertiary background color.
- * Respects prefers-reduced-motion by falling back to a static,
- * subtly lighter background instead of an animated sweep. */
-.skeleton {
-    display: block;
-    border-radius: var(--radius-sm);
-    background: linear-gradient(
-        90deg,
-        var(--bg-tertiary) 25%,
-        var(--border-light) 50%,
-        var(--bg-tertiary) 75%
-    );
-    background-size: 200% 100%;
-    animation: shimmer 1.5s ease-in-out infinite;
-}
-
-/* --- shimmer Animation ---
- * Sweeps the gradient highlight across the skeleton block to
- * suggest content is actively loading. */
-@keyframes shimmer {
-    0% {
-        background-position: 200% 0;
-    }
-    100% {
-        background-position: -200% 0;
-    }
-}
-
-/* Reduced-motion fallback: a static, subtly lighter block instead of
- * an animated sweep. Combined with the global reduced-motion rule
- * (section 18) which also collapses the animation duration itself. */
-@media (prefers-reduced-motion: reduce) {
-    .skeleton {
-        background: var(--bg-tertiary);
-        animation: none;
-    }
-}
-
-/* --- Skeleton Row (conversation list placeholder rows) --- */
-.skeleton-row {
-    height: 36px;
-    margin: 4px 0;
-    border-radius: var(--radius-sm);
-}
-
-/* --- Global Loading Indicator (fixed position) --- */
-.loading-indicator {
-    position: fixed;
-    bottom: 100px;
-    left: 50%;
-    transform: translateX(-50%);
-    background: var(--bg-secondary);
-    padding: 12px 20px;
-    border-radius: var(--radius-full); /* Pill shape */
-    box-shadow: var(--shadow-md);
-    z-index: 100; /* Above messages, below modals */
-}
-
-.loading-dots {
-    display: flex;
-    gap: 6px;
-}
-
-.loading-dots span {
-    width: 8px;
-    height: 8px;
-    background: var(--accent);
-    border-radius: 50%;
-    animation: loadingBounce 1.4s ease-in-out infinite both;
-}
-
-/* Staggered animation delays create a wave effect across three dots */
-.loading-dots span:nth-child(1) {
-    animation-delay: -0.32s;
-}
-
-.loading-dots span:nth-child(2) {
-    animation-delay: -0.16s;
-}
-
-/* --- loadingBounce Animation ---
- * Dots scale up/down and change opacity in a wave pattern. */
-@keyframes loadingBounce {
-    0%, 80%, 100% {
-        transform: scale(0.6);
-        opacity: 0.5;
-    }
-    40% {
-        transform: scale(1);
-        opacity: 1;
-    }
-}
-
-/* --- Inline Typing Indicator (inside message bubble) ---
- * Shows which pipeline phase is active (e.g., "Considering pastoral context...")
- * with animated dots alongside the phase label. */
-.typing-indicator {
-    padding: 14px 18px !important;   /* !important overrides message-content defaults */
-    min-height: auto !important;
-    line-height: 1.4 !important;
-    white-space: normal !important;
-}
-
-.thinking-phase {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-}
-
-.phase-text {
-    color: var(--text-secondary);
-    font-size: 0.9rem;
-    font-style: italic;
-    transition: opacity var(--transition-fast); /* Smooth text swap between phases */
-}
-
-/* Applied via JS instead of setting .style.opacity directly, so the
- * crossfade stays driven by the CSS token above rather than an inline style. */
-.phase-text.fading {
-    opacity: 0;
-}
-
-/* --- Elapsed Time Readout ---
- * Small ticking counter next to the phase text so users have a sense
- * of progress during the multi-agent pipeline, which can take several
- * seconds. Updated every second via setInterval in showTypingIndicator(). */
-.phase-elapsed {
-    color: var(--text-muted);
-    font-size: 0.8rem;
-    font-variant-numeric: tabular-nums; /* Prevents width jitter as digits change */
-}
-
-.phase-dots {
-    display: flex;
+.dvar-torah-header {
+    display: grid;
     gap: 4px;
 }
 
-.phase-dots span {
-    width: 6px;
-    height: 6px;
-    background: var(--accent);
-    border-radius: 50%;
-    animation: typingBounce 1.4s ease-in-out infinite both;
-}
-
-/* Staggered delays for the three typing dots */
-.phase-dots span:nth-child(1) {
-    animation-delay: -0.32s;
-}
-
-.phase-dots span:nth-child(2) {
-    animation-delay: -0.16s;
-}
-
-/* --- typingBounce Animation ---
- * Dots bounce vertically (translateY) rather than scaling,
- * distinguishing this from the loading indicator. */
-@keyframes typingBounce {
-    0%, 80%, 100% {
-        transform: translateY(0);
-    }
-    40% {
-        transform: translateY(-4px);
-    }
-}
-
-/* ============================================================
- * 15. SCROLLBAR STYLING (WebKit Only)
- * Custom thin scrollbar for the chat messages area.
- * Keeps the scrollbar subtle to maintain the dark theme.
- * Note: Only affects WebKit-based browsers (Chrome, Safari, Edge).
- * Firefox uses scrollbar-width/scrollbar-color (not styled here).
- * ============================================================ */
-.chat-messages::-webkit-scrollbar {
-    width: 6px;
-}
-
-.chat-messages::-webkit-scrollbar-track {
-    background: transparent;
-}
-
-.chat-messages::-webkit-scrollbar-thumb {
-    background: var(--border-color);
-    border-radius: 3px;
-}
-
-.chat-messages::-webkit-scrollbar-thumb:hover {
-    background: var(--border-light);
-}
-
-/* ============================================================
- * 16. MOBILE RESPONSIVE (max-width: 640px)
- * Tightens padding, reduces font sizes, and adjusts message
- * width for small phone screens.
- *
- * Breakpoint: 640px - standard small mobile breakpoint.
- * Changes: Reduced padding, smaller text, wider message bubbles.
- * ============================================================ */
-@media (max-width: 640px) {
-    .welcome-screen {
-        padding: 20px 16px;
-    }
-
-    .greeting {
-        font-size: 1.5rem;
-    }
-
-    .input-container {
-        padding: 12px 16px;
-    }
-
-    .suggestions {
-        gap: 8px;
-    }
-
-    .suggestion-chip {
-        padding: 8px 14px;
-        font-size: 0.8rem;
-    }
-
-    .disclaimer {
-        font-size: 0.7rem;
-        padding: 0 16px;
-    }
-
-    .chat-messages {
-        padding: 16px;
-    }
-
-    .message {
-        max-width: 90%; /* Allow wider messages on narrow screens for more text per line */
-    }
-
-    .message-content {
-        padding: 12px 14px;
-        font-size: 0.95rem;
-    }
-}
-
-/* ============================================================
- * 17. iOS SAFE AREA SUPPORT
- * Adds extra bottom padding on devices with a home indicator
- * bar (iPhone X and later). The env(safe-area-inset-bottom)
- * value is provided by the browser and equals the height of
- * the home indicator area.
- *
- * @supports ensures these rules only apply in browsers that
- * understand the env() function.
- * ============================================================ */
-@supports (padding-bottom: env(safe-area-inset-bottom)) {
-    .chat-input-area {
-        padding-bottom: calc(16px + env(safe-area-inset-bottom));
-    }
-
-    .disclaimer {
-        bottom: calc(24px + env(safe-area-inset-bottom));
-    }
-}
-
-/* ============================================================
- * 18. ACCESSIBILITY - REDUCED MOTION
- * Respects the user's OS-level "reduce motion" preference by
- * collapsing all animations and transitions to near-zero
- * duration. This eliminates slide, fade, bounce, and pulse
- * effects for users who experience motion sickness.
- *
- * Uses !important to override inline animation-duration values.
- * ============================================================ */
-@media (prefers-reduced-motion: reduce) {
-    *, *::before, *::after {
-        animation-duration: 0.01ms !important;
-        animation-iteration-count: 1 !important;
-        transition-duration: 0.01ms !important;
-    }
-}
-
-/* ============================================================
- * 19. TEXT SELECTION COLOR
- * Overrides the default blue text selection highlight to use
- * the gold brand color for a cohesive feel.
- * ============================================================ */
-::selection {
-    background: var(--accent);
-    color: white;
-}
-
-/* ============================================================
- * 20. SETTINGS SCREEN
- * User account and preferences panel. Reuses the same slide-in
- * transition as the chat screen. Content is organized into
- * labeled sections with card-style groupings.
- *
- * Layout: Scrollable content area with a max-width constraint
- * (600px) to center settings cards on large screens.
- * ============================================================ */
-.settings-screen {
-    flex: 1;
-    display: flex;
-    flex-direction: column;
-    min-height: 0;
-    overflow: hidden;
-    animation: slideInRight 0.3s ease;
-}
-
-.settings-header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: 16px 20px;
-    background: var(--bg-primary);
-    border-bottom: 1px solid var(--border-color);
-}
-
-.settings-title {
-    font-size: 1rem;
-    font-weight: 600;
-    color: var(--text-primary);
-}
-
-.settings-content {
-    flex: 1;
-    overflow-y: auto;
-    -webkit-overflow-scrolling: touch; /* iOS momentum scrolling */
-    padding: 24px 20px;
-}
-
-/* Settings section container - centered with max-width */
-.settings-section {
-    max-width: 600px;
-    margin: 0 auto;
-    margin-bottom: 32px;
-}
-
-/* Section heading - small uppercase label above each settings card */
-.settings-section-title {
-    font-size: 0.75rem;
-    font-weight: 600;
-    color: var(--text-muted);
-    text-transform: uppercase;
-    letter-spacing: 0.05em;
-    margin-bottom: 12px;
-    padding-left: 4px;
-}
-
-/* Settings card - grouped container for related settings rows */
-.settings-card {
-    background: var(--bg-secondary);
-    border: 1px solid var(--border-color);
-    border-radius: var(--radius-md);
-    overflow: hidden; /* Clips child border-radius for first/last rows */
-}
-
-/* Individual settings row - icon + label + value layout */
-.settings-row {
-    display: flex;
-    align-items: center;
-    gap: 14px;
-    padding: 16px;
-}
-
-/* Settings row icon - square icon container with tertiary background */
-.settings-row-icon {
-    width: 40px;
-    height: 40px;
-    background: var(--bg-tertiary);
-    border-radius: var(--radius-sm);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    color: var(--accent);
-    flex-shrink: 0;
-}
-
-.settings-row-content {
-    flex: 1;
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    gap: 12px;
-}
-
-.settings-row-label {
-    font-size: 0.95rem;
-    color: var(--text-primary);
-    font-weight: 500;
-}
-
-.settings-row-value {
-    font-size: 0.95rem;
-    color: var(--text-secondary);
-}
-
-/* Skeleton sizing for settings row values (credits, name, email) while
- * their initial fetch (loadCredits/loadProfile/showSettings) is in flight. */
-.settings-value-skeleton {
-    width: 90px;
-    height: 1em;
-}
-
-/* Credits balance - emphasized with gold color and larger font */
-.settings-row-value.credits-value {
-    font-weight: 600;
-    color: var(--accent);
-    font-size: 1.1rem;
-}
-
-/* Description text below a settings row */
-.settings-row-description {
-    padding: 12px 16px 16px;
-    font-size: 0.8rem;
-    color: var(--text-muted);
-    line-height: 1.5;
-    border-top: 1px solid var(--border-color);
-}
-
-/* Divider between settings rows within a card */
-.settings-divider {
-    height: 1px;
-    background: var(--border-color);
-    margin: 0 16px; /* Inset from card edges for a refined look */
-}
-
-/* --- Settings Mobile Responsive (max-width: 640px) ---
- * Reduces padding and icon sizes on small screens. */
-@media (max-width: 640px) {
-    .settings-content {
-        padding: 20px 16px;
-    }
-
-    .settings-row {
-        padding: 14px;
-    }
-
-    .settings-row-icon {
-        width: 36px;
-        height: 36px;
-    }
-
-    .settings-row-label,
-    .settings-row-value {
-        font-size: 0.9rem;
-    }
-}
-
-/* ============================================================
- * 21. MESSAGE ACTION BUTTONS
- * Small icon buttons below assistant messages for copy, speak
- * (text-to-speech), and feedback actions. Compact size to avoid
- * cluttering the message area.
- * ============================================================ */
-.message-actions {
-    display: flex;
-    gap: 8px;
-    margin-top: 8px;
-    padding: 4px 0;
-}
-
-.action-btn {
-    width: 32px;
-    height: 32px;
-    border-radius: var(--radius-sm);
-    background: transparent;
-    border: 1px solid var(--border-color);
-    cursor: pointer;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    color: var(--text-muted);
-    transition: all var(--transition-fast);
-    padding: 0;
-}
-
-.action-btn:hover {
-    background: var(--bg-tertiary);
-    color: var(--text-primary);
-    border-color: var(--border-light);
-}
-
-/* Active state for toggled actions (e.g., thumbs up selected) */
-.action-btn.active {
-    background: var(--accent);
-    color: white;
-    border-color: var(--accent);
-}
-
-.action-btn svg {
-    width: 16px;
-    height: 16px;
-}
-
-/* --- Speak Button States ---
- * Loading: pulsing animation while TTS audio is being generated.
- * Playing: gold background indicates audio is currently playing. */
-.speak-btn.loading svg {
-    animation: pulse 1s ease-in-out infinite;
-}
-
-.speak-btn.playing {
-    background: var(--accent);
-    color: white;
-    border-color: var(--accent);
-}
-
-/* ============================================================
- * Toast Notification
- * A brief floating notification (e.g., "Copied to clipboard")
- * that appears at the bottom of the viewport and fades in/out.
- * Uses the same show/hide pattern as the login prompt:
- * opacity + visibility + translateY transition.
- * ============================================================ */
-.toast {
-    position: fixed;
-    bottom: 100px;
-    left: 50%;
-    transform: translateX(-50%) translateY(20px);
-    background: var(--bg-secondary);
-    border: 1px solid var(--border-color);
-    border-radius: var(--radius-md);
-    padding: 12px 20px;
-    color: var(--text-primary);
-    font-size: 0.875rem;
-    z-index: 1000; /* Top-level z-index to ensure visibility above all content */
-    opacity: 0;
-    transition: all var(--transition-normal);
-    box-shadow: var(--shadow-lg);
-}
-
-.toast.visible {
-    opacity: 1;
-    transform: translateX(-50%) translateY(0);
-}
-
-/* --- Action Buttons Mobile Responsive (max-width: 640px) ---
- * Slightly smaller action buttons on narrow screens. */
-@media (max-width: 640px) {
-    .action-btn {
-        width: 28px;
-        height: 28px;
-    }
-
-    .action-btn svg {
-        width: 14px;
-        height: 14px;
-    }
-}
-
-/* ============================================================
- * 22. PURCHASE CREDITS MODAL
- * Full-screen overlay modal for purchasing chat credits via
- * Stripe. Contains package selection cards, a Stripe Payment
- * Element embed, and payment status feedback.
- *
- * Key design decisions:
- * - backdrop-filter: blur(4px) creates a glass-morphism effect
- *   on the dark overlay, visually separating the modal from
- *   the content behind it.
- * - z-index: 200 ensures the modal sits above all other UI.
- * - Modal content uses scale + translateY animation for a
- *   natural-feeling entrance.
- * ============================================================ */
-
-/* Modal backdrop overlay */
-.modal-overlay {
-    position: fixed;
-    top: 0;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    background: rgba(0, 0, 0, 0.7);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    z-index: 200; /* Highest UI layer - above everything including login prompt */
-    opacity: 0;
-    visibility: hidden;
-    transition: all var(--transition-normal);
-    backdrop-filter: blur(4px); /* Glass-morphism: blurs content behind the overlay */
-}
-
-.modal-overlay.visible {
-    opacity: 1;
-    visibility: visible;
-}
-
-/* Modal content container */
-.modal-content {
-    background: var(--bg-secondary);
-    border: 1px solid var(--border-color);
-    border-radius: var(--radius-lg);
-    width: 100%;
-    max-width: 440px;
-    max-height: 90vh;
-    overflow-y: auto;
-    animation: modalIn 0.2s ease;
-    margin: 20px; /* Prevents modal from touching screen edges on mobile */
-}
-
-/* --- modalIn Animation ---
- * Modal scales up from 95% with a slight upward slide for
- * a "popping into view" effect. */
-@keyframes modalIn {
-    from {
-        opacity: 0;
-        transform: scale(0.95) translateY(-10px);
-    }
-    to {
-        opacity: 1;
-        transform: scale(1) translateY(0);
-    }
-}
-
-.modal-header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: 20px 24px;
-    border-bottom: 1px solid var(--border-color);
-}
-
-.modal-header h2 {
-    font-size: 1.1rem;
-    font-weight: 600;
-    color: var(--text-primary);
-}
-
-/* Modal close button (X) */
-.modal-close {
-    width: 32px;
-    height: 32px;
-    border-radius: var(--radius-sm);
-    background: transparent;
-    border: none;
-    cursor: pointer;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    color: var(--text-muted);
-    transition: all var(--transition-fast);
-}
-
-.modal-close:hover {
-    background: var(--bg-tertiary);
-    color: var(--text-primary);
-}
-
-/* ============================================================
- * Package Selection Cards
- * Two side-by-side cards for choosing a credit package.
- * The selected card gets a gold border and tinted background.
- * ============================================================ */
-.package-selection {
-    display: flex;
-    gap: 12px;
-    padding: 24px;
-}
-
-.package-card {
-    flex: 1;
-    padding: 20px 16px;
-    background: var(--bg-primary);
-    border: 2px solid var(--border-color); /* Thicker border for card selection affordance */
-    border-radius: var(--radius-md);
-    cursor: pointer;
-    transition: all var(--transition-fast);
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 8px;
-    position: relative; /* Anchor for the "Best Value" badge */
-}
-
-.package-card:hover {
-    border-color: var(--border-light);
-    /* Lift + shadow on hover, matching the established card-hover pattern
-     * used by .suggestion-chip:hover elsewhere in the app. */
-    transform: translateY(-2px);
-    box-shadow: var(--shadow-md);
-}
-
-/* Selected package: gold border with semi-transparent gold background tint */
-.package-card.selected {
-    border-color: var(--accent);
-    background: rgba(212, 168, 83, 0.1); /* 10% gold tint */
-}
-
-.package-credits {
-    font-size: 1.1rem;
-    font-weight: 600;
-    color: var(--text-primary);
-}
-
-.package-price {
-    font-size: 0.9rem;
-    color: var(--accent);
-    font-weight: 500;
-}
-
-/* "Best Value" badge - absolutely positioned at the top-right corner of the card.
- * Uses negative offset to overlap the card border. */
-.package-badge {
-    position: absolute;
-    top: -10px;  /* Overlaps above the card border */
-    right: -10px; /* Overlaps past the card border */
-    background: var(--accent);
-    color: var(--bg-primary);
-    font-size: 0.65rem;
-    font-weight: 600;
-    padding: 4px 8px;
-    border-radius: var(--radius-full); /* Pill shape */
-    text-transform: uppercase;
-}
-
-/* ============================================================
- * Stripe Payment Element Container
- * Wrapper for the Stripe-injected payment form. Minimum height
- * ensures layout stability before the Stripe iframe loads.
- * ============================================================ */
-#paymentElementContainer {
-    padding: 0 24px 24px;
-    min-height: 150px; /* Prevents layout shift while Stripe iframe loads */
-}
-
-/* Loading state shown while Stripe Payment Element initializes */
-.payment-loading {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    min-height: 150px;
-    color: var(--text-muted);
-    font-size: 0.875rem;
-}
-
-/* Payment error message text */
-.payment-error-text {
-    color: #ef4444;
-    text-align: center;
-    padding: 20px;
-    font-size: 0.875rem;
-}
-
-/* --- Modal Footer: Purchase button and security note --- */
-.modal-footer {
-    padding: 0 24px 24px;
-    display: flex;
-    flex-direction: column;
-    gap: 12px;
-}
-
-/* Primary purchase CTA button - full-width gold */
-.purchase-btn {
-    width: 100%;
-    padding: 14px 24px;
-    background: var(--accent);
-    border: none;
-    border-radius: var(--radius-md);
-    color: var(--bg-primary); /* Dark text on gold background for contrast */
-    font-family: inherit;
-    font-size: 1rem;
-    font-weight: 600;
-    cursor: pointer;
-    transition: all var(--transition-fast);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 8px;
-}
-
-.purchase-btn:hover:not(:disabled) {
-    background: var(--accent-hover);
-}
-
-.purchase-btn:disabled {
-    opacity: 0.5;
-    cursor: not-allowed;
-}
-
-/* --- Purchase Button Spinner ---
- * Shown alongside the button text while a payment is processing.
- * Uses the same border-based CSS spinner technique as .saving-spinner
- * and .send-spinner for visual consistency across the app. */
-.purchase-spinner {
-    display: inline-block;
-    width: 14px;
-    height: 14px;
-    border: 2px solid var(--bg-primary);
-    border-top-color: transparent; /* Creates the spinning gap */
-    border-radius: 50%;
-    animation: spin 0.8s linear infinite;
-}
-
-/* "Secure payment" text with lock icon below the purchase button */
-.payment-secure {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 6px;
-    font-size: 0.75rem;
-    color: var(--text-muted);
-}
-
-/* ============================================================
- * Payment Status Feedback
- * Success and error states shown after a payment attempt.
- * ============================================================ */
-.payment-status {
-    padding: 40px 24px;
-    text-align: center;
-}
-
-/* Success state - green checkmark and confirmation text */
-.payment-success {
-    color: var(--success);
-}
-
-.payment-success svg {
-    margin-bottom: 16px;
-}
-
-.payment-success p {
-    font-size: 1rem;
-    font-weight: 500;
-}
-
-/* Error state - red error text */
-.payment-error p {
-    color: #ef4444;
-    font-size: 0.875rem;
-}
-
-/* ============================================================
- * 23. BUY CREDITS & SAVE PROFILE BUTTONS
- * Full-width gold CTA buttons used within settings cards
- * for purchasing credits and saving profile changes.
- * ============================================================ */
-
-/* Buy Credits button in the Settings screen */
-.buy-credits-btn {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    padding: 10px 16px;
-    background: var(--accent);
-    border: none;
-    border-radius: var(--radius-sm);
-    color: var(--bg-primary);
-    font-family: inherit;
-    font-size: 0.875rem;
-    font-weight: 500;
-    cursor: pointer;
-    transition: all var(--transition-fast);
-    margin-top: 16px;
-    width: 100%;
-    justify-content: center;
-}
-
-.buy-credits-btn:hover {
-    background: var(--accent-hover);
-}
-
-/* ============================================================
- * Profile Settings - Denomination Select
- * Custom-styled <select> dropdown for choosing a Jewish
- * denomination. Uses appearance: none to remove native styling
- * and an inline SVG chevron as the custom dropdown indicator.
- * ============================================================ */
-.settings-select {
-    background: var(--bg-primary);
-    border: 1px solid var(--border-color);
-    border-radius: var(--radius-sm);
-    color: var(--text-primary);
-    font-family: inherit;
-    font-size: 0.875rem;
-    padding: 8px 12px;
-    cursor: pointer;
-    appearance: none; /* Remove native select styling (arrow, border, etc.) */
-    /* Inline SVG chevron icon as background image for the dropdown indicator */
-    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%23a0a0a0' stroke-width='2'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E");
-    background-repeat: no-repeat;
-    background-position: right 10px center;
-    padding-right: 32px; /* Extra right padding to avoid text overlapping the chevron */
-    min-width: 160px;
-}
-
-.settings-select:hover {
-    border-color: var(--accent);
-}
-
-/* Focus ring using box-shadow for rounded-corner compatibility */
-.settings-select:focus {
-    outline: none;
-    border-color: var(--accent);
-    box-shadow: 0 0 0 2px rgba(212, 168, 83, 0.2); /* Subtle gold focus ring */
-}
-
-.settings-select option {
-    background: var(--bg-secondary);
-    color: var(--text-primary);
-}
-
-/* ============================================================
- * Profile Settings - Bio Textarea
- * Multi-line text input for the user's personal bio/context.
- * Includes a character counter absolutely positioned at the
- * bottom-right corner of the textarea.
- * ============================================================ */
-.settings-row-bio {
-    align-items: flex-start; /* Top-align icon with textarea */
-}
-
-.settings-row-bio .settings-row-content {
-    flex-direction: column;
-    align-items: flex-start;
-    gap: 0;
-}
-
-.bio-input-container {
-    position: relative; /* Anchor for the character counter */
-    width: 100%;
-    margin-top: 8px;
-}
-
-.settings-textarea {
-    width: 100%;
-    background: var(--bg-primary);
-    border: 1px solid var(--border-color);
-    border-radius: var(--radius-sm);
-    color: var(--text-primary);
-    font-family: inherit;
-    font-size: 0.875rem;
-    padding: 10px 12px;
-    padding-bottom: 24px; /* Extra bottom padding to make room for char counter */
-    resize: none;
-    line-height: 1.5;
-}
-
-.settings-textarea:hover {
-    border-color: var(--accent);
-}
-
-.settings-textarea:focus {
-    outline: none;
-    border-color: var(--accent);
-    box-shadow: 0 0 0 2px rgba(212, 168, 83, 0.2);
-}
-
-.settings-textarea::placeholder {
-    color: var(--text-muted);
-}
-
-/* Character counter - positioned inside the textarea's bottom-right corner */
-.char-count {
-    position: absolute;
-    bottom: 6px;
-    right: 10px;
-    font-size: 0.75rem;
-    color: var(--text-muted);
-}
-
-/* Save Profile button - same style as buy-credits-btn */
-.save-profile-btn {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    padding: 10px 16px;
-    background: var(--accent);
-    border: none;
-    border-radius: var(--radius-sm);
-    color: var(--bg-primary);
-    font-family: inherit;
-    font-size: 0.875rem;
-    font-weight: 500;
-    cursor: pointer;
-    transition: all var(--transition-fast);
-    margin-top: 16px;
-    width: 100%;
-    justify-content: center;
-}
-
-.save-profile-btn:hover:not(:disabled) {
-    background: var(--accent-hover);
-}
-
-.save-profile-btn:disabled {
-    opacity: 0.7;
-    cursor: not-allowed;
-}
-
-/* --- Saving Spinner ---
- * Small inline spinner shown inside the save button during save.
- * Uses border-based CSS spinner technique with a transparent top border. */
-.saving-spinner {
-    display: inline-block;
-    width: 14px;
-    height: 14px;
-    border: 2px solid var(--bg-primary);
-    border-top-color: transparent; /* Creates the spinning gap */
-    border-radius: 50%;
-    animation: spin 0.8s linear infinite;
-}
-
-/* --- spin Animation ---
- * Continuous 360-degree rotation for the loading spinner. */
-@keyframes spin {
-    to {
-        transform: rotate(360deg);
-    }
-}
-
-/* ============================================================
- * Modal Mobile Responsive (max-width: 480px)
- * Reduces padding and card sizes on very small screens.
- *
- * Breakpoint: 480px - smallest phone screens.
- * Changes: Tighter spacing, smaller cards, near-full-width modal.
- * ============================================================ */
-@media (max-width: 480px) {
-    .modal-content {
-        margin: 10px; /* Minimal edge margin on very small screens */
-        max-height: calc(100vh - 20px);
-    }
-
-    .package-selection {
-        padding: 16px;
-        gap: 8px;
-    }
-
-    .package-card {
-        padding: 16px 12px;
-    }
-
-    .package-credits {
-        font-size: 1rem;
-    }
-
-    #paymentElementContainer {
-        padding: 0 16px 16px;
-    }
-
-    .modal-footer {
-        padding: 0 16px 16px;
-    }
-}
-
-/* ============================================================
- * 24. D'VAR TORAH SECTION
- * Weekly Torah portion commentary displayed in two contexts:
- * 1. A preview card on the welcome screen with truncated text
- *    and a gradient fade-out at the bottom.
- * 2. A full-screen reading view accessible by expanding the card.
- *
- * The preview card uses a ::after pseudo-element to create a
- * gradient overlay that fades the text into the card background,
- * indicating there is more content to read.
- * ============================================================ */
-
-/* Welcome screen preview card */
-.dvar-torah-section {
-    width: 100%;
-    animation: slideUp 0.6s ease 0.1s both; /* Staggered entrance with other welcome elements */
-}
-
-/* Card container with a subtle gold-tinted border */
-.dvar-torah-card {
-    background: var(--bg-secondary);
-    border: 1px solid rgba(212, 168, 83, 0.25); /* Semi-transparent gold border */
-    border-radius: var(--radius-md);
-    padding: 20px 24px;
-    width: 100%;
-}
-
-/* Card header: label on left, parsha name on right */
-.dvar-torah-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    margin-bottom: 12px;
-}
-
-/* "D'var Torah" label - small uppercase gold text */
 .dvar-torah-label {
-    font-size: 0.7rem;
+    color: var(--brand-muted);
+    font-size: 0.72rem;
+    font-weight: 700;
+    letter-spacing: 0.08em;
     text-transform: uppercase;
-    letter-spacing: 0.06em;
-    color: var(--accent);
-    font-weight: 600;
 }
 
-/* Parsha (Torah portion) name */
 .dvar-torah-parsha {
-    font-size: 0.85rem;
-    color: var(--text-primary);
-    font-weight: 500;
+    font-size: 1.03rem;
+    font-weight: 700;
 }
 
-/* Preview text - truncated to approximately 3 lines (4.2em / 1.7 line-height) */
 .dvar-torah-preview {
-    color: var(--text-secondary);
-    font-size: 0.9rem;
-    line-height: 1.7;
-    max-height: 4.2em; /* Limits visible text to ~2.5 lines */
+    display: -webkit-box;
     overflow: hidden;
-    position: relative; /* Anchor for the gradient fade ::after pseudo-element */
+    color: var(--brand-muted);
+    font-size: 0.9rem;
+    line-height: 1.55;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 5;
 }
 
-/* ::after pseudo-element: Creates a gradient overlay that fades from
- * transparent to the card's background color, visually indicating
- * that the text is truncated and more content is available. */
-.dvar-torah-preview::after {
-    content: '';
-    position: absolute;
-    bottom: 0;
-    left: 0;
-    right: 0;
-    height: 2em;
-    background: linear-gradient(transparent, var(--bg-secondary)); /* Fades to card background */
-    pointer-events: none; /* Allows clicks to pass through to text beneath */
-}
-
-/* "Read more" expand button - ghost pill style with gold tint */
-.dvar-torah-expand-btn {
+.dvar-torah-expand-btn,
+.sponsor-btn {
     display: inline-flex;
     align-items: center;
-    gap: 6px;
-    margin-top: 14px;
-    padding: 8px 16px;
-    background: transparent;
-    border: 1px solid rgba(212, 168, 83, 0.25);
-    border-radius: var(--radius-full);
-    color: var(--accent);
-    font-family: inherit;
-    font-size: 0.8rem;
-    cursor: pointer;
-    transition: all var(--transition-fast);
-}
-
-.dvar-torah-expand-btn:hover {
-    background: rgba(212, 168, 83, 0.1);
-    border-color: rgba(212, 168, 83, 0.4);
-}
-
-/* ============================================================
- * D'var Torah Full-Screen Reading View
- * Expanded reading experience for the weekly Torah commentary.
- * Uses the same slide-in animation and layout pattern as the
- * chat and settings screens for consistency.
- * ============================================================ */
-.dvar-torah-screen {
-    flex: 1;
-    display: flex;
-    flex-direction: column;
-    min-height: 0;
-    overflow: hidden;
-    animation: slideInRight 0.3s ease;
-}
-
-.dvar-torah-screen-header {
-    display: flex;
-    align-items: center;
     justify-content: space-between;
-    padding: 16px 20px;
-    background: var(--bg-primary);
-    border-bottom: 1px solid var(--border-color);
+    min-height: 44px;
+    gap: 10px;
+    padding: 0 12px;
+    color: var(--brand-accent-strong);
+    background: transparent;
+    border: 1px solid var(--brand-line);
+    border-radius: var(--brand-radius-small);
+    font-weight: 650;
+    text-align: left;
+    cursor: pointer;
 }
 
+.dvar-torah-expand-btn:hover,
+.sponsor-btn:hover {
+    background: var(--brand-accent-soft);
+    border-color: var(--brand-accent);
+}
+
+.weekly-fallback {
+    margin: 14px 0 0;
+    color: var(--brand-muted);
+    font-size: 0.8rem;
+    line-height: 1.45;
+}
+
+.guidance-note {
+    display: flex;
+    max-width: 760px;
+    align-items: flex-start;
+    gap: 11px;
+    margin-top: 28px;
+    padding-top: 18px;
+    color: var(--brand-muted);
+    border-top: 1px solid var(--brand-line);
+}
+
+.guidance-note .ph-icon {
+    margin-top: 2px;
+    color: var(--brand-accent);
+}
+
+.guidance-note p {
+    margin: 0;
+    font-size: 0.85rem;
+    line-height: 1.5;
+}
+
+.guidance-note strong {
+    color: var(--brand-text);
+}
+
+/* Chat reading workspace */
+.chat-screen {
+    display: grid;
+    grid-template-rows: auto minmax(0, 1fr) auto auto;
+    height: 100%;
+    background: var(--brand-canvas);
+}
+
+.chat-header,
+.surface-header {
+    display: grid;
+    grid-template-columns: 44px minmax(0, 1fr) auto;
+    align-items: center;
+    min-height: 76px;
+    gap: 16px;
+    padding: 12px clamp(18px, 3vw, 36px);
+    background: color-mix(in srgb, var(--brand-canvas) 88%, transparent);
+    border-bottom: 1px solid var(--brand-line);
+}
+
+.chat-header .menu-btn {
+    display: none;
+}
+
+.chat-heading {
+    min-width: 0;
+}
+
+.chat-title,
+.settings-title,
 .dvar-torah-screen-title {
-    font-size: 1rem;
-    font-weight: 600;
-    color: var(--text-primary);
+    overflow: hidden;
+    margin: 0;
+    font-size: 1.05rem;
+    font-weight: 680;
+    letter-spacing: -0.015em;
+    text-overflow: ellipsis;
+    white-space: nowrap;
 }
 
-/* Scrollable reading area */
-.dvar-torah-screen-content {
-    flex: 1;
+.source-key {
+    position: relative;
+}
+
+.source-key summary {
+    display: inline-flex;
+    align-items: center;
+    min-height: 44px;
+    padding: 0 12px;
+    color: var(--brand-muted);
+    border: 1px solid var(--brand-line);
+    border-radius: var(--brand-radius-small);
+    font-size: 0.82rem;
+    font-weight: 650;
+    list-style: none;
+    cursor: pointer;
+}
+
+.source-key summary::-webkit-details-marker {
+    display: none;
+}
+
+.source-key[open] summary {
+    color: var(--brand-text);
+    background: var(--brand-accent-soft);
+    border-color: var(--brand-accent);
+}
+
+.source-key dl {
+    position: absolute;
+    z-index: 40;
+    top: calc(100% + 8px);
+    right: 0;
+    width: min(360px, calc(100vw - 32px));
+    margin: 0;
+    padding: 8px 16px;
+    background: var(--brand-surface-raised);
+    border: 1px solid var(--brand-line);
+    border-radius: var(--brand-radius-small);
+    box-shadow: var(--brand-shadow-material);
+}
+
+.source-key dl > div {
+    padding: 10px 0;
+}
+
+.source-key dl > div + div {
+    border-top: 1px solid var(--brand-line);
+}
+
+.source-key dt {
+    color: var(--brand-text);
+    font-size: 0.84rem;
+    font-weight: 700;
+}
+
+.source-key dd {
+    margin: 4px 0 0;
+    color: var(--brand-muted);
+    font-size: 0.78rem;
+    line-height: 1.45;
+}
+
+.chat-messages {
+    min-height: 0;
+    padding: clamp(28px, 5vw, 64px) max(24px, calc((100% - var(--app-reading)) / 2));
     overflow-y: auto;
-    -webkit-overflow-scrolling: touch; /* iOS momentum scrolling */
-    padding: 32px 20px;
+    overscroll-behavior: contain;
+    scroll-behavior: smooth;
 }
 
-/* Reading body text - comfortable reading width and generous line-height */
-.dvar-torah-screen-content .dvar-torah-body {
-    max-width: 640px; /* Optimal reading width (~65-75 characters per line) */
-    margin: 0 auto;
-    color: var(--text-primary);
+.message {
+    position: relative;
+    width: 100%;
+    margin: 0 auto 40px;
+}
+
+.message::before {
+    display: block;
+    margin-bottom: 8px;
+    color: var(--brand-muted);
+    font-size: 0.68rem;
+    font-weight: 750;
+    letter-spacing: 0.11em;
+    text-transform: uppercase;
+}
+
+.message.user::before {
+    content: "You";
+    text-align: right;
+}
+
+.message.assistant::before {
+    content: "Guidance";
+}
+
+.message.user {
+    display: grid;
+    justify-items: end;
+}
+
+.message-content {
+    overflow-wrap: anywhere;
+    unicode-bidi: plaintext;
+}
+
+.message.user .message-content {
+    width: min(82%, 620px);
+    padding: 15px 18px;
+    color: var(--brand-text);
+    background: var(--brand-accent-soft);
+    border: 1px solid var(--brand-line);
+    border-radius: var(--brand-radius);
     font-size: 1rem;
-    line-height: 1.85; /* Extra-generous line-height for long-form reading comfort */
+    line-height: 1.55;
+    white-space: pre-wrap;
 }
 
-.dvar-torah-screen-content .dvar-torah-body p {
-    margin-bottom: 1.2em;
+.message.assistant .message-content {
+    padding: 4px 0 4px 22px;
+    color: var(--brand-text);
+    border-left: 3px solid var(--brand-accent);
+    font-size: clamp(1rem, 1.6vw, 1.08rem);
+    line-height: 1.75;
 }
 
-.dvar-torah-screen-content .dvar-torah-body p:last-child {
-    margin-bottom: 0;
+.message.assistant.message-error .message-content,
+.message.assistant.message-timeout .message-content {
+    padding: 14px 16px;
+    background: var(--brand-error-soft);
+    border: 1px solid var(--brand-error);
+    border-left-width: 3px;
+    border-radius: var(--brand-radius-small);
 }
 
-/* --- D'var Torah Mobile Responsive (max-width: 768px) ---
- * Reduces card padding and stacks header elements vertically.
- *
- * Breakpoint: 768px - tablet portrait / large phones.
- * Changes: Tighter padding, stacked header, smaller body text.
- * ============================================================ */
-@media (max-width: 768px) {
-    .dvar-torah-card {
-        padding: 16px 18px;
-    }
-
-    .dvar-torah-header {
-        flex-direction: column;
-        align-items: flex-start;
-        gap: 4px;
-    }
-
-    .dvar-torah-screen-content {
-        padding: 24px 16px;
-    }
-
-    .dvar-torah-screen-content .dvar-torah-body {
-        font-size: 0.95rem;
-    }
-}
-
-/* ============================================================
- * 25. Markdown Content (assistant messages)
- * Paragraphs, lists, headings, blockquotes, and inline code
- * produced by formatMarkdown() in app.js.
- * ============================================================ */
 .message-content p {
-    margin: 0 0 0.75em;
+    margin: 0 0 1em;
 }
 
 .message-content p:last-child {
     margin-bottom: 0;
 }
 
-.message-content ul,
-.message-content ol {
-    margin: 0.5em 0 0.75em;
-    padding-left: 1.4em;
-}
-
-.message-content li {
-    margin: 0.3em 0;
-}
-
 .message-content h3,
 .message-content h4,
 .message-content h5 {
-    margin: 0.9em 0 0.4em;
-    color: var(--text-primary);
-    line-height: 1.3;
+    margin: 1.5em 0 0.55em;
+    color: var(--brand-text);
+    font-weight: 720;
+    letter-spacing: -0.02em;
+    line-height: 1.25;
 }
 
-.message-content h3 { font-size: 1.05rem; }
-.message-content h4 { font-size: 1rem; }
-.message-content h5 { font-size: 0.95rem; }
+.message-content h3 {
+    font-size: 1.3rem;
+}
+
+.message-content h4,
+.message-content h5 {
+    font-size: 1.08rem;
+}
+
+.message-content ul,
+.message-content ol {
+    margin: 0.75em 0 1em;
+    padding-left: 1.4em;
+}
+
+.message-content li + li {
+    margin-top: 0.45em;
+}
 
 .message-content blockquote {
-    border-left: 3px solid var(--accent-gold, #d4a853);
-    margin: 0.5em 0 0.75em;
-    padding: 0.25em 0.9em;
-    color: var(--text-secondary);
-    font-style: italic;
+    margin: 1em 0;
+    padding: 12px 16px;
+    color: var(--brand-muted);
+    background: var(--brand-surface);
+    border-left: 3px solid var(--brand-line-strong);
 }
 
 .message-content code {
-    background: rgba(255, 255, 255, 0.08);
-    padding: 0.1em 0.35em;
+    padding: 1px 5px;
+    background: var(--brand-accent-soft);
     border-radius: 4px;
-    font-size: 0.9em;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 0.88em;
 }
 
-/* ============================================================
- * 26. Message Sources (citations footer)
- * Chips under assistant messages listing the sources behind an
- * answer. Verified chips matched a passage actually retrieved
- * from the text library.
- * ============================================================ */
+.message-meta {
+    margin-top: 7px;
+    color: var(--brand-muted);
+    font-size: 0.7rem;
+    font-variant-numeric: tabular-nums;
+}
+
+.message.user .message-meta {
+    text-align: right;
+}
+
 .message-sources {
     display: flex;
     flex-wrap: wrap;
     align-items: center;
-    gap: 6px;
-    margin-top: 8px;
-    max-width: 85%;
+    gap: 7px;
+    margin: 18px 0 4px 22px;
+    padding: 14px 0 0;
+    border-top: 1px solid var(--brand-line);
 }
 
 .sources-label {
-    font-size: 0.72rem;
+    flex: 0 0 100%;
+    color: var(--brand-muted);
+    font-size: 0.68rem;
+    font-weight: 750;
+    letter-spacing: 0.1em;
     text-transform: uppercase;
-    letter-spacing: 0.05em;
-    color: var(--text-muted);
-    margin-right: 2px;
 }
 
 .source-chip {
-    font-size: 0.75rem;
-    color: var(--text-secondary);
-    background: var(--bg-secondary);
-    border: 1px solid var(--bg-tertiary);
+    display: inline-flex;
+    align-items: center;
+    min-height: 32px;
+    padding: 5px 9px;
+    color: var(--brand-muted);
+    background: var(--brand-surface);
+    border: 1px solid var(--brand-line);
     border-radius: 999px;
-    padding: 2px 10px;
-    cursor: default;
+    font-size: 0.73rem;
+    line-height: 1.25;
 }
 
+.source-chip.local-match,
 .source-chip.verified {
-    color: #d4a853;
-    border-color: rgba(212, 168, 83, 0.45);
-    background: rgba(212, 168, 83, 0.08);
+    color: var(--brand-accent-strong);
+    background: var(--brand-accent-soft);
+    border-color: var(--brand-accent);
 }
 
-/* ============================================================
- * 27. Jewish Calendar Banner
- * Shabbat / yom tov notice shown at the top of the main content
- * area, populated by checkCalendarStatus() in app.js.
- * ============================================================ */
-.calendar-banner {
+.message-actions {
+    display: flex;
+    gap: 4px;
+    margin: 9px 0 0 16px;
+}
+
+.action-btn {
+    width: 44px;
+    min-height: 44px;
+}
+
+.action-btn:hover,
+.action-btn.active,
+.action-btn.playing {
+    color: var(--brand-accent-strong);
+    background: var(--brand-accent-soft);
+    border-color: var(--brand-line);
+}
+
+.action-btn.loading {
+    animation: soft-pulse 900ms ease-in-out infinite alternate;
+}
+
+.typing-indicator {
+    min-height: 70px;
+}
+
+.thinking-phase {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 8px 16px;
+}
+
+.phase-text {
+    color: var(--brand-muted);
+    transition: opacity 150ms ease;
+}
+
+.phase-text.fading {
+    opacity: 0.25;
+}
+
+.phase-elapsed {
+    color: var(--brand-muted);
+    font-size: 0.72rem;
+    font-variant-numeric: tabular-nums;
+}
+
+.phase-dots {
+    display: flex;
+    grid-column: 1 / -1;
+    gap: 5px;
+}
+
+.phase-dots span {
+    width: 5px;
+    height: 5px;
+    background: var(--brand-accent);
+    border-radius: 50%;
+    animation: dot-pulse 900ms ease-in-out infinite alternate;
+}
+
+.phase-dots span:nth-child(2) { animation-delay: 150ms; }
+.phase-dots span:nth-child(3) { animation-delay: 300ms; }
+
+.cursor {
+    display: inline-block;
+    width: 2px;
+    height: 1em;
+    margin-left: 3px;
+    vertical-align: -0.12em;
+    background: var(--brand-accent);
+    animation: cursor-blink 760ms step-end infinite;
+}
+
+.referral-notice {
+    display: flex;
+    width: min(var(--app-reading), calc(100% - 48px));
+    align-items: flex-start;
+    gap: 13px;
+    margin: 0 auto 12px;
+    padding: 14px 16px;
+    color: var(--brand-text);
+    background: var(--brand-warning-soft);
+    border: 1px solid var(--brand-warning);
+    border-radius: var(--brand-radius-small);
+}
+
+.referral-notice .ph-icon {
+    margin-top: 3px;
+    color: var(--brand-warning);
+}
+
+.referral-notice strong {
+    display: block;
+    margin-bottom: 3px;
+    font-size: 0.88rem;
+}
+
+.referral-notice p {
+    margin: 0;
+    color: var(--brand-muted);
+    font-size: 0.82rem;
+    line-height: 1.45;
+}
+
+.chat-input-area {
+    padding: 14px max(24px, calc((100% - var(--app-reading)) / 2)) 18px;
+    background: var(--brand-canvas);
+    border-top: 1px solid var(--brand-line);
+}
+
+.chat-input-container {
+    padding: 12px 14px;
+}
+
+.chat-input-container textarea {
+    min-height: 44px;
+    max-height: 150px;
+    padding-bottom: 6px;
+}
+
+.loading-indicator {
+    position: absolute;
+    z-index: 45;
+    top: 88px;
+    right: 20px;
     display: flex;
     align-items: center;
-    justify-content: center;
-    gap: 12px;
-    padding: 10px 16px;
-    background: rgba(212, 168, 83, 0.1);
-    border-bottom: 1px solid rgba(212, 168, 83, 0.3);
-    color: var(--text-primary);
+    min-height: 36px;
+    gap: 8px;
+    padding: 6px 10px;
+    color: var(--brand-muted);
+    background: var(--brand-surface-raised);
+    border: 1px solid var(--brand-line);
+    border-radius: var(--brand-radius-small);
+    font-size: 0.76rem;
+    box-shadow: var(--brand-shadow-material);
+}
+
+/* Settings and long-form reader */
+.surface-header {
+    position: sticky;
+    z-index: 20;
+    top: 0;
+    grid-template-columns: 44px minmax(0, 1fr);
+}
+
+.icon-back {
+    transform: rotate(180deg);
+}
+
+.settings-content {
+    display: grid;
+    width: min(920px, 100%);
+    gap: 30px;
+    margin: 0 auto;
+    padding: clamp(32px, 6vw, 72px) 24px 80px;
+}
+
+.settings-section-title {
+    margin: 0 0 11px;
+    font-size: 0.78rem;
+    font-weight: 750;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+}
+
+.settings-card {
+    padding: clamp(18px, 3vw, 28px);
+    background: var(--brand-surface-raised);
+    border: 1px solid var(--brand-line);
+    border-radius: var(--brand-radius);
+}
+
+.appearance-card {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 20px;
+}
+
+.appearance-card p {
+    margin: 0;
+    color: var(--brand-muted);
     font-size: 0.9rem;
-    text-align: center;
 }
 
-.calendar-banner.hidden {
-    display: none;
+.theme-options {
+    display: inline-grid;
+    grid-template-columns: repeat(3, minmax(72px, 1fr));
+    overflow: hidden;
+    border: 1px solid var(--brand-line);
+    border-radius: var(--brand-radius-small);
 }
 
-.calendar-banner-close {
-    background: none;
-    border: none;
-    color: var(--text-secondary);
-    font-size: 1.2rem;
-    line-height: 1;
+.theme-options button {
+    min-height: 44px;
+    padding: 0 14px;
+    color: var(--brand-muted);
+    background: transparent;
+    border: 0;
     cursor: pointer;
-    padding: 0 4px;
 }
 
-.calendar-banner-close:hover {
-    color: var(--text-primary);
+.theme-options button + button {
+    border-left: 1px solid var(--brand-line);
 }
 
-/* ============================================================
- * 28. D'var Torah Sponsorship
- * Dedication lines above the weekly teaching, the sponsor call-
- * to-action, and the sponsorship modal's form fields.
- * ============================================================ */
-.dvar-sponsors {
-    margin-bottom: 20px;
-    padding: 12px 16px;
-    background: rgba(212, 168, 83, 0.07);
-    border: 1px solid rgba(212, 168, 83, 0.25);
-    border-radius: 10px;
+.theme-options button[aria-pressed="true"] {
+    color: var(--brand-text);
+    background: var(--brand-accent-soft);
+    font-weight: 700;
 }
 
-.dvar-sponsor-line {
-    margin: 4px 0;
-    color: var(--text-primary);
-    font-size: 0.92rem;
-    font-style: italic;
+.settings-row {
+    display: grid;
+    grid-template-columns: 28px minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 14px;
 }
 
-.dvar-sponsor-cta {
-    margin-top: 28px;
-    padding-top: 20px;
-    border-top: 1px solid var(--bg-tertiary);
-    text-align: center;
+.settings-row-icon {
+    color: var(--brand-accent);
+    font-size: 1.15rem;
 }
 
-.sponsor-btn {
-    background: none;
-    border: 1px solid rgba(212, 168, 83, 0.5);
-    color: #d4a853;
-    font: inherit;
-    font-size: 0.92rem;
-    font-weight: 500;
-    padding: 10px 22px;
-    border-radius: 10px;
-    cursor: pointer;
-    transition: all 0.15s ease;
+.settings-row-content,
+.settings-field {
+    display: grid;
+    min-width: 0;
+    gap: 6px;
 }
 
-.sponsor-btn:hover {
-    background: rgba(212, 168, 83, 0.12);
+.settings-row-label,
+.sponsor-label {
+    color: var(--brand-muted);
+    font-size: 0.78rem;
+    font-weight: 650;
 }
 
-.sponsor-hint {
-    margin-top: 8px;
-    color: var(--text-muted);
+.settings-row-value {
+    overflow-wrap: anywhere;
+    font-size: 1.02rem;
+    font-weight: 680;
+}
+
+/* A numeric credit balance is emphasized so it reads as a quantity the
+ * account can spend. loadCredits() adds this class only for a number and
+ * removes it for "Unlimited" or an error, which stay at body emphasis. */
+.settings-row-value.credits-value {
+    color: var(--brand-accent);
+    font-size: 1.14rem;
+}
+
+.settings-row-description {
+    margin: 14px 0 0 42px;
+    color: var(--brand-muted);
     font-size: 0.8rem;
 }
 
-.sponsor-intro {
-    color: var(--text-secondary);
-    font-size: 0.88rem;
-    margin-bottom: 16px;
-    line-height: 1.5;
+.buy-credits-btn,
+.save-profile-btn,
+.purchase-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 44px;
+    gap: 9px;
+    padding: 0 16px;
+    color: #ffffff;
+    background: var(--brand-accent-strong);
+    border: 1px solid var(--brand-accent-strong);
+    border-radius: var(--brand-radius-small);
+    font-weight: 680;
+    cursor: pointer;
 }
 
-.sponsor-label {
-    display: block;
-    color: var(--text-secondary);
-    font-size: 0.82rem;
-    margin: 14px 0 6px;
+:root[data-theme="dark"] .buy-credits-btn,
+:root[data-theme="dark"] .save-profile-btn,
+:root[data-theme="dark"] .purchase-btn {
+    color: #101722;
+    background: var(--brand-accent);
+    border-color: var(--brand-accent);
 }
 
+.identity-grid,
+.profile-form-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 20px;
+}
+
+.identity-grid {
+    margin-bottom: 24px;
+    padding-bottom: 24px;
+    border-bottom: 1px solid var(--brand-line);
+}
+
+.static-field {
+    padding: 12px 14px;
+    background: var(--brand-surface);
+    border: 1px solid var(--brand-line);
+    border-radius: var(--brand-radius-small);
+}
+
+.settings-select,
+.settings-textarea,
 .sponsor-select,
 .sponsor-input {
     width: 100%;
-    background: var(--bg-input);
-    border: 1px solid var(--bg-tertiary);
-    color: var(--text-primary);
-    border-radius: 8px;
+    min-height: 46px;
     padding: 10px 12px;
-    font: inherit;
-    font-size: 0.9rem;
-    margin-bottom: 8px;
+    color: var(--brand-text);
+    background: var(--brand-surface);
+    border: 1px solid var(--brand-line-strong);
+    border-radius: var(--brand-radius-small);
+    font-size: 0.92rem;
 }
 
-.sponsor-select:focus,
-.sponsor-input:focus {
-    outline: none;
-    border-color: #d4a853;
+.settings-textarea {
+    min-height: 116px;
+    padding-bottom: 30px;
+    line-height: 1.5;
+    resize: vertical;
 }
 
-.sponsor-details-error {
-    color: #ef4444;
+.settings-field small {
+    color: var(--brand-muted);
+    font-size: 0.75rem;
+    line-height: 1.4;
+}
+
+.bio-input-container {
+    position: relative;
+}
+
+.char-count {
+    position: absolute;
+    right: 10px;
+    bottom: 8px;
+    color: var(--brand-muted);
+    font-size: 0.72rem;
+}
+
+.save-profile-btn {
+    margin-top: 24px;
+}
+
+.privacy-card {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 28px;
+}
+
+.privacy-card h3 {
+    margin: 0 0 7px;
+    font-size: 1rem;
+    font-weight: 700;
+    letter-spacing: -0.01em;
+}
+
+.privacy-card p {
+    max-width: 560px;
+    margin: 0;
+    color: var(--brand-muted);
+    font-size: 0.86rem;
+    line-height: 1.55;
+}
+
+.settings-policy-link {
+    display: inline-flex;
+    flex: 0 0 auto;
+    align-items: center;
+    justify-content: center;
+    min-height: 44px;
+    gap: 8px;
+    padding: 0 14px;
+    color: var(--brand-accent-strong);
+    border: 1px solid var(--brand-line-strong);
+    border-radius: var(--brand-radius-small);
     font-size: 0.82rem;
-    margin: 4px 0 0;
+    font-weight: 700;
+    text-decoration: none;
+}
+
+.settings-policy-link:hover {
+    background: var(--brand-accent-soft);
+    border-color: var(--brand-accent);
+}
+
+.dvar-torah-screen-content {
+    width: min(760px, 100%);
+    margin: 0 auto;
+    padding: clamp(42px, 8vw, 92px) 24px 100px;
+}
+
+.dvar-torah-body {
+    color: var(--brand-text);
+    font-size: clamp(1.05rem, 2vw, 1.18rem);
+    line-height: 1.82;
+}
+
+.dvar-torah-body p {
+    margin: 0 0 1.35em;
+}
+
+.dvar-sponsors {
+    margin-bottom: 34px;
+    padding: 18px;
+    background: var(--brand-accent-soft);
+    border-left: 3px solid var(--brand-accent);
+}
+
+.dvar-sponsor-line {
+    margin: 0;
+    color: var(--brand-text);
+    font-size: 0.9rem;
+    line-height: 1.5;
+}
+
+.dvar-sponsor-line + .dvar-sponsor-line {
+    margin-top: 8px;
+}
+
+.dvar-sponsor-cta {
+    display: grid;
+    gap: 9px;
+    margin-top: 52px;
+    padding-top: 26px;
+    border-top: 1px solid var(--brand-line);
+}
+
+.sponsor-hint {
+    margin: 0;
+    color: var(--brand-muted);
+    font-size: 0.82rem;
+}
+
+/* Dialogs and transient feedback */
+.sidebar-overlay {
+    position: fixed;
+    z-index: 55;
+    inset: 0;
+    background: rgba(8, 16, 28, 0.58);
+    opacity: 0;
+    transition: opacity var(--app-transition);
+}
+
+.sidebar-overlay.visible {
+    display: block !important;
+    opacity: 1;
+}
+
+.modal-overlay {
+    position: fixed;
+    z-index: 200;
+    inset: 0;
+    display: grid;
+    place-items: center;
+    padding: 20px;
+    background: rgba(8, 16, 28, 0.68);
+    overflow-y: auto;
+}
+
+.modal-content {
+    width: min(560px, 100%);
+    max-height: calc(100dvh - 40px);
+    padding: clamp(20px, 4vw, 30px);
+    background: var(--brand-surface-raised);
+    border: 1px solid var(--brand-line);
+    border-radius: var(--brand-radius);
+    box-shadow: var(--brand-shadow-material);
+    overflow-y: auto;
+}
+
+.sponsor-modal-content {
+    width: min(720px, 100%);
+}
+
+.modal-header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 18px;
+    margin-bottom: 24px;
+    padding-bottom: 16px;
+    border-bottom: 1px solid var(--brand-line);
+}
+
+.modal-header h2 {
+    margin: 0;
+    font-size: clamp(1.35rem, 3vw, 1.75rem);
+    font-weight: 650;
+    letter-spacing: -0.03em;
+}
+
+.package-selection {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
+    min-width: 0;
+    margin: 0 0 22px;
+    padding: 0;
+    border: 0;
+}
+
+.package-selection legend {
+    grid-column: 1 / -1;
+    margin-bottom: 2px;
+    color: var(--brand-muted);
+    font-size: 0.78rem;
+    font-weight: 650;
+}
+
+.package-card {
+    position: relative;
+    display: grid;
+    min-width: 0;
+    min-height: 92px;
+    align-content: center;
+    gap: 3px;
+    padding: 14px;
+    color: var(--brand-text);
+    background: var(--brand-surface);
+    border: 1px solid var(--brand-line);
+    border-radius: var(--brand-radius-small);
+    text-align: left;
+    cursor: pointer;
+}
+
+.package-card:hover {
+    border-color: var(--brand-accent);
+}
+
+.package-card.selected {
+    background: var(--brand-accent-soft);
+    border-color: var(--brand-accent);
+    box-shadow: inset 0 0 0 1px var(--brand-accent);
+}
+
+.package-credits {
+    font-size: 0.86rem;
+    font-weight: 700;
+}
+
+.package-price {
+    font-size: 1.3rem;
+    font-weight: 680;
+    letter-spacing: -0.02em;
+}
+
+.package-badge {
+    margin-top: 3px;
+    color: var(--brand-muted);
+    font-size: 0.7rem;
+}
+
+.sponsor-tier-selection {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.sponsor-tier-card {
+    min-height: 86px;
+}
+
+.sponsor-intro {
+    margin: 0 0 22px;
+    color: var(--brand-muted);
+    font-size: 0.9rem;
+    line-height: 1.55;
+}
+
+.sponsor-fields {
+    display: grid;
+    grid-template-columns: minmax(0, 0.8fr) minmax(0, 1.2fr);
+    gap: 14px;
+}
+
+.sponsor-fields > div {
+    display: grid;
+    gap: 6px;
+}
+
+.sponsor-details-error,
+.payment-error-text,
+.payment-error {
+    margin: 12px 0 0;
+    padding: 11px 12px;
+    color: var(--brand-error);
+    background: var(--brand-error-soft);
+    border: 1px solid var(--brand-error);
+    border-radius: var(--brand-radius-small);
+    font-size: 0.82rem;
+}
+
+.payment-error p {
+    margin: 0;
+}
+
+.payment-loading {
+    display: grid;
+    min-height: 118px;
+    place-items: center;
+    color: var(--brand-muted);
+    background: var(--brand-surface);
+    border: 1px dashed var(--brand-line);
+    border-radius: var(--brand-radius-small);
+    font-size: 0.86rem;
+}
+
+.modal-footer {
+    display: grid;
+    gap: 10px;
+    margin-top: 20px;
+}
+
+.purchase-btn {
+    width: 100%;
+}
+
+.payment-secure {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    margin: 0;
+    color: var(--brand-muted);
+    font-size: 0.72rem;
+}
+
+.payment-success {
+    display: grid;
+    min-height: 160px;
+    place-items: center;
+    align-content: center;
+    gap: 12px;
+    color: var(--brand-success);
+    background: var(--brand-success-soft);
+    border: 1px solid var(--brand-success);
+    border-radius: var(--brand-radius-small);
+    text-align: center;
+}
+
+.payment-success .ph-icon {
+    width: 42px;
+    height: 42px;
+}
+
+.payment-success p {
+    margin: 0;
+}
+
+.login-prompt {
+    position: fixed;
+    z-index: 180;
+    right: 20px;
+    bottom: 20px;
+    width: min(440px, calc(100% - 40px));
+    color: var(--brand-text);
+    background: var(--brand-surface-raised);
+    border: 1px solid var(--brand-line-strong);
+    border-radius: var(--brand-radius);
+    box-shadow: var(--brand-shadow-material);
+    opacity: 0;
+    transform: translateY(14px);
+    pointer-events: none;
+    transition: opacity var(--app-transition), transform var(--app-transition);
+}
+
+.login-prompt.visible {
+    opacity: 1;
+    transform: translateY(0);
+    pointer-events: auto;
+}
+
+.login-prompt-content {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto 44px;
+    align-items: center;
+    gap: 10px;
+    padding: 12px;
+}
+
+.login-prompt-content p {
+    margin: 0;
+    font-size: 0.88rem;
+}
+
+.login-prompt-btn {
+    min-height: 44px;
+    padding: 0 14px;
+    color: #ffffff;
+    background: var(--brand-accent-strong);
+    border: 0;
+    border-radius: var(--brand-radius-small);
+    font-weight: 650;
+    cursor: pointer;
+}
+
+.login-prompt-close {
+    width: 44px;
+    min-height: 44px;
+    color: var(--brand-muted);
+    background: transparent;
+    border: 0;
+    border-radius: var(--brand-radius-small);
+    font-size: 1.3rem;
+    cursor: pointer;
+}
+
+.toast {
+    position: fixed;
+    z-index: 300;
+    left: 50%;
+    bottom: 24px;
+    min-height: 44px;
+    padding: 12px 16px;
+    color: var(--brand-surface);
+    background: var(--brand-text);
+    border-radius: var(--brand-radius-small);
+    box-shadow: var(--brand-shadow-material);
+    font-size: 0.86rem;
+    opacity: 0;
+    transform: translate(-50%, 12px);
+    transition: opacity var(--app-transition), transform var(--app-transition);
+}
+
+.toast.visible {
+    opacity: 1;
+    transform: translate(-50%, 0);
+}
+
+.skeleton {
+    display: block;
+    min-width: 40px;
+    min-height: 12px;
+    background: var(--brand-line);
+    border-radius: 5px;
+    animation: soft-pulse 900ms ease-in-out infinite alternate;
+}
+
+.greeting-skeleton {
+    width: min(560px, 70vw);
+    height: 0.9em;
+}
+
+.settings-value-skeleton {
+    width: 120px;
+    height: 1.2em;
+}
+
+.skeleton-row {
+    height: 44px;
+    margin-bottom: 4px;
+}
+
+.dvar-skeleton-title {
+    width: 62%;
+    height: 1em;
+}
+
+.dvar-skeleton-copy {
+    width: 100%;
+    height: 4.5em;
+}
+
+.text-fade-out {
+    opacity: 0;
+    transition: opacity 150ms ease;
+}
+
+@keyframes spin {
+    to { transform: rotate(360deg); }
+}
+
+@keyframes dot-pulse {
+    from { opacity: 0.28; transform: translateY(1px); }
+    to { opacity: 1; transform: translateY(-1px); }
+}
+
+@keyframes cursor-blink {
+    0%, 48% { opacity: 1; }
+    49%, 100% { opacity: 0; }
+}
+
+@keyframes soft-pulse {
+    from { opacity: 0.48; }
+    to { opacity: 0.88; }
+}
+
+@media (max-width: 980px) {
+    .welcome-grid {
+        grid-template-columns: minmax(0, 1fr) 300px;
+    }
+
+    .sponsor-tier-selection {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+}
+
+@media (max-width: 820px) {
+    body {
+        overflow: hidden;
+    }
+
+    .sidebar {
+        position: fixed;
+        top: 0;
+        bottom: 0;
+        left: 0;
+        width: min(var(--app-rail), calc(100vw - 52px));
+        max-width: var(--app-rail);
+        transform: translateX(-102%);
+        box-shadow: var(--brand-shadow-material);
+    }
+
+    .sidebar.open {
+        transform: translateX(0);
+    }
+
+    .sidebar.collapsed {
+        width: min(var(--app-rail), calc(100vw - 52px));
+    }
+
+    .sidebar.collapsed .brand-lockup span,
+    .sidebar.collapsed .theme-cycle,
+    .sidebar.collapsed .new-chat-btn span:not(.ph-icon),
+    .sidebar.collapsed .sidebar-content,
+    .sidebar.collapsed .user-details,
+    .sidebar.collapsed .user-menu-toggle {
+        display: initial;
+    }
+
+    .sidebar.collapsed .sidebar-brand-row,
+    .sidebar.collapsed .sidebar-header {
+        justify-content: space-between;
+        padding-inline: 18px;
+    }
+
+    .sidebar.collapsed .new-chat-btn {
+        flex: 1 1 auto;
+        justify-content: flex-start;
+        width: auto;
+        padding: 0 14px;
+    }
+
+    .sidebar.collapsed .sidebar-header {
+        flex-direction: row;
+    }
+
+    .sidebar.collapsed .user-profile {
+        grid-template-columns: 40px minmax(0, 1fr) 32px;
+        place-items: initial;
+    }
+
+    .welcome-menu-btn,
+    .chat-header .menu-btn {
+        display: inline-flex;
+    }
+
+    .welcome-content {
+        padding-top: 92px;
+    }
+
+    .welcome-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .weekly-panel {
+        position: static;
+    }
+
+    .chat-header {
+        grid-template-columns: 44px minmax(0, 1fr) auto;
+        gap: 10px;
+        padding-inline: 12px;
+    }
+
+    .source-key summary {
+        width: 44px;
+        overflow: hidden;
+        padding: 0;
+        justify-content: center;
+        font-size: 0;
+    }
+
+    .source-key summary::after {
+        content: "i";
+        font-size: 0.86rem;
+        font-weight: 750;
+    }
+
+    .chat-messages {
+        padding-inline: 20px;
+    }
+
+    .chat-input-area {
+        padding-inline: 12px;
+    }
+
+    .loading-indicator {
+        top: 84px;
+    }
+}
+
+@media (max-width: 640px) {
+    .welcome-content {
+        padding-inline: 18px;
+        padding-bottom: 28px;
+    }
+
+    .welcome-intro {
+        margin-bottom: 32px;
+    }
+
+    .greeting {
+        font-size: clamp(2.25rem, 12vw, 3.5rem);
+    }
+
+    .suggestions {
+        grid-template-columns: 1fr;
+    }
+
+    .suggestion-chip {
+        min-height: 70px;
+    }
+
+    .composer-hint {
+        max-width: 220px;
+        font-size: 0.7rem;
+    }
+
+    .message {
+        margin-bottom: 32px;
+    }
+
+    .message.user .message-content {
+        width: 92%;
+    }
+
+    .message.assistant .message-content {
+        padding-left: 15px;
+    }
+
+    .message-sources {
+        margin-left: 15px;
+    }
+
+    .referral-notice {
+        width: calc(100% - 24px);
+    }
+
+    .appearance-card {
+        align-items: stretch;
+        flex-direction: column;
+    }
+
+    .privacy-card {
+        align-items: stretch;
+        flex-direction: column;
+        gap: 20px;
+    }
+
+    .settings-policy-link {
+        width: 100%;
+    }
+
+    .identity-grid,
+    .profile-form-grid,
+    .sponsor-fields {
+        grid-template-columns: 1fr;
+    }
+
+    .settings-row {
+        grid-template-columns: 24px minmax(0, 1fr);
+    }
+
+    .buy-credits-btn {
+        grid-column: 1 / -1;
+        margin-top: 10px;
+    }
+
+    .settings-row-description {
+        margin-left: 0;
+    }
+
+    .package-selection,
+    .sponsor-tier-selection {
+        grid-template-columns: 1fr;
+    }
+
+    .package-card,
+    .sponsor-tier-card {
+        min-height: 74px;
+    }
+
+    .modal-overlay {
+        padding: 0;
+        place-items: end center;
+    }
+
+    .modal-content {
+        width: 100%;
+        max-height: 92dvh;
+        border-right: 0;
+        border-bottom: 0;
+        border-left: 0;
+        border-radius: var(--brand-radius) var(--brand-radius) 0 0;
+    }
+
+    .login-prompt-content {
+        grid-template-columns: minmax(0, 1fr) 44px;
+    }
+
+    .login-prompt-btn {
+        grid-column: 1 / -1;
+        grid-row: 2;
+    }
+
+    .login-prompt-close {
+        grid-column: 2;
+        grid-row: 1;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .chat-messages {
+        scroll-behavior: auto;
+    }
+
+    .send-spinner,
+    .purchase-spinner,
+    .saving-spinner,
+    .phase-dots span,
+    .cursor,
+    .skeleton,
+    .action-btn.loading {
+        animation: none;
+    }
 }
