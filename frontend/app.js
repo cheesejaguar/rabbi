@@ -1639,7 +1639,7 @@ function addMessageToUI(role, content, date, messageId = null, metadata = null) 
 
     const timeSpan = document.createElement('span');
     timeSpan.className = 'message-time';
-    timeSpan.textContent = formatTime(date);
+    timeSpan.textContent = formatDateTime(date);
 
     metaDiv.appendChild(timeSpan);
     messageDiv.appendChild(contentDiv);
@@ -1666,17 +1666,21 @@ function addMessageToUI(role, content, date, messageId = null, metadata = null) 
 
 /* ============================================================
  * UI HELPERS
- * Utility functions for time formatting, HTML escaping,
+ * Utility functions for date/time formatting, HTML escaping,
  * Markdown rendering, scroll management, and toast notifications.
  * ============================================================ */
 
 /**
- * @description Formats a Date object to a short time string (e.g., "2:30 PM").
+ * @description Formats a message timestamp with its local date and time so older
+ *              conversations remain identifiable across days and years.
  * @param {Date} date - The date to format
- * @returns {string} Locale-formatted time string with hours and minutes
+ * @returns {string} Locale-formatted date and time
  */
-function formatTime(date) {
-    return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+function formatDateTime(date) {
+    return date.toLocaleString([], {
+        year: 'numeric', month: 'short', day: 'numeric',
+        hour: '2-digit', minute: '2-digit'
+    });
 }
 
 /**
@@ -1822,7 +1826,7 @@ function createStreamingMessage() {
 
     const timeSpan = document.createElement('span');
     timeSpan.className = 'message-time';
-    timeSpan.textContent = formatTime(new Date());
+    timeSpan.textContent = formatDateTime(new Date());
 
     metaDiv.appendChild(timeSpan);
     messageDiv.appendChild(contentDiv);

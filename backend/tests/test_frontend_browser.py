@@ -446,6 +446,54 @@ def test_authenticated_welcome_stream_citations_and_human_referral(page, fronten
     page.screenshot(path=str(output_dir / "app-chat-desktop-light.png"), full_page=False)
 
 
+def test_saved_chat_messages_show_local_date_and_time(page, frontend_url, tmp_path):
+    install_app_routes(page)
+    timestamps = ["2024-01-02T14:05:00Z", "2025-02-03T18:45:00Z"]
+    page_errors = []
+    console_errors = []
+    page.on("pageerror", lambda error: page_errors.append(str(error)))
+    page.on("console", lambda message: console_errors.append(message.text) if message.type == "error" else None)
+
+    def fulfill_conversation(route):
+        path = urlparse(route.request.url).path
+        if path == "/api/conversations":
+            route.fulfill(json={"conversations": [
+                {"id": "conversation-past", "title": "A past chat"}
+            ]})
+        else:
+            route.fulfill(json={
+                "id": "conversation-past",
+                "title": "A past chat",
+                "messages": [
+                    {"id": "message-1", "role": "user", "content": "First question", "created_at": timestamps[0]},
+                    {"id": "message-2", "role": "assistant", "content": "First answer", "created_at": timestamps[1]},
+                ],
+            })
+
+    page.route("**/api/conversations**", fulfill_conversation)
+    open_frontend(page, frontend_url, "index.html", {"width": 390, "height": 844})
+    wait_for_signed_in_app(page)
+    page.locator("#welcomeMenuBtn").click()
+    page.locator("#conversationsList .conversation-open").click()
+    page.locator("#chatMessages .message-time").nth(1).wait_for()
+
+    expected = page.evaluate("""timestamps => timestamps.map(value =>
+        new Date(value).toLocaleString([], {
+            year: 'numeric', month: 'short', day: 'numeric',
+            hour: '2-digit', minute: '2-digit'
+        })
+    )""", timestamps)
+    assert page.locator("#chatMessages .message-time").all_inner_texts() == expected
+    assert expected[0] != expected[1]
+    assert page.locator("#chatMessages .message-content").first.inner_text() == "First question"
+    assert page_errors == []
+    assert console_errors == []
+    assert page.evaluate("document.documentElement.scrollWidth <= document.documentElement.clientWidth")
+    page.wait_for_function("!document.querySelector('#sidebar').classList.contains('open')")
+    page.wait_for_function("document.querySelector('#sidebar').getBoundingClientRect().right <= 0")
+    page.screenshot(path=str(tmp_path / "chat-history-dates-mobile.png"), full_page=False)
+
+
 def test_settings_purchase_and_sponsorship_modal_focus_and_escape(page, frontend_url):
     install_app_routes(page)
     open_frontend(page, frontend_url, "index.html", {"width": 1280, "height": 900})
