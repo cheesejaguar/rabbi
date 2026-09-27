@@ -236,6 +236,22 @@ class TestUserOperations:
             assert args[3] == "Hi there."
 
     @pytest.mark.asyncio
+    async def test_update_user_profile_language_only(self, mock_connection):
+        """Account language can be updated without changing the rest of the profile."""
+        mock_connection.execute = AsyncMock(return_value="UPDATE 1")
+
+        with patch('app.database.get_connection') as mock_ctx:
+            mock_ctx.return_value.__aenter__ = AsyncMock(return_value=mock_connection)
+            mock_ctx.return_value.__aexit__ = AsyncMock()
+
+            from app.database import update_user_profile
+            result = await update_user_profile("user-123", language="he")
+
+            assert result is True
+            args = mock_connection.execute.call_args.args
+            assert args[1:] == ("user-123", None, None, "he")
+
+    @pytest.mark.asyncio
     async def test_update_user_profile_no_fields_returns_false(self, mock_connection):
         """Test that providing neither field is a no-op and does not hit the DB."""
         with patch('app.database.get_connection') as mock_ctx:

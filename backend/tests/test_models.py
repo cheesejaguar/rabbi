@@ -9,6 +9,7 @@ from app.models import (
     ChatResponse,
     GreetingResponse,
     HealthResponse,
+    ProfileUpdate,
 )
 
 
@@ -51,6 +52,23 @@ class TestChatRequest:
         )
         assert len(req.conversation_history) == 1
         assert req.session_id == "session-123"
+
+    def test_response_language_accepts_hebrew(self):
+        assert ChatRequest(message="שלום", language="he").language == "he"
+
+    def test_response_language_rejects_unsupported_locale(self):
+        with pytest.raises(ValidationError):
+            ChatRequest(message="Hello", language="pt")
+
+
+class TestProfileLanguage:
+    def test_account_language_accepts_english_and_hebrew(self):
+        assert ProfileUpdate(language="en").language == "en"
+        assert ProfileUpdate(language="he").language == "he"
+
+    def test_account_language_rejects_unsupported_locale(self):
+        with pytest.raises(ValidationError):
+            ProfileUpdate(language="pt")
 
     def test_empty_message_raises(self):
         with pytest.raises(ValidationError):

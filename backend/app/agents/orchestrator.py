@@ -100,6 +100,7 @@ class RabbiOrchestrator:
         conversation_history: Optional[list[dict]] = None,
         user_denomination: Optional[str] = None,
         user_bio: Optional[str] = None,
+        language: str = "en",
     ) -> dict:
         """
         Process a user message through the full agent pipeline.
@@ -122,6 +123,7 @@ class RabbiOrchestrator:
             conversation_history=conversation_history or [],
             user_denomination=user_denomination,
             user_bio=user_bio,
+            language=language,
         )
 
         # Stage 1: Pastoral -- determine HOW to respond
@@ -253,6 +255,7 @@ Please re-analyze with special attention to:
         conversation_history: Optional[list[dict]] = None,
         user_denomination: Optional[str] = None,
         user_bio: Optional[str] = None,
+        language: str = "en",
     ):
         """Process a user message with a streaming final response.
 
@@ -282,6 +285,7 @@ Please re-analyze with special attention to:
             conversation_history=conversation_history or [],
             user_denomination=user_denomination,
             user_bio=user_bio,
+            language=language,
         )
 
         # Stage 1-3: Run non-streaming agents (pastoral, halachic, moral)
