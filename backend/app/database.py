@@ -1,6 +1,3 @@
-Warning: truncated output (original token count: 20005)
-Total output lines: 2115
-
 """Async PostgreSQL database layer for rebbe.dev.
 
 Provides connection pooling, schema auto-migration, and all CRUD operations
@@ -1034,7 +1031,7 @@ async def delete_conversation(conversation_id: str, user_id: str) -> bool:
 async def add_message(conversation_id: str, role: str, content: str, metadata: dict = None) -> dict:
     """Insert a new message into a conversation.
 
-    Metadata is serialized to J…5 tokens truncated…the JSONB column.
+    Metadata is serialized to JSON for storage in the JSONB column.
     A trigger automatically updates the parent conversation's
     ``updated_at`` timestamp.
 
