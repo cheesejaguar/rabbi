@@ -417,6 +417,30 @@ svg {
     overflow: hidden;
 }
 
+.language-toggle {
+    position: absolute;
+    z-index: 30;
+    top: 14px;
+    right: 18px;
+    min-height: 38px;
+    padding: 0 12px;
+    color: var(--brand-text);
+    background: var(--brand-canvas);
+    border: 1px solid var(--brand-line);
+    border-radius: 999px;
+    font-size: 0.78rem;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    cursor: pointer;
+}
+
+.language-toggle:hover,
+.language-toggle:focus-visible {
+    background: var(--brand-accent-soft);
+}
+
+.language-default-select { width: min(180px, 42%); }
+
 .calendar-banner {
     position: absolute;
     z-index: 50;
@@ -823,6 +847,11 @@ svg {
     background: color-mix(in srgb, var(--brand-canvas) 88%, transparent);
     border-bottom: 1px solid var(--brand-line);
 }
+
+/* Reserve the top edge for the language toggle above the chat header. */
+.chat-header { padding-top: 58px; }
+
+.surface-header { padding-right: 132px; }
 
 .chat-header .menu-btn {
     display: none;

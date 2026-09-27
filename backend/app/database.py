@@ -364,6 +364,16 @@ BEGIN
 END $$;
 
 -- =========================================================================
+-- language: optional account default locale; unset accounts follow browser language.
+DO $$
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns
+                   WHERE table_name = 'users' AND column_name = 'language') THEN
+        ALTER TABLE users ADD COLUMN language TEXT;
+    END IF;
+END $$;
+
+-- =========================================================================
 -- ADMIN AUDIT LOG TABLE
 -- Immutable trail of privileged actions (credit grants, role changes,
 -- conversation reviews). Every /api/admin mutation and moderation view
@@ -663,7 +673,7 @@ async def set_stripe_customer_id(user_id: str, stripe_customer_id: str) -> bool:
 
 
 async def get_user_profile(user_id: str) -> Optional[dict]:
-    """Fetch a user's profile fields (denomination and bio).
+    """Fetch a user's profile fields (denomination, bio, and language).
 
     Args:
         user_id: The WorkOS user ID.
@@ -674,18 +684,19 @@ async def get_user_profile(user_id: str) -> Optional[dict]:
     """
     async with get_connection() as conn:
         row = await conn.fetchrow(
-            "SELECT denomination, bio FROM users WHERE id = $1",
+            "SELECT denomination, bio, language FROM users WHERE id = $1",
             user_id
         )
         if row:
             return {
                 "denomination": row['denomination'] or 'just_jewish',
-                "bio": row['bio'] or ''
+                "bio": row['bio'] or '',
+                "language": row['language']
             }
         return None
 
 
-async def update_user_profile(user_id: str, denomination: str = None, bio: str = None) -> bool:
+async def update_user_profile(user_id: str, denomination: str = None, bio: str = None, language: str = None) -> bool:
     """Partially update a user's profile fields.
 
     Only the provided (non-``None``) fields are updated; ``COALESCE`` keeps
@@ -702,7 +713,7 @@ async def update_user_profile(user_id: str, denomination: str = None, bio: str =
         ``True`` if the update affected exactly one row, ``False`` otherwise
         (e.g., no fields provided or user not found).
     """
-    if denomination is None and bio is None:
+    if denomination is None and bio is None and language is None:
         return False
 
     async with get_connection() as conn:
@@ -711,10 +722,11 @@ async def update_user_profile(user_id: str, denomination: str = None, bio: str =
             UPDATE users
             SET denomination = COALESCE($2, denomination),
                 bio = COALESCE($3, bio),
+                language = COALESCE($4, language),
                 updated_at = NOW()
             WHERE id = $1
             """,
-            user_id, denomination, bio
+            user_id, denomination, bio, language
         )
         return result == "UPDATE 1"
 

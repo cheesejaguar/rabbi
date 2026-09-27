@@ -612,12 +612,13 @@ async def get_profile(request: Request):
         if profile:
             return ProfileResponse(
                 denomination=profile.get("denomination", "just_jewish"),
-                bio=profile.get("bio", "")
+                bio=profile.get("bio", ""),
+                language=profile.get("language")
             )
-        return ProfileResponse(denomination="just_jewish", bio="")
+        return ProfileResponse(denomination="just_jewish", bio="", language=None)
     except Exception as e:
         logger.error(f"Error getting profile: {e}")
-        return ProfileResponse(denomination="just_jewish", bio="")
+        return ProfileResponse(denomination="just_jewish", bio="", language=None)
 
 
 @app.put("/api/profile", response_model=ProfileResponse)
@@ -659,7 +660,8 @@ async def update_profile(request: Request, profile_update: ProfileUpdate):
         success = await db.update_user_profile(
             user["id"],
             denomination=profile_update.denomination,
-            bio=profile_update.bio
+            bio=profile_update.bio,
+            language=profile_update.language
         )
         if not success:
             raise HTTPException(status_code=500, detail="Failed to update profile")
@@ -668,7 +670,8 @@ async def update_profile(request: Request, profile_update: ProfileUpdate):
         profile = await db.get_user_profile(user["id"])
         return ProfileResponse(
             denomination=profile.get("denomination", "just_jewish"),
-            bio=profile.get("bio", "")
+            bio=profile.get("bio", ""),
+            language=profile.get("language")
         )
     except HTTPException:
         raise
@@ -1008,6 +1011,7 @@ async def chat(request: Request, chat_request: ChatRequest):
             conversation_history=conversation_history,
             user_denomination=user_denomination,
             user_bio=user_bio,
+            language=chat_request.language,
         )
 
         session_id = chat_request.session_id or str(uuid.uuid4())
@@ -1191,6 +1195,7 @@ async def chat_stream(request: Request, chat_request: ChatRequest):
                 conversation_history=conversation_history,
                 user_denomination=user_denomination,
                 user_bio=user_bio,
+                language=chat_request.language,
             ):
                 yield f"data: {json.dumps(event)}\n\n"
 

@@ -213,6 +213,7 @@ class AgentContext:
     """
 
     user_message: str
+    language: str = "en"
     conversation_history: list[dict] = field(default_factory=list)
     # User profile for personalized responses
     user_denomination: Optional[str] = None

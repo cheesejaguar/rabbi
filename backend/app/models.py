@@ -44,6 +44,7 @@ class ChatRequest(BaseModel):
         description="Optional conversation ID for persisting to database",
         max_length=100
     )
+    language: Literal["en", "he"] = Field("en", description="Language for the assistant response")
 
     @field_validator('conversation_history')
     @classmethod
@@ -109,6 +110,7 @@ class ProfileUpdate(BaseModel):
         description="User's bio (max 200 characters)",
         max_length=200
     )
+    language: Optional[Literal["en", "he"]] = Field(None, description="Account default interface language")
 
 
 class ProfileResponse(BaseModel):
@@ -116,6 +118,7 @@ class ProfileResponse(BaseModel):
 
     denomination: Optional[str] = Field(default="just_jewish", description="User's Jewish denomination")
     bio: str = Field("", description="User's bio")
+    language: Optional[Literal["en", "he"]] = Field(None, description="Account default interface language")
 
 
 class DvarTorahResponse(BaseModel):

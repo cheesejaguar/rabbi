@@ -252,7 +252,8 @@ CRITICAL: This person may need human support. Ensure your response:
         messages = [
             {
                 "role": "user",
-                "content": f"""{history_info}ORIGINAL USER MESSAGE:
+                "content": f"""[RESPONSE LANGUAGE: {'Hebrew' if context.language == 'he' else 'English'}. Write the complete final answer in this language, including headings and practical guidance, while preserving source names and quotations where appropriate.]
+{history_info}ORIGINAL USER MESSAGE:
 {context.user_message}
 
 {pastoral_info}
@@ -365,7 +366,8 @@ CRITICAL: This person may need human support. Ensure your response:
         messages = [
             {
                 "role": "user",
-                "content": f"""{history_info}ORIGINAL USER MESSAGE:
+                "content": f"""[RESPONSE LANGUAGE: {'Hebrew' if context.language == 'he' else 'English'}. Write the complete final answer in this language, including headings and practical guidance, while preserving source names and quotations where appropriate.]
+{history_info}ORIGINAL USER MESSAGE:
 {context.user_message}
 
 {pastoral_info}

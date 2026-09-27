@@ -165,6 +165,7 @@ const settingsScreen = document.getElementById('settingsScreen');
 const settingsBtn = document.getElementById('settingsBtn');
 /** @type {HTMLElement} */
 const settingsBackBtn = document.getElementById('settingsBackBtn');
+const languageDefaultSelect = document.getElementById('languageDefaultSelect');
 /** @type {HTMLElement} Displays the user's current credit balance */
 const creditsValue = document.getElementById('creditsValue');
 /** @type {HTMLElement} */
@@ -278,6 +279,7 @@ async function init() {
 
     // Check authentication
     const isAuthenticated = await checkAuth();
+    if (isAuthenticated) await loadAccountLanguage();
 
     // Shabbat / yom tov awareness banner (fire-and-forget)
     checkCalendarStatus();
@@ -733,6 +735,7 @@ function setupEventListeners() {
     // Profile form listeners
     bioInput.addEventListener('input', updateBioCharCount);
     saveProfileBtn.addEventListener('click', saveProfile);
+    languageDefaultSelect?.addEventListener('change', saveAccountLanguage);
 
     // Suggestion chips
     suggestionChips.forEach(chip => {
@@ -1431,6 +1434,7 @@ async function sendMessage(message) {
                 conversation_history: conversationHistory,
                 session_id: sessionId,
                 conversation_id: currentConversationId,
+                language: window.AppI18n?.getLanguage() || 'en',
             }),
             signal: abortController.signal,
         });
@@ -2215,10 +2219,48 @@ async function loadProfile() {
             const data = await response.json();
             denominationSelect.value = data.denomination || '';
             bioInput.value = data.bio || '';
+            if (languageDefaultSelect) languageDefaultSelect.value = data.language || (window.AppI18n?.getLanguage() || 'en');
             updateBioCharCount();
         }
     } catch (error) {
         console.error('Failed to load profile:', error);
+    }
+}
+
+/** Load and apply the account's saved locale, if one is configured. */
+async function loadAccountLanguage() {
+    try {
+        const response = await fetch(`${API_BASE}/profile`);
+        if (!response.ok) return;
+        const data = await response.json();
+        if (data.language === 'en' || data.language === 'he') {
+            window.AppI18n?.apply(data.language, false);
+        }
+        if (languageDefaultSelect) languageDefaultSelect.value = data.language || (window.AppI18n?.getLanguage() || 'en');
+    } catch (error) {
+        console.error('Failed to load account language:', error);
+    }
+}
+
+/** Persist the account default language and apply it to the current interface. */
+async function saveAccountLanguage() {
+    const language = languageDefaultSelect.value;
+    window.AppI18n?.apply(language, true);
+    if (!currentUser) return;
+    languageDefaultSelect.disabled = true;
+    try {
+        const response = await fetch(`${API_BASE}/profile`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ language }),
+        });
+        if (!response.ok) throw new Error('Could not save language preference');
+        showToast(language === 'he' ? 'שפת ברירת המחדל נשמרה.' : 'Default language saved.');
+    } catch (error) {
+        console.error('Failed to save account language:', error);
+        showToast(window.AppI18n?.getLanguage() === 'he' ? 'שמירת השפה נכשלה.' : 'Could not save language preference.');
+    } finally {
+        languageDefaultSelect.disabled = false;
     }
 }
 
