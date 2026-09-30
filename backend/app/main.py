@@ -291,6 +291,14 @@ class AuthMiddleware(BaseHTTPMiddleware):
     # Paths that don't require authentication (exact match)
     PUBLIC_PATHS = {
         "/",  # Public landing page for visitors / app for signed-in users
+        "/terms",
+        "/terms/",
+        "/refunds",
+        "/refunds/",
+        "/cookies",
+        "/cookies/",
+        "/delete",
+        "/delete/",
         "/privacy",
         "/privacy/",
         "/robots.txt",
@@ -1324,6 +1332,26 @@ if os.path.exists(frontend_path):
         """Serve the public, crawlable privacy policy."""
         return FileResponse(os.path.join(frontend_path, "privacy.html"))
 
+    @app.api_route("/terms", methods=["GET", "HEAD"], include_in_schema=False)
+    @app.api_route("/terms/", methods=["GET", "HEAD"], include_in_schema=False)
+    async def serve_terms_page():
+        return FileResponse(os.path.join(frontend_path, "terms.html"))
+
+    @app.api_route("/refunds", methods=["GET", "HEAD"], include_in_schema=False)
+    @app.api_route("/refunds/", methods=["GET", "HEAD"], include_in_schema=False)
+    async def serve_refunds_page():
+        return FileResponse(os.path.join(frontend_path, "refunds.html"))
+
+    @app.api_route("/cookies", methods=["GET", "HEAD"], include_in_schema=False)
+    @app.api_route("/cookies/", methods=["GET", "HEAD"], include_in_schema=False)
+    async def serve_cookies_page():
+        return FileResponse(os.path.join(frontend_path, "cookies.html"))
+
+    @app.api_route("/delete", methods=["GET", "HEAD"], include_in_schema=False)
+    @app.api_route("/delete/", methods=["GET", "HEAD"], include_in_schema=False)
+    async def serve_delete_page():
+        return FileResponse(os.path.join(frontend_path, "delete.html"))
+
     @app.api_route("/", methods=["GET", "HEAD"])
     async def serve_frontend(request: Request):
         """Serve the app to signed-in users, the public landing page to visitors.
@@ -1361,6 +1389,10 @@ if os.path.exists(frontend_path):
             '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n'
             f"  <url><loc>{settings.public_base_url}/</loc><changefreq>weekly</changefreq></url>\n"
             f"  <url><loc>{settings.public_base_url}/privacy</loc><changefreq>yearly</changefreq></url>\n"
+            f"  <url><loc>{settings.public_base_url}/terms</loc><changefreq>yearly</changefreq></url>\n"
+            f"  <url><loc>{settings.public_base_url}/refunds</loc><changefreq>yearly</changefreq></url>\n"
+            f"  <url><loc>{settings.public_base_url}/cookies</loc><changefreq>yearly</changefreq></url>\n"
+            f"  <url><loc>{settings.public_base_url}/delete</loc><changefreq>yearly</changefreq></url>\n"
             "</urlset>\n"
         )
         return Response(content=content, media_type="application/xml")

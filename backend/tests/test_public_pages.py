@@ -151,3 +151,18 @@ class TestCalendarStatusEndpoint:
         data = response.json()
         assert data["is_yom_tov"] is True
         assert data["holiday_name"] == "Rosh Hashana"
+
+@pytest.mark.parametrize("slug,title", [
+    ("terms", "Terms of use"), ("refunds", "Payments and refund requests"),
+    ("cookies", "Cookies and browser storage"), ("delete", "Data deletion requests"),
+])
+def test_public_legal_routes(public_client, slug, title):
+    for path in (f"/{slug}", f"/{slug}/"):
+        response = public_client.get(path, follow_redirects=False)
+        assert response.status_code == 200
+        assert f"<h1>{title}</h1>" in response.text
+        assert public_client.head(path).status_code == 200
+    routes = json.loads((Path(__file__).resolve().parents[2] / "vercel.json").read_text())["routes"]
+    legal = next(i for i, route in enumerate(routes) if route["src"] == f"/{slug}/?")
+    fallback = next(i for i, route in enumerate(routes) if route["src"] == "/(.*)")
+    assert legal < fallback
