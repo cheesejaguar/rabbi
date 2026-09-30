@@ -1,17 +1,66 @@
 {
   "builds": [
-    { "src": "api/index.py", "use": "@vercel/python" },
-    { "src": "frontend/**", "use": "@vercel/static" }
+    {
+      "src": "api/index.py",
+      "use": "@vercel/python"
+    },
+    {
+      "src": "frontend/**",
+      "use": "@vercel/static"
+    }
   ],
   "routes": [
-    { "src": "/static/(.*)", "dest": "/frontend/$1" },
-    { "src": "/api/(.*)", "dest": "/api/index.py" },
-    { "src": "/auth/(.*)", "dest": "/api/index.py" },
-    { "src": "/admin", "dest": "/api/index.py" },
-    { "src": "/privacy/?", "dest": "/api/index.py" },
-    { "src": "/robots.txt", "dest": "/api/index.py" },
-    { "src": "/sitemap.xml", "dest": "/api/index.py" },
-    { "src": "/", "dest": "/api/index.py" },
-    { "src": "/(.*)", "dest": "/frontend/index.html" }
+    {
+      "src": "/static/(.*)",
+      "dest": "/frontend/$1"
+    },
+    {
+      "src": "/api/(.*)",
+      "dest": "/api/index.py"
+    },
+    {
+      "src": "/auth/(.*)",
+      "dest": "/api/index.py"
+    },
+    {
+      "src": "/admin",
+      "dest": "/api/index.py"
+    },
+    {
+      "src": "/terms/?",
+      "dest": "/api/index.py"
+    },
+    {
+      "src": "/refunds/?",
+      "dest": "/api/index.py"
+    },
+    {
+      "src": "/cookies/?",
+      "dest": "/api/index.py"
+    },
+    {
+      "src": "/delete/?",
+      "dest": "/api/index.py"
+    },
+    {
+      "src": "/privacy/?",
+      "dest": "/api/index.py"
+    },
+    {
+      "src": "/robots.txt",
+      "dest": "/api/index.py"
+    },
+    {
+      "src": "/sitemap.xml",
+      "dest": "/api/index.py"
+    },
+    {
+      "src": "/",
+      "dest": "/api/index.py"
+    },
+    {
+      "src": "/(.*)",
+      "dest": "/frontend/index.html"
+    }
   ]
 }
