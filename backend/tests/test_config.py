@@ -37,7 +37,7 @@ class TestSettings:
             "DEBUG": "true",
             "OPENROUTER_API_KEY": "test-key-123",
             "OPENROUTER_BASE_URL": "https://custom.openrouter.ai/api/v1",
-            "LLM_MODEL": "anthropic/claude-opus-4-20250514",
+            "LLM_MODEL": "anthropic/claude-opus-5.5",
         }
         with patch.dict(os.environ, env_vars, clear=True):
             settings = Settings(_env_file=None)
@@ -46,7 +46,7 @@ class TestSettings:
             assert settings.debug is True
             assert settings.openrouter_api_key == "test-key-123"
             assert settings.openrouter_base_url == "https://custom.openrouter.ai/api/v1"
-            assert settings.llm_model == "anthropic/claude-opus-4-20250514"
+            assert settings.llm_model == "anthropic/claude-opus-5.5"
 
     def test_cors_origins_default(self):
         """Test default CORS origins are secure (localhost only)."""

@@ -59,9 +59,9 @@ class TestRabbiOrchestrator:
         with patch('app.agents.orchestrator.OpenAI'):
             orchestrator = RabbiOrchestrator(
                 api_key="key",
-                model="anthropic/claude-opus-4-20250514",
+                model="anthropic/claude-opus-5.5",
             )
-            assert orchestrator.model == "anthropic/claude-opus-4-20250514"
+            assert orchestrator.model == "anthropic/claude-opus-5.5"
 
     def test_agents_initialized(self):
         with patch('app.agents.orchestrator.OpenAI'):
