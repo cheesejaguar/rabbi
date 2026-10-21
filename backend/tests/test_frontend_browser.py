@@ -27,6 +27,8 @@ class FrontendHandler(SimpleHTTPRequestHandler):
         request_path = urlparse(self.path).path
         if request_path in {"/privacy", "/privacy/"}:
             self.path = "/privacy.html"
+        elif request_path in {"/terms", "/terms/"}:
+            self.path = "/terms.html"
         elif self.path == "/static":
             self.path = "/"
         elif self.path.startswith("/static/"):
@@ -198,8 +200,8 @@ def wait_for_signed_in_app(page):
 # landscape-locked apps, small Android handsets, and a 1280px desktop zoomed
 # to 400%, which WCAG 1.4.10 requires to reflow without horizontal scrolling).
 NARROW_WIDTH = 320
-PUBLIC_PAGES = ("landing.html", "privacy.html")
-ALL_PAGES = ("landing.html", "privacy.html", "index.html", "admin.html")
+PUBLIC_PAGES = ("landing.html", "privacy.html", "terms.html")
+ALL_PAGES = ("landing.html", "privacy.html", "terms.html", "index.html", "admin.html")
 
 
 def assert_no_horizontal_overflow(page, label: str):
@@ -368,6 +370,40 @@ def test_privacy_policy_reading_surface_theme_and_mobile_overflow(page, frontend
     page.set_viewport_size({"width": 390, "height": 844})
     assert page.evaluate("document.documentElement.scrollWidth <= document.documentElement.clientWidth")
     assert page.get_by_role("heading", name="A clear account of your information.").is_visible()
+    assert page_errors == []
+    assert console_errors == []
+
+
+def test_terms_of_service_reading_surface_theme_and_mobile_overflow(page, frontend_url):
+    page_errors = []
+    console_errors = []
+    page.on("pageerror", lambda error: page_errors.append(str(error)))
+    page.on(
+        "console",
+        lambda message: console_errors.append(message.text) if message.type == "error" else None,
+    )
+
+    open_frontend(page, frontend_url, "terms.html", {"width": 1440, "height": 1000})
+
+    assert page.get_by_role("heading", name="Terms of Service", exact=True).is_visible()
+    assert page.get_by_text("Last updated: [DATE]").is_visible()
+    assert page.get_by_text("Guidance, not psak.", exact=True).is_visible()
+    assert page.locator("link[rel='canonical']").get_attribute("href") == "https://rebbe.dev/terms"
+    assert page.locator("footer a[href='/privacy']").is_visible()
+
+    page.get_by_role("link", name="How sources work").click()
+    assert page.locator("#sources").is_visible()
+    assert page.url.endswith("#sources")
+    assert page.get_by_text("Locally matched:", exact=False).is_visible()
+
+    theme = page.locator("[data-theme-cycle]")
+    theme.click()
+    theme.click()
+    assert page.locator("html").get_attribute("data-theme-preference") == "dark"
+
+    page.set_viewport_size({"width": 390, "height": 844})
+    assert page.evaluate("document.documentElement.scrollWidth <= document.documentElement.clientWidth")
+    assert page.get_by_role("heading", name="Terms of Service", exact=True).is_visible()
     assert page_errors == []
     assert console_errors == []
 

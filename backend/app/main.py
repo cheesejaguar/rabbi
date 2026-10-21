@@ -293,6 +293,8 @@ class AuthMiddleware(BaseHTTPMiddleware):
         "/",  # Public landing page for visitors / app for signed-in users
         "/privacy",
         "/privacy/",
+        "/terms",
+        "/terms/",
         "/robots.txt",
         "/sitemap.xml",
         "/auth/login",
@@ -1324,6 +1326,11 @@ if os.path.exists(frontend_path):
         """Serve the public, crawlable privacy policy."""
         return FileResponse(os.path.join(frontend_path, "privacy.html"))
 
+    @app.api_route("/terms", methods=["GET", "HEAD"], include_in_schema=False)
+    async def serve_terms_of_service():
+        """Serve the public Terms of Service, including for signed-in users."""
+        return FileResponse(os.path.join(frontend_path, "terms.html"))
+
     @app.api_route("/", methods=["GET", "HEAD"])
     async def serve_frontend(request: Request):
         """Serve the app to signed-in users, the public landing page to visitors.
@@ -1361,6 +1368,7 @@ if os.path.exists(frontend_path):
             '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n'
             f"  <url><loc>{settings.public_base_url}/</loc><changefreq>weekly</changefreq></url>\n"
             f"  <url><loc>{settings.public_base_url}/privacy</loc><changefreq>yearly</changefreq></url>\n"
+            f"  <url><loc>{settings.public_base_url}/terms</loc><changefreq>yearly</changefreq></url>\n"
             "</urlset>\n"
         )
         return Response(content=content, media_type="application/xml")

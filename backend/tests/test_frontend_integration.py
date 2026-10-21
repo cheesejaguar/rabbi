@@ -168,7 +168,7 @@ def test_signed_in_visitor_gets_the_app_shell_from_the_same_route(page, live_app
 def test_public_routes_answer_get_and_head_with_real_headers(page, live_app):
     """Crawler-facing behavior, checked against the routes as deployed.
 
-    FastAPI's @app.get registers GET alone, so these four answered 405 to the
+    FastAPI's @app.get registers GET alone, so these routes answered 405 to the
     HEAD probes crawlers and uptime monitors send before fetching.
     """
 
@@ -180,6 +180,13 @@ def test_public_routes_answer_get_and_head_with_real_headers(page, live_app):
     assert privacy.status == 200
     assert privacy.headers["content-type"].startswith("text/html")
     assert "Privacy Policy | rebbe.dev" in privacy.text()
+    assert 'href="/terms"' in privacy.text()
+
+    terms = request.get(f"{base_url}/terms")
+    assert terms.status == 200
+    assert terms.headers["content-type"].startswith("text/html")
+    assert "Terms of Service | rebbe.dev" in terms.text()
+    assert 'id="welcomeScreen"' not in terms.text()
 
     robots = request.get(f"{base_url}/robots.txt")
     assert robots.status == 200
@@ -188,10 +195,52 @@ def test_public_routes_answer_get_and_head_with_real_headers(page, live_app):
     sitemap = request.get(f"{base_url}/sitemap.xml")
     assert sitemap.status == 200
     assert "<loc>https://rebbe.dev/privacy</loc>" in sitemap.text()
+    assert "<loc>https://rebbe.dev/terms</loc>" in sitemap.text()
 
-    for path in ("/", "/privacy", "/robots.txt", "/sitemap.xml"):
+    for path in ("/", "/privacy", "/terms", "/robots.txt", "/sitemap.xml"):
         head = request.head(f"{base_url}{path}")
         assert head.status == 200, f"HEAD {path} returned {head.status}"
+
+
+def test_terms_page_is_linked_and_served_instead_of_the_chat_shell(page, live_app):
+    """Footer and privacy links open the terms document for guests and signed-in users."""
+
+    base_url, state = live_app
+    state["user"] = None
+    console_errors = []
+    page.on(
+        "console",
+        lambda message: console_errors.append(message.text) if message.type == "error" else None,
+    )
+
+    page.set_viewport_size({"width": 1280, "height": 900})
+    page.goto(f"{base_url}/", wait_until="networkidle")
+    page.locator("footer a[href='/terms']").click()
+    page.wait_for_url("**/terms")
+
+    assert page.locator("#welcomeScreen").count() == 0
+    assert page.get_by_role("heading", name="Terms of Service", exact=True).is_visible()
+    assert "[LEGAL ENTITY / Aaron Cohen]" in page.locator(".policy-lede").inner_text()
+    page.get_by_role("link", name="Payments").click()
+    assert page.locator("#payments").is_visible()
+    assert "[ONLY IF APPLICABLE:" in page.locator("#payments").inner_text()
+
+    page.locator("footer a[href='/privacy']").click()
+    page.wait_for_url("**/privacy")
+    page.locator("footer a[href='/terms']").click()
+    page.wait_for_url("**/terms")
+
+    state["user"] = AUTH_USER
+    response = page.goto(f"{base_url}/terms", wait_until="networkidle")
+    assert response.status == 200
+    assert page.locator("#welcomeScreen").count() == 0
+    assert page.title() == "Terms of Service | rebbe.dev"
+
+    page.set_viewport_size({"width": 390, "height": 844})
+    assert page.evaluate(
+        "document.documentElement.scrollWidth <= document.documentElement.clientWidth"
+    )
+    assert console_errors == []
 
 
 def test_privacy_policy_renders_for_an_anonymous_browser(page, live_app):
