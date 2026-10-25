@@ -79,6 +79,13 @@ class Settings(BaseSettings):
     # both Vercel AI Gateway and OpenRouter.
     llm_model: str = DEFAULT_LLM_MODEL
 
+    # Pastoral classification: "jev" asks Jev (via OpenRouter, so it needs
+    # OPENROUTER_API_KEY even when GATEWAY=vercel) before falling back to
+    # the LLM; "llm" always uses the LLM pastoral agent.
+    pastoral_classifier: str = "jev"
+    jev_model: str = "typesafe/jev-1.13"
+    jev_timeout_seconds: float = 5.0
+
     # -------------------------------------------------------------------
     # TTS Configuration (ElevenLabs)
     # -------------------------------------------------------------------

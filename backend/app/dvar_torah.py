@@ -1,16 +1,17 @@
 """Weekly Torah commentary (d'var Torah) generation and caching.
 
 Uses the ``pyluach`` library for Hebrew calendar computations to determine
-the current week's Torah portion (parsha). When a d'var Torah is requested
-and no cached version exists for the current parsha and Hebrew year, the
-module generates one via an LLM call and stores the result in the database
-for subsequent requests.
+which week's Torah portion (parsha) to feature: the one just read from
+Sunday through Thursday, then the coming one on Friday and Shabbat. When a
+d'var Torah is requested and no cached version exists for that parsha and
+Hebrew year, the module generates one via an LLM call and stores the
+result in the database for subsequent requests.
 
 Caching strategy:
     Commentaries are cached by the composite key ``(parsha_name, hebrew_year)``.
     This means each parsha gets at most one generated commentary per year,
-    and the same commentary is served to all users for the duration of that
-    week.
+    and the same commentary is served to all users while that parsha is
+    featured.
 
 Concurrency control:
     To prevent duplicate LLM calls when multiple requests arrive
@@ -22,7 +23,9 @@ Concurrency control:
 
 import asyncio
 import logging
+import re
 import time
+from datetime import date, datetime, timedelta, timezone
 from typing import Optional
 
 from openai import OpenAI
@@ -74,44 +77,110 @@ AVOID: Do not include disclaimers about being an AI. This is a prepared teaching
 conversation. Do not use the word "delve"."""
 
 
-def get_current_parsha() -> Optional[dict]:
-    """Determine the Torah portion for the upcoming Shabbat.
+def resolve_local_date(client_date: Optional[str]) -> date:
+    """Pick the calendar date the weekly parsha should be computed from.
 
-    Uses ``pyluach`` to convert today's Gregorian date to a Hebrew date
-    and look up the associated parsha. During certain holiday weeks (e.g.,
-    Pesach, Sukkot), no regular parsha is read, and this function returns
-    ``None``.
+    The d'var Torah changes over at the start of the user's Friday, but
+    the server runs in UTC, which reaches Friday while it is still
+    Thursday evening in the Americas (and still Thursday afternoon on the
+    US west coast). The client therefore sends its *local* date.
 
-    The ``pyluach.parshios.getparsha_string()`` function automatically
-    handles the logic of finding the *upcoming* Shabbat's parsha from any
-    day of the week, including double-parsha weeks.
+    Every timezone is within one day of UTC, so a client date further
+    off than that is ignored. This also stops callers from requesting
+    arbitrary weeks and triggering LLM generation for each one.
+
+    Args:
+        client_date: The client's local date as ``YYYY-MM-DD`` (longer
+            ISO-8601 strings are truncated), or ``None``.
+
+    Returns:
+        The client's local date when valid, otherwise today's UTC date.
+    """
+    utc_today = datetime.now(timezone.utc).date()
+    if client_date:
+        try:
+            local = date.fromisoformat(client_date[:10])
+        except ValueError:
+            local = None
+        if local and abs((local - utc_today).days) <= 1:
+            return local
+    return utc_today
+
+
+def _parsha_for(pydate: date) -> Optional[dict]:
+    """Look up the parsha of the Shabbat on or after ``pydate``."""
+    greg = dates.GregorianDate.from_pydate(pydate)
+    # Returns None during holiday weeks (e.g., Pesach, Sukkot).
+    english = parshios.getparsha_string(greg)
+    if not english:
+        return None
+    hebrew = parshios.getparsha_string(greg, hebrew=True)
+    return {
+        "parsha_name": english,
+        "parsha_name_hebrew": hebrew or "",
+        "hebrew_year": greg.to_heb().year,
+    }
+
+
+def get_current_parsha(local_date: Optional[date] = None) -> Optional[dict]:
+    """Determine which parsha's d'var Torah to show on a given day.
+
+    The d'var Torah stays with the parsha just read for most of the week
+    and moves to the coming parsha on erev Shabbat:
+
+    - Friday and Shabbat: the parsha of this Shabbat.
+    - Sunday through Thursday: the parsha read on the Shabbat just past.
+      If that Shabbat had a holiday reading instead (e.g. chol hamoed),
+      the coming Shabbat's parsha is used.
+
+    Uses ``pyluach``, whose ``getparsha_string()`` returns the parsha of
+    the Shabbat on or after a date, including double-parsha weeks.
+
+    Args:
+        local_date: The user's local date (see ``resolve_local_date``).
+            Defaults to today's UTC date.
 
     Returns:
         A dictionary with keys:
             - ``parsha_name``: English transliteration (e.g., ``"Bereshit"``).
             - ``parsha_name_hebrew``: Hebrew name, or empty string if
               unavailable.
-            - ``hebrew_year``: The Hebrew calendar year as an integer
-              (e.g., ``5786``).
-        Returns ``None`` during holiday weeks when no regular parsha is read.
+            - ``hebrew_year``: The Hebrew calendar year of that parsha's
+              Shabbat as an integer (e.g., ``5786``).
+        Returns ``None`` when no regular parsha applies (holiday weeks).
     """
-    # Convert today's Gregorian date to a Hebrew date via pyluach.
-    today = dates.GregorianDate.today()
-    hebrew_today = dates.HebrewDate.from_pydate(today.to_pydate())
+    if local_date is None:
+        local_date = resolve_local_date(None)
 
-    # Look up the parsha for the upcoming Shabbat.
-    # Returns None during holiday weeks (e.g., Pesach, Sukkot).
-    english = parshios.getparsha_string(today)
-    if not english:
-        return None
+    weekday = local_date.weekday()  # Monday=0 ... Friday=4, Saturday=5, Sunday=6
+    if weekday in (4, 5):
+        return _parsha_for(local_date)
 
-    # Get the Hebrew-language parsha name for display purposes.
-    hebrew = parshios.getparsha_string(today, hebrew=True)
-    return {
-        "parsha_name": english,
-        "parsha_name_hebrew": hebrew or "",
-        "hebrew_year": hebrew_today.year,
-    }
+    last_shabbat = local_date - timedelta(days=(weekday - 5) % 7)
+    return _parsha_for(last_shabbat) or _parsha_for(local_date)
+
+
+_HEADING_RE = re.compile(r"^\s{0,3}#{1,6}\s+(.*?)\s*#*\s*$")
+
+
+def clean_dvar_torah_content(content: str) -> str:
+    """Strip markdown the LLM sometimes emits despite the prose-only prompt.
+
+    The frontend renders the commentary as plain paragraphs, so markdown
+    shows up literally (e.g. a ``# Parashat ...`` title). A heading on the
+    first line duplicates the title the UI already shows and is dropped;
+    any other heading keeps its text without the ``#`` markers. Bold
+    markers (``**`` / ``__``) are removed.
+
+    Applied when serving, so already-cached commentaries are cleaned too.
+    """
+    lines = content.strip().split("\n")
+    if lines and _HEADING_RE.match(lines[0]):
+        lines = lines[1:]
+    lines = [_HEADING_RE.sub(r"\1", line) for line in lines]
+    text = "\n".join(lines)
+    text = re.sub(r"(\*\*|__)(.+?)\1", r"\2", text)
+    return text.strip()
 
 
 def _generate_dvar_torah(client: OpenAI, model: str, parsha_name: str, parsha_name_hebrew: str) -> tuple[str, dict]:
@@ -140,7 +209,7 @@ def _generate_dvar_torah(client: OpenAI, model: str, parsha_name: str, parsha_na
     """
     user_prompt = (
         f"Write a d'var Torah for Parashat {parsha_name} ({parsha_name_hebrew}).\n\n"
-        "This is the Torah portion read on the upcoming Shabbat. Create an original, "
+        "This is this week's Torah portion. Create an original, "
         "insightful teaching that illuminates a central theme of this parsha."
     )
 
@@ -179,13 +248,15 @@ def _generate_dvar_torah(client: OpenAI, model: str, parsha_name: str, parsha_na
     return content, metrics
 
 
-async def get_or_generate_dvar_torah(client: OpenAI, model: str) -> Optional[dict]:
+async def get_or_generate_dvar_torah(
+    client: OpenAI, model: str, local_date: Optional[date] = None
+) -> Optional[dict]:
     """Get the current week's d'var Torah, generating it if not yet cached.
 
     Orchestrates the full lifecycle of d'var Torah retrieval:
 
-    1. **Parsha lookup**: Determines this week's Torah portion. Returns
-       ``None`` during holiday weeks.
+    1. **Parsha lookup**: Determines which parsha to show today (see
+       ``get_current_parsha``). Returns ``None`` during holiday weeks.
     2. **Cache check**: Queries the database for an existing, completed
        commentary for this parsha and Hebrew year.
     3. **Generation-in-progress wait**: If another request is already
@@ -204,13 +275,14 @@ async def get_or_generate_dvar_torah(client: OpenAI, model: str) -> Optional[dic
     Args:
         client: An initialized ``OpenAI``-compatible API client.
         model: The model identifier string for generation.
+        local_date: The user's local date, used to pick the week's parsha.
 
     Returns:
         A dictionary with ``parsha_name``, ``parsha_name_hebrew``,
         ``hebrew_year``, and ``content``, or ``None`` during holiday
         weeks or if generation fails/times out.
     """
-    parsha = get_current_parsha()
+    parsha = get_current_parsha(local_date)
     if not parsha:
         return None
 
@@ -225,7 +297,7 @@ async def get_or_generate_dvar_torah(client: OpenAI, model: str) -> Optional[dic
             "parsha_name": cached["parsha_name"],
             "parsha_name_hebrew": cached["parsha_name_hebrew"],
             "hebrew_year": cached["hebrew_year"],
-            "content": cached["content"],
+            "content": clean_dvar_torah_content(cached["content"]),
         }
 
     # If another request is already generating, wait and retry.
@@ -239,7 +311,7 @@ async def get_or_generate_dvar_torah(client: OpenAI, model: str) -> Optional[dic
                     "parsha_name": cached["parsha_name"],
                     "parsha_name_hebrew": cached["parsha_name_hebrew"],
                     "hebrew_year": cached["hebrew_year"],
-                    "content": cached["content"],
+                    "content": clean_dvar_torah_content(cached["content"]),
                 }
         # Timed out waiting - return None to show fallback
         logger.warning(f"Timed out waiting for d'var Torah generation for {parsha_name}")
@@ -254,7 +326,7 @@ async def get_or_generate_dvar_torah(client: OpenAI, model: str) -> Optional[dic
     if not row_id:
         # Another request claimed it first, retry from cache
         await asyncio.sleep(2)
-        return await get_or_generate_dvar_torah(client, model)
+        return await get_or_generate_dvar_torah(client, model, local_date)
 
     # Generate the d'var Torah via LLM.
     try:
@@ -266,7 +338,7 @@ async def get_or_generate_dvar_torah(client: OpenAI, model: str) -> Optional[dic
             "parsha_name": parsha_name,
             "parsha_name_hebrew": parsha_name_hebrew,
             "hebrew_year": hebrew_year,
-            "content": content,
+            "content": clean_dvar_torah_content(content),
         }
     except Exception as e:
         # Mark the generation slot as failed so future requests can retry.

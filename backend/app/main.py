@@ -49,6 +49,7 @@ from .models import (
 )
 from .agents.denominations import VALID_DENOMINATIONS
 from .agents import RabbiOrchestrator
+from .agents.jev import JevPastoralClassifier
 from .auth import (
     router as auth_router,
     get_current_user,
@@ -67,7 +68,7 @@ from .conversations import router as conversations_router
 from .payments import router as payments_router
 from .admin import router as admin_router, require_admin
 from . import database as db
-from .dvar_torah import get_or_generate_dvar_torah
+from .dvar_torah import get_or_generate_dvar_torah, resolve_local_date
 from .jewish_calendar import get_calendar_status
 
 # ---------------------------------------------------------------------------
@@ -142,10 +143,22 @@ def rate_limit_exceeded_handler(request: Request, exc: RateLimitExceeded):
     )
 
 
+pastoral_classifier = None
+if settings.pastoral_classifier.lower() == "jev":
+    if settings.openrouter_api_key:
+        pastoral_classifier = JevPastoralClassifier(
+            api_key=settings.openrouter_api_key,
+            model=settings.jev_model,
+            timeout_seconds=settings.jev_timeout_seconds,
+        )
+    else:
+        logger.warning("PASTORAL_CLASSIFIER=jev but OPENROUTER_API_KEY is not set; using the LLM pastoral agent")
+
 orchestrator = RabbiOrchestrator(
     api_key=settings.llm_api_key or None,
     base_url=settings.llm_base_url,
     model=settings.llm_model,
+    pastoral_classifier=pastoral_classifier,
 )
 
 
@@ -402,7 +415,7 @@ async def get_greeting(request: Request):
 
 @app.get("/api/dvar-torah", response_model=DvarTorahResponse)
 @limiter.limit("30/minute")
-async def get_dvar_torah(request: Request):
+async def get_dvar_torah(request: Request, client_date: str = None):
     """Retrieve the weekly d'var Torah for the current parsha.
 
     Attempts to load a cached commentary or generate one on the fly.
@@ -411,13 +424,17 @@ async def get_dvar_torah(request: Request):
 
     Args:
         request: The incoming HTTP request (used by the rate limiter).
+        client_date: The client's local date (``YYYY-MM-DD``), so the
+            parsha changes over on the user's Friday rather than UTC's.
 
     Returns:
         DvarTorahResponse: JSON with parsha details and the commentary
         text, wrapped in a ``Cache-Control: public, max-age=3600`` header.
     """
     try:
-        result = await get_or_generate_dvar_torah(orchestrator.client, orchestrator.model)
+        result = await get_or_generate_dvar_torah(
+            orchestrator.client, orchestrator.model, resolve_local_date(client_date)
+        )
     except Exception as e:
         logger.error(f"D'var Torah error: {e}")
         result = None
