@@ -67,7 +67,7 @@ from .conversations import router as conversations_router
 from .payments import router as payments_router
 from .admin import router as admin_router, require_admin
 from . import database as db
-from .dvar_torah import get_or_generate_dvar_torah
+from .dvar_torah import get_or_generate_dvar_torah, resolve_local_date
 from .jewish_calendar import get_calendar_status
 
 # ---------------------------------------------------------------------------
@@ -400,7 +400,7 @@ async def get_greeting(request: Request):
 
 @app.get("/api/dvar-torah", response_model=DvarTorahResponse)
 @limiter.limit("30/minute")
-async def get_dvar_torah(request: Request):
+async def get_dvar_torah(request: Request, client_date: str = None):
     """Retrieve the weekly d'var Torah for the current parsha.
 
     Attempts to load a cached commentary or generate one on the fly.
@@ -409,13 +409,17 @@ async def get_dvar_torah(request: Request):
 
     Args:
         request: The incoming HTTP request (used by the rate limiter).
+        client_date: The client's local date (``YYYY-MM-DD``), so the
+            parsha changes over on the user's Friday rather than UTC's.
 
     Returns:
         DvarTorahResponse: JSON with parsha details and the commentary
         text, wrapped in a ``Cache-Control: public, max-age=3600`` header.
     """
     try:
-        result = await get_or_generate_dvar_torah(orchestrator.client, orchestrator.model)
+        result = await get_or_generate_dvar_torah(
+            orchestrator.client, orchestrator.model, resolve_local_date(client_date)
+        )
     except Exception as e:
         logger.error(f"D'var Torah error: {e}")
         result = None
