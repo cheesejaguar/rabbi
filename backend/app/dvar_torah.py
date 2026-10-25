@@ -23,6 +23,7 @@ Concurrency control:
 
 import asyncio
 import logging
+import re
 import time
 from datetime import date, datetime, timedelta, timezone
 from typing import Optional
@@ -159,6 +160,29 @@ def get_current_parsha(local_date: Optional[date] = None) -> Optional[dict]:
     return _parsha_for(last_shabbat) or _parsha_for(local_date)
 
 
+_HEADING_RE = re.compile(r"^\s{0,3}#{1,6}\s+(.*?)\s*#*\s*$")
+
+
+def clean_dvar_torah_content(content: str) -> str:
+    """Strip markdown the LLM sometimes emits despite the prose-only prompt.
+
+    The frontend renders the commentary as plain paragraphs, so markdown
+    shows up literally (e.g. a ``# Parashat ...`` title). A heading on the
+    first line duplicates the title the UI already shows and is dropped;
+    any other heading keeps its text without the ``#`` markers. Bold
+    markers (``**`` / ``__``) are removed.
+
+    Applied when serving, so already-cached commentaries are cleaned too.
+    """
+    lines = content.strip().split("\n")
+    if lines and _HEADING_RE.match(lines[0]):
+        lines = lines[1:]
+    lines = [_HEADING_RE.sub(r"\1", line) for line in lines]
+    text = "\n".join(lines)
+    text = re.sub(r"(\*\*|__)(.+?)\1", r"\2", text)
+    return text.strip()
+
+
 def _generate_dvar_torah(client: OpenAI, model: str, parsha_name: str, parsha_name_hebrew: str) -> tuple[str, dict]:
     """Generate a d'var Torah for a given parsha using a single LLM call.
 
@@ -273,7 +297,7 @@ async def get_or_generate_dvar_torah(
             "parsha_name": cached["parsha_name"],
             "parsha_name_hebrew": cached["parsha_name_hebrew"],
             "hebrew_year": cached["hebrew_year"],
-            "content": cached["content"],
+            "content": clean_dvar_torah_content(cached["content"]),
         }
 
     # If another request is already generating, wait and retry.
@@ -287,7 +311,7 @@ async def get_or_generate_dvar_torah(
                     "parsha_name": cached["parsha_name"],
                     "parsha_name_hebrew": cached["parsha_name_hebrew"],
                     "hebrew_year": cached["hebrew_year"],
-                    "content": cached["content"],
+                    "content": clean_dvar_torah_content(cached["content"]),
                 }
         # Timed out waiting - return None to show fallback
         logger.warning(f"Timed out waiting for d'var Torah generation for {parsha_name}")
@@ -314,7 +338,7 @@ async def get_or_generate_dvar_torah(
             "parsha_name": parsha_name,
             "parsha_name_hebrew": parsha_name_hebrew,
             "hebrew_year": hebrew_year,
-            "content": content,
+            "content": clean_dvar_torah_content(content),
         }
     except Exception as e:
         # Mark the generation slot as failed so future requests can retry.
