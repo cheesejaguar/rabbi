@@ -3,7 +3,7 @@
 from datetime import date, datetime, timezone
 from unittest.mock import patch
 
-from app.dvar_torah import get_current_parsha, resolve_local_date
+from app.dvar_torah import clean_dvar_torah_content, get_current_parsha, resolve_local_date
 
 
 class TestGetCurrentParsha:
@@ -65,3 +65,20 @@ class TestResolveLocalDate:
     def test_thursday_evening_in_americas_keeps_parsha_just_read(self):
         local = self._resolve("2026-10-29")
         assert get_current_parsha(local)["parsha_name"] == "Lech Lecha"
+
+
+class TestCleanDvarTorahContent:
+    def test_drops_leading_title_heading(self):
+        content = "# Parashat Lech Lecha: The Journey\n\nConsider the strangeness."
+        assert clean_dvar_torah_content(content) == "Consider the strangeness."
+
+    def test_keeps_text_of_later_headings(self):
+        content = "Opening.\n\n## A deeper layer\n\nClosing."
+        assert clean_dvar_torah_content(content) == "Opening.\n\nA deeper layer\n\nClosing."
+
+    def test_removes_bold_markers(self):
+        assert clean_dvar_torah_content("Rashi says **for your benefit**.") == "Rashi says for your benefit."
+
+    def test_leaves_plain_prose_alone(self):
+        content = "Lech lecha — go for yourself.\n\n#1 is not a heading."
+        assert clean_dvar_torah_content(content) == content
