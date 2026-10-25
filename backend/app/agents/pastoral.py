@@ -22,15 +22,25 @@ Expected LLM JSON output schema::
 """
 
 import json
+import logging
 import re
+from typing import Optional
+
+from openai import OpenAI
+
+from ..config import DEFAULT_LLM_MODEL
 from .base import (
     BaseAgent,
     AgentContext,
+    LLMMetrics,
     PastoralContext,
     PastoralMode,
     ToneConstraint,
     AuthorityLevel,
 )
+from .jev import JevPastoralClassifier
+
+logger = logging.getLogger(__name__)
 
 
 class PastoralContextAgent(BaseAgent):
@@ -41,7 +51,20 @@ class PastoralContextAgent(BaseAgent):
 
     Key responsibility: if vulnerability is detected, halachic maximalism is
     prohibited downstream.  *"A psak that breaks a person is not Torah."*
+
+    When a ``JevPastoralClassifier`` is supplied, it answers first and the
+    LLM call only runs when Jev fails or defers (an ambiguous crisis
+    signal, low confidence) -- see ``agents/jev.py``.
     """
+
+    def __init__(
+        self,
+        client: OpenAI,
+        model: str = DEFAULT_LLM_MODEL,
+        classifier: Optional[JevPastoralClassifier] = None,
+    ):
+        super().__init__(client, model)
+        self.classifier = classifier
 
     @property
     def system_prompt(self) -> str:
@@ -113,9 +136,12 @@ Respond ONLY with the JSON object, no additional text."""
     async def process(self, context: AgentContext) -> AgentContext:
         """Analyse the user's message to determine pastoral context.
 
-        Sends the user message (with optional denomination/bio and recent
-        conversation history) to the LLM, then parses the JSON response
-        into a ``PastoralContext`` stored on ``context.pastoral_context``.
+        Asks the Jev classifier first when one is configured. If it
+        fails or defers, sends the user message (with optional
+        denomination/bio and recent conversation history) to the LLM and
+        parses the JSON response. Either way the result is stored on
+        ``context.pastoral_context``, and ``context.metadata`` records
+        which classifier decided (``pastoral_classifier``).
 
         The resulting ``PastoralContext`` propagates to every downstream
         agent.  In particular, ``vulnerability_detected=True`` forces the
@@ -130,6 +156,16 @@ Respond ONLY with the JSON object, no additional text."""
         Returns:
             The same context with ``pastoral_context`` populated.
         """
+        jev_metrics = None
+        if self.classifier:
+            decision, jev_metrics = await self.classifier.classify(context)
+            if decision.pastoral_context:
+                context.pastoral_context = decision.pastoral_context
+                context.metadata["pastoral_classifier"] = "jev"
+                self._update_context_metrics(context, jev_metrics)
+                return context
+            logger.info(f"Pastoral classifier deferred to LLM: {decision.fallback_reason}")
+            context.metadata["pastoral_classifier_fallback"] = decision.fallback_reason
 
         # Build user background context from profile
         user_background = ""
@@ -156,10 +192,19 @@ Respond ONLY with the JSON object, no additional text."""
             messages[0]["content"] += f"\n\nRecent conversation context:\n{history_summary}"
 
         response, metrics = self._call_claude(messages, self.system_prompt)
+        if jev_metrics:
+            # The deferred Jev call still cost time and tokens.
+            metrics = LLMMetrics(
+                input_tokens=metrics.input_tokens + jev_metrics.input_tokens,
+                output_tokens=metrics.output_tokens + jev_metrics.output_tokens,
+                latency_ms=metrics.latency_ms + jev_metrics.latency_ms,
+                estimated_cost_usd=metrics.estimated_cost_usd + jev_metrics.estimated_cost_usd,
+            )
         self._update_context_metrics(context, metrics)
 
         pastoral_context = self._parse_response(response)
         context.pastoral_context = pastoral_context
+        context.metadata["pastoral_classifier"] = "llm"
 
         return context
 

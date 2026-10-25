@@ -26,6 +26,7 @@ The app runs at http://localhost:8000
 Copy `.env.example` to `.env` and set:
 - `OPENROUTER_API_KEY` or `AI_GATEWAY_API_KEY` (required for LLM)
 - `LLM_MODEL` (optional, defaults to anthropic/claude-sonnet-5)
+- `PASTORAL_CLASSIFIER` (optional, `jev` default or `llm`) - `jev` needs `OPENROUTER_API_KEY`
 - `WORKOS_API_KEY` and `WORKOS_CLIENT_ID` (for authentication)
 - `STRIPE_SECRET_KEY`, `STRIPE_PUBLISHABLE_KEY`, `STRIPE_WEBHOOK_SECRET` (for payments)
 - `DATABASE_URL` (PostgreSQL connection string)
@@ -36,7 +37,7 @@ Copy `.env.example` to `.env` and set:
 
 User messages flow through four sequential agents in `backend/app/agents/`:
 
-1. **PastoralContextAgent** (`pastoral.py`) - Determines *how* to respond: emotional state detection, pastoral mode (teaching/counseling/crisis/curiosity), tone constraints, vulnerability detection
+1. **PastoralContextAgent** (`pastoral.py`) - Determines *how* to respond: emotional state detection, pastoral mode (teaching/counseling/crisis/curiosity), tone constraints, vulnerability detection. Asks Jev first (`jev.py`, one request for every question, crisis-biased thresholds) and only calls the LLM when Jev fails or is unsure
 2. **HalachicReasoningAgent** (`halachic.py`) - Provides halachic landscape: majority/minority views, underlying principles, precedents for leniency
 3. **MoralEthicalAgent** (`moral.py`) - Ensures dignity preservation and harm prevention; can trigger reconsideration loop
 4. **MetaRabbinicVoiceAgent** (`voice.py`) - Crafts final response with appropriate rabbinic tone and humility
