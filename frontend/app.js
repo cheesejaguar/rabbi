@@ -892,6 +892,18 @@ async function loadGreeting() {
     }
 }
 
+/**
+ * @description Formats a date as the user's local calendar date (YYYY-MM-DD).
+ *              Calendar-dependent endpoints need the local day, which can
+ *              differ from the server's UTC day.
+ * @param {Date} [date=new Date()] - The moment to format
+ * @returns {string} Local date, e.g. "2026-10-24"
+ */
+function localDateString(date = new Date()) {
+    const pad = n => String(n).padStart(2, '0');
+    return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
+}
+
 /* ============================================================
  * D'VAR TORAH
  * Weekly Torah portion display. Fetches the current parsha's
@@ -910,7 +922,10 @@ async function loadGreeting() {
  */
 async function loadDvarTorah(fresh = false) {
     try {
-        const response = await fetch(`${API_BASE}/dvar-torah`, fresh ? { cache: 'no-store' } : undefined);
+        // Send the local date so the parsha changes over on the user's
+        // Friday, not when the (UTC) server reaches Friday.
+        const url = `${API_BASE}/dvar-torah?client_date=${encodeURIComponent(localDateString())}`;
+        const response = await fetch(url, fresh ? { cache: 'no-store' } : undefined);
         if (!response.ok) return;
 
         const data = await response.json();
@@ -1025,8 +1040,7 @@ async function checkCalendarStatus() {
     try {
         const now = new Date();
         const pad = n => String(n).padStart(2, '0');
-        const localTime = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}` +
-            `T${pad(now.getHours())}:${pad(now.getMinutes())}:00`;
+        const localTime = `${localDateString(now)}T${pad(now.getHours())}:${pad(now.getMinutes())}:00`;
 
         const response = await fetch(`${API_BASE}/calendar-status?client_time=${encodeURIComponent(localTime)}`);
         if (!response.ok) return;
@@ -3269,6 +3283,7 @@ async function startSponsorshipPayment() {
                 tier_id: selectedSponsorTier,
                 dedication: dedication,
                 dedication_type: dedicationType,
+                client_date: localDateString(),
             }),
             credentials: 'include',
         });

@@ -27,11 +27,11 @@ import logging
 import stripe
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, Field
-from typing import Literal
+from typing import Literal, Optional
 
 from .config import get_settings
 from .auth import get_current_user
-from .dvar_torah import get_current_parsha
+from .dvar_torah import get_current_parsha, resolve_local_date
 from . import database as db
 
 logger = logging.getLogger(__name__)
@@ -92,10 +92,13 @@ class CreateSponsorshipRequest(BaseModel):
         dedication: The public dedication text (e.g. a name), shown
             alongside the d'var Torah once payment completes.
         dedication_type: How the dedication is framed.
+        client_date: The client's local date (``YYYY-MM-DD``) so the
+            sponsored parsha matches the one the user is looking at.
     """
     tier_id: str
     dedication: str = Field(..., min_length=2, max_length=200)
     dedication_type: Literal["memory", "honor", "refuah", "gratitude", "general"] = "general"
+    client_date: Optional[str] = None
 
 
 @router.get("/packages")
@@ -110,14 +113,17 @@ async def get_packages():
 
 
 @router.get("/sponsorship-tiers")
-async def get_sponsorship_tiers():
+async def get_sponsorship_tiers(client_date: str = None):
     """Return the catalog of d'var Torah sponsorship tiers.
+
+    Args:
+        client_date: The client's local date (``YYYY-MM-DD``).
 
     Returns:
         A JSON object with a ``tiers`` key plus the current parsha the
         sponsorship would apply to (``None`` during holiday weeks).
     """
-    parsha = get_current_parsha()
+    parsha = get_current_parsha(resolve_local_date(client_date))
     return {"tiers": SPONSORSHIP_TIERS, "parsha": parsha}
 
 
@@ -157,7 +163,7 @@ async def create_sponsorship_intent(request: Request, body: CreateSponsorshipReq
     if not settings.db_url:
         raise HTTPException(status_code=503, detail="Database not configured")
 
-    parsha = get_current_parsha()
+    parsha = get_current_parsha(resolve_local_date(body.client_date))
     if not parsha:
         raise HTTPException(
             status_code=400,

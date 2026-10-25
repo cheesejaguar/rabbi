@@ -151,3 +151,19 @@ class TestCalendarStatusEndpoint:
         data = response.json()
         assert data["is_yom_tov"] is True
         assert data["holiday_name"] == "Rosh Hashana"
+
+
+class TestDvarTorahEndpoint:
+    """Test GET /api/dvar-torah uses the client's local date."""
+
+    def test_client_date_selects_parsha_week(self, public_client):
+        # 03:42 UTC Friday is still Thursday evening in the US.
+        from datetime import date, datetime, timezone
+        utc_now = datetime(2026, 10, 30, 3, 42, tzinfo=timezone.utc)
+        generate = AsyncMock(return_value=None)
+        with patch('app.main.get_or_generate_dvar_torah', generate), \
+                patch('app.dvar_torah.datetime') as mock_dt:
+            mock_dt.now.return_value = utc_now
+            response = public_client.get("/api/dvar-torah?client_date=2026-10-29")
+        assert response.status_code == 200
+        assert generate.call_args.args[2] == date(2026, 10, 29)
