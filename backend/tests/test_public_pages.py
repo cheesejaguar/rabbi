@@ -119,6 +119,87 @@ class TestPrivacyPolicy:
         assert privacy_index < catchall_index
 
 
+class TestTermsOfService:
+    """The terms page is a public document, not the signed-in chat shell."""
+
+    PLACEHOLDERS = (
+        "[DATE]",
+        "[LEGAL ENTITY / Aaron Cohen]",
+        "[CONFIRM: retention of chats, whether they are used to improve the Service, and the model providers that process them.]",
+        "[13 / 16 / 18 — CONFIRM]",
+        "[If minors are allowed, add a note on parental guidance.]",
+        "[ONLY IF APPLICABLE: plans, billing, renewals, refunds. Delete this section if the Service is free.]",
+        "[Standard limitation-of-liability language to be reviewed by counsel.]",
+        "[CONTACT EMAIL]",
+        "[STATE, e.g. California]",
+    )
+
+    def test_anonymous_terms_are_the_document_not_the_chat_shell(self, public_client):
+        response = public_client.get("/terms")
+
+        assert response.status_code == 200
+        assert response.history == []
+        assert response.headers["content-type"].startswith("text/html")
+        assert "Terms of Service | rebbe.dev" in response.text
+        assert '<link rel="canonical" href="https://rebbe.dev/terms">' in response.text
+        assert 'id="welcomeScreen"' not in response.text
+        assert "DRAFT for Aaron" not in response.text
+        assert "These terms cover your use of rebbe.dev" in response.text
+        assert "guidance, not psak" in response.text
+        assert "progressive Modern Orthodox" in response.text
+        assert "Locally matched" in response.text
+        assert "Model knowledge" in response.text
+        assert "call or text 988" in response.text
+        assert "The Service stays online on Shabbat" in response.text
+        assert 'href="/privacy"' in response.text
+        assert "https://www.sefaria.org" in response.text
+        for placeholder in self.PLACEHOLDERS:
+            assert placeholder in response.text
+
+    def test_terms_answers_head(self, public_client):
+        response = public_client.head("/terms")
+
+        assert response.status_code == 200
+        assert response.headers["content-type"].startswith("text/html")
+
+    def test_authenticated_visitor_still_gets_terms(self, public_client):
+        with patch("app.main.get_current_user", return_value=AUTH_USER):
+            response = public_client.get("/terms")
+
+        assert response.status_code == 200
+        assert "Terms of Service | rebbe.dev" in response.text
+        assert 'id="welcomeScreen"' not in response.text
+
+    def test_trailing_slash_canonicalizes_without_auth_redirect(self, public_client):
+        response = public_client.get("/terms/", follow_redirects=False)
+
+        assert response.status_code == 307
+        assert response.headers["location"].endswith("/terms")
+
+    def test_vercel_terms_route_precedes_frontend_catchall(self):
+        root = Path(__file__).resolve().parents[2]
+        routes = json.loads((root / "vercel.json").read_text())["routes"]
+        terms_index = next(
+            index for index, route in enumerate(routes) if route["src"] == "/terms/?"
+        )
+        catchall_index = next(
+            index for index, route in enumerate(routes) if route["src"] == "/(.*)"
+        )
+
+        assert routes[terms_index]["dest"] == "/api/index.py"
+        assert terms_index < catchall_index
+
+    def test_public_pages_link_to_terms(self, public_client):
+        landing = public_client.get("/")
+        privacy = public_client.get("/privacy")
+        sitemap = public_client.get("/sitemap.xml")
+
+        assert landing.status_code == 200
+        assert 'href="/terms"' in landing.text
+        assert 'href="/terms"' in privacy.text
+        assert "<loc>https://rebbe.dev/terms</loc>" in sitemap.text
+
+
 class TestCalendarStatusEndpoint:
     """Test GET /api/calendar-status (public)."""
 
