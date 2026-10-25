@@ -19,6 +19,7 @@ from openai import OpenAI
 from typing import Optional
 from .base import AgentContext, LLMMetrics
 from ..config import DEFAULT_LLM_MODEL
+from .jev import JevPastoralClassifier
 from .pastoral import PastoralContextAgent
 from .halachic import HalachicReasoningAgent
 from .moral import MoralEthicalAgent
@@ -52,6 +53,7 @@ class RabbiOrchestrator:
         api_key: Optional[str] = None,
         base_url: str = "https://openrouter.ai/api/v1",
         model: str = DEFAULT_LLM_MODEL,
+        pastoral_classifier: Optional[JevPastoralClassifier] = None,
     ):
         """Initialise the orchestrator and instantiate all pipeline agents.
 
@@ -61,6 +63,8 @@ class RabbiOrchestrator:
             base_url: Base URL for the OpenAI-compatible API endpoint.
             model: Model identifier string (e.g.
                 ``"anthropic/claude-sonnet-5"``).
+            pastoral_classifier: Optional Jev classifier the pastoral
+                agent tries before its LLM call.
         """
         self.client = OpenAI(
             api_key=api_key,
@@ -72,7 +76,7 @@ class RabbiOrchestrator:
         self.retriever = TextRetriever()
 
         # Instantiate each agent in pipeline order
-        self.pastoral_agent = PastoralContextAgent(self.client, model)
+        self.pastoral_agent = PastoralContextAgent(self.client, model, classifier=pastoral_classifier)
         self.halachic_agent = HalachicReasoningAgent(self.client, model, retriever=self.retriever)
         self.moral_agent = MoralEthicalAgent(self.client, model)
         self.voice_agent = MetaRabbinicVoiceAgent(self.client, model)
@@ -232,6 +236,7 @@ Please re-analyze with special attention to:
             response["metadata"]["question_type"] = pc.question_type
             response["metadata"]["vulnerability_detected"] = pc.vulnerability_detected
             response["metadata"]["emotional_state"] = pc.emotional_state
+            response["metadata"]["pastoral_classifier"] = context.metadata.get("pastoral_classifier")
 
             if pc.crisis_indicators:
                 response["metadata"]["crisis_indicators"] = pc.crisis_indicators
@@ -316,6 +321,7 @@ Please re-analyze with special attention to:
             metadata["question_type"] = pc.question_type
             metadata["vulnerability_detected"] = pc.vulnerability_detected
             metadata["emotional_state"] = pc.emotional_state
+            metadata["pastoral_classifier"] = context.metadata.get("pastoral_classifier")
             if pc.crisis_indicators:
                 metadata["crisis_indicators"] = pc.crisis_indicators
 

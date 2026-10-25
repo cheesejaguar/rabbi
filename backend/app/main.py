@@ -49,6 +49,7 @@ from .models import (
 )
 from .agents.denominations import VALID_DENOMINATIONS
 from .agents import RabbiOrchestrator
+from .agents.jev import JevPastoralClassifier
 from .auth import (
     router as auth_router,
     get_current_user,
@@ -142,10 +143,22 @@ def rate_limit_exceeded_handler(request: Request, exc: RateLimitExceeded):
     )
 
 
+pastoral_classifier = None
+if settings.pastoral_classifier.lower() == "jev":
+    if settings.openrouter_api_key:
+        pastoral_classifier = JevPastoralClassifier(
+            api_key=settings.openrouter_api_key,
+            model=settings.jev_model,
+            timeout_seconds=settings.jev_timeout_seconds,
+        )
+    else:
+        logger.warning("PASTORAL_CLASSIFIER=jev but OPENROUTER_API_KEY is not set; using the LLM pastoral agent")
+
 orchestrator = RabbiOrchestrator(
     api_key=settings.llm_api_key or None,
     base_url=settings.llm_base_url,
     model=settings.llm_model,
+    pastoral_classifier=pastoral_classifier,
 )
 
 
