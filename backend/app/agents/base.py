@@ -29,14 +29,16 @@ from ..config import DEFAULT_LLM_MODEL
 # ---------------------------------------------------------------------------
 
 # Approximate token costs per 1M tokens (in USD).
-# Covers Claude Sonnet 5 (current default), Claude Sonnet 4, Claude 3.5
-# Sonnet, and Claude 3 Opus.  The "default" entry is used as a fallback for
-# any unrecognised model string so cost tracking never breaks.
+# Covers Claude Sonnet 5 (current default) plus the current Sonnet 5.5 and
+# Opus 5.5 alternatives (Vercel AI Gateway / OpenRouter IDs; prices from
+# docs.anthropic.com models overview).  The retired Claude 3 Opus, Claude 3.5
+# Sonnet and Claude Sonnet 4 entries were removed.  The "default" entry is
+# used as a fallback for any unrecognised model string so cost tracking
+# never breaks.
 TOKEN_COSTS = {
     "anthropic/claude-sonnet-5": {"input": 3.00, "output": 15.00},
-    "anthropic/claude-sonnet-4-20250514": {"input": 3.00, "output": 15.00},
-    "anthropic/claude-3-5-sonnet-20241022": {"input": 3.00, "output": 15.00},
-    "anthropic/claude-3-opus-20240229": {"input": 15.00, "output": 75.00},
+    "anthropic/claude-sonnet-5.5": {"input": 2.00, "output": 10.00},
+    "anthropic/claude-opus-5.5": {"input": 4.00, "output": 20.00},
     "default": {"input": 3.00, "output": 15.00},
 }
 

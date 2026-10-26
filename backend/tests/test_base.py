@@ -168,9 +168,9 @@ class TestBaseAgent:
     """Test BaseAgent abstract class."""
 
     def test_initialization(self, mock_anthropic_client):
-        agent = ConcreteAgent(mock_anthropic_client, "claude-sonnet-4-20250514")
+        agent = ConcreteAgent(mock_anthropic_client, "anthropic/claude-sonnet-5.5")
         assert agent.client == mock_anthropic_client
-        assert agent.model == "claude-sonnet-4-20250514"
+        assert agent.model == "anthropic/claude-sonnet-5.5"
         assert agent.name == "ConcreteAgent"
 
     def test_default_model(self, mock_anthropic_client):
