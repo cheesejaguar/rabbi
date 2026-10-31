@@ -45,7 +45,7 @@ class ChatRequest(BaseModel):
         max_length=100
     )
     request_id: Optional[str] = Field(
-        None, description="Client-generated id; retries with the same id are charged once", max_length=64
+        None, description="Client-generated correlation id (not a billing key)", max_length=64
     )
     regenerate: bool = Field(False, description="Answer the last user message again (v2)")
     edit_message_id: Optional[str] = Field(

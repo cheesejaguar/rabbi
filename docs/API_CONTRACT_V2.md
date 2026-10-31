@@ -12,7 +12,7 @@ Request body (JSON):
 | `conversation_id` | string? | Signed-in users. When present, the server loads history from the DB and ignores `conversation_history`. |
 | `conversation_history` | `[{role, content}]` | Guests only (≤20 turns used). |
 | `session_id` | string? | Unchanged. |
-| `request_id` | string? (≤64) | Client-generated UUID. A retry with the same id does not charge twice. |
+| `request_id` | string? (≤64) | Client-generated UUID, echoed in `session` and logs for correlation. It is not a billing key: a failed turn is refunded automatically, so retrying after a failure costs one credit in total. |
 | `regenerate` | bool, default false | Deletes the conversation's trailing assistant message and answers the last user message again. `message` must equal that user message. |
 | `edit_message_id` | string? | Deletes this user message and everything after it, then answers `message` as the replacement. |
 | `client_tz` | string? | IANA tz, used to choose region-appropriate crisis resources. |

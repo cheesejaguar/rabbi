@@ -228,3 +228,40 @@ def test_endpoint_rejects_overlong_message(v2_client):
     client, _ = v2_client
     events = parse(client.post("/api/chat/stream", json={"message": "a" * 5000}).text)
     assert events[0]["code"] == "invalid_input"
+
+
+def test_reused_request_id_is_still_charged_each_time():
+    """A client-chosen request_id must not act as a billing key (free-turn exploit)."""
+    from fastapi import FastAPI, Request
+    from fastapi.testclient import TestClient
+    from app.chat import endpoint
+    from app.models import ChatRequest
+
+    app = FastAPI()
+    user = {"id": "u1", "email": "u@example.com"}
+
+    @app.post("/api/chat/stream")
+    async def stream(request: Request, body: ChatRequest):
+        return await endpoint.stream_chat_v2(request, body, user)
+
+    llm_client.set_client(FakeClient())
+    charge = AsyncMock(return_value=5)
+    with patch.object(endpoint, "get_settings") as gs, \
+         patch("app.ratelimit.get_settings", return_value=gs.return_value), \
+         patch.object(endpoint.db, "try_charge_credits", new=charge), \
+         patch.object(endpoint.db, "get_user_profile", new=AsyncMock(return_value=None)), \
+         patch.object(endpoint.db, "get_user_credits", new=AsyncMock(return_value=4)), \
+         patch.object(endpoint.db, "record_safety_event", new=AsyncMock()), \
+         patch("app.chat.pipeline.retrieve", new=AsyncMock(return_value=[])):
+        s = gs.return_value
+        s.db_url = "postgres://test"
+        s.rate_limit_chat_per_minute = 100
+        s.guest_rate_limit_per_minute = 100
+        with patch("app.ratelimit.hit", new=AsyncMock(return_value=1)), \
+             patch("app.ratelimit.peek", new=AsyncMock(return_value=0)):
+            client = TestClient(app)
+            for _ in range(2):
+                events = parse(client.post("/api/chat/stream", json={"message": "hi", "request_id": "same"}).text)
+                assert any(e["type"] == "done" and e["charged"] for e in events)
+    refs = [c.args[3] for c in charge.await_args_list]
+    assert len(refs) == 2 and refs[0] != refs[1] and all("same" not in r for r in refs)

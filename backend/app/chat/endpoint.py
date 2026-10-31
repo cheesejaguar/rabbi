@@ -1,8 +1,9 @@
 """``POST /api/chat/stream`` for pipeline v2.
 
 Responsibilities around ``pipeline.run_turn``: request validation, shared
-rate limits, guest caps and the free-tier budget, idempotent credit
-charging (charge-once per ``request_id``, refund on failure), history
+rate limits, guest caps and the free-tier budget, credit charging through
+the ledger (one charge per turn, automatic refund on failure or for crisis
+turns), history
 loading from the database, edit/regenerate, persistence, safety-event
 logging, and the post-stream audit.
 
@@ -81,6 +82,10 @@ async def stream_chat_v2(request: Request, body: ChatRequest, user: Optional[dic
     has_db = bool(settings.db_url)
     ip = ratelimit.client_ip(request)
     request_id = (body.request_id or str(uuid.uuid4()))[:64]
+    # Billing key is server-generated: a client-chosen id must never let a
+    # reused id skip the charge. Failed turns are refunded automatically, so
+    # a client retry after a failure is not double-charged.
+    charge_ref = f"{user['id'] if user else 'guest'}:{uuid.uuid4()}"
 
     # --- Abuse controls ------------------------------------------------------
     if await ratelimit.is_blocked(ip):
@@ -147,7 +152,7 @@ async def stream_chat_v2(request: Request, body: ChatRequest, user: Optional[dic
         is_guest_turn = not over
     elif has_db:
         try:
-            charged_balance = await db.try_charge_credits(user["id"], 1, "chat", request_id)
+            charged_balance = await db.try_charge_credits(user["id"], 1, "chat", charge_ref)
         except Exception as e:
             logger.warning("Credit check failed: %s", e)
             return _err("internal", "Unable to verify your credits right now. Please try again in a moment.")
@@ -174,7 +179,7 @@ async def stream_chat_v2(request: Request, body: ChatRequest, user: Optional[dic
         nonlocal charged
         if charged and user and has_db:
             try:
-                await db.refund_credits(user["id"], 1, request_id)
+                await db.refund_credits(user["id"], 1, charge_ref)
                 charged = False
             except Exception as e:
                 logger.warning("Refund failed: %s", e)
