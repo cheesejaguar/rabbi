@@ -87,6 +87,41 @@ class Settings(BaseSettings):
     jev_timeout_seconds: float = 5.0
 
     # -------------------------------------------------------------------
+    # Pipeline v2 (direct Claude API) -- see docs/REWRITE_PLAN.md
+    # -------------------------------------------------------------------
+    # "v2" uses one cached generation call behind the guardrail layers;
+    # "v1" keeps the legacy four-agent pipeline. v2 needs ANTHROPIC_API_KEY
+    # and falls back to v1 automatically when the key is missing.
+    pipeline_version: str = "v2"
+    anthropic_api_key: str = ""
+    generation_model: str = "claude-sonnet-5-5"
+    classifier_model: str = "claude-haiku-5-5"
+    audit_model: str = "claude-haiku-5-5"
+    # Effort per pastoral mode; counseling/crisis get more deliberation.
+    generation_effort_default: str = "low"
+    generation_effort_care: str = "medium"
+    generation_max_tokens: int = 4096
+    classifier_timeout_seconds: float = 4.0
+    # Percentage (0-100) of signed-in users routed to v2 when
+    # pipeline_version == "v2"; guests follow the same hash bucket.
+    pipeline_v2_rollout_percent: int = 100
+    # Shadow-run Jev alongside the v2 classifier and log disagreements.
+    jev_shadow: bool = False
+    # Webhook (Slack/Discord-compatible JSON {"text": ...}) for real-time
+    # crisis alerts to the on-call administrator.
+    admin_alert_webhook_url: str = ""
+    # Daily USD budget for guest (free) generations across all visitors.
+    free_tier_daily_budget_usd: float = 5.0
+    # Credits charged for a premium (ElevenLabs) voice playback.
+    tts_credit_cost: int = 8
+    # One-time credits granted to a newly created account.
+    signup_credits: int = 10
+    # Conversations untouched this long are deleted (privacy retention schedule).
+    retention_days: int = 548
+    # Trust X-Forwarded-For from a reverse proxy (always trusted on Vercel).
+    trust_forwarded_for: bool = False
+
+    # -------------------------------------------------------------------
     # TTS Configuration (ElevenLabs)
     # -------------------------------------------------------------------
     elevenlabs_api_key: str = ""
@@ -265,7 +300,7 @@ class Settings(BaseSettings):
     guest_rate_limit_per_minute: int = 5  # Stricter rate limit for unauthenticated users
     ip_block_threshold: int = 10       # Violations before the IP is auto-blocked
     ip_block_duration: int = 3600      # Block duration in seconds (1 hour)
-    max_message_length: int = 10000    # Maximum characters in a single chat message
+    max_message_length: int = 4000     # Maximum characters in a single chat message
 
     @property
     def db_url(self) -> str:

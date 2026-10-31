@@ -144,10 +144,10 @@ def get_current_user(request: Request) -> Optional[dict]:
 # ---------------------------------------------------------------------------
 
 # Maximum free chats allowed for unauthenticated visitors.
-GUEST_FREE_CHAT_LIMIT = 1
+GUEST_FREE_CHAT_LIMIT = 3
 
 # Number of free credits granted to newly registered users upon first login.
-LOGGED_IN_FREE_CREDITS = 3
+LOGGED_IN_FREE_CREDITS = get_settings().signup_credits
 
 
 def get_guest_chats_used(request: Request) -> int:
@@ -176,7 +176,7 @@ def get_guest_chats_used(request: Request) -> int:
     try:
         serializer = get_serializer()
         # 30-day expiry for guest chat tracking cookie
-        data = serializer.loads(token, max_age=86400 * 30)  # 30 days
+        data = serializer.loads(token, max_age=86400 * 365)  # one year
         return data.get("count", 0)
     except (BadSignature, SignatureExpired):
         return 0

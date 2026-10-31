@@ -231,7 +231,10 @@ def test_static_assets_are_served_with_usable_content_types(live_app, page):
     expectations = {
         "/static/brand.css": "text/css",
         "/static/theme.js": "javascript",
-        "/static/app.js": "javascript",
+        "/static/app/main.js": "javascript",
+        "/static/app/chat/markdown.js": "javascript",
+        "/static/vendor/markdown-it.esm.js": "javascript",
+        "/static/vendor/purify.es.js": "javascript",
         "/static/admin.js": "javascript",
         "/static/assets/fonts/HankenGrotesk-Variable.ttf": "font",
         "/static/assets/fonts/NotoSansHebrew-Variable.ttf": "font",
@@ -269,3 +272,39 @@ def test_auth_middleware_still_guards_private_surfaces(live_app, page):
     admin_page = request.get(f"{base_url}/admin", max_redirects=0)
     assert admin_page.status == 302
     assert "/auth/logged-out" in admin_page.headers["location"]
+
+
+def test_deep_link_serves_the_app_and_the_module_graph_boots(page, live_app):
+    """/c/<id> deep links and the native-module frontend, end to end.
+
+    The app is no-build ES modules plus vendored markdown-it/DOMPurify, so a
+    wrong MIME type or a broken relative import under the real /static mount
+    would leave a blank shell with no server-side symptom at all.
+    """
+
+    base_url, state = live_app
+    state["user"] = AUTH_USER
+    page_errors = []
+    page.on("pageerror", lambda error: page_errors.append(str(error)))
+
+    page.set_viewport_size({"width": 1280, "height": 900})
+    response = page.goto(f"{base_url}/c/conversation-integration", wait_until="domcontentloaded")
+    if response.status == 404:
+        pytest.skip("this backend build does not serve /c/{id} yet")
+    assert response.status == 200
+    assert page.locator("#chatMessages").count() == 1
+
+    page.wait_for_function("window.__rebbe && window.__rebbe.state")
+    rendered = page.evaluate(
+        """async () => {
+          const md = await import('/static/app/chat/markdown.js');
+          const fragment = md.renderMarkdown('**safe** <img src=x onerror=alert(1)>', [{ n: 1, offset: 8 }]);
+          const host = document.createElement('div');
+          host.append(fragment);
+          return { html: host.innerHTML, img: host.querySelectorAll('img').length };
+        }"""
+    )
+    assert "<strong>safe</strong>" in rendered["html"]
+    assert 'class="cite-marker"' in rendered["html"]
+    assert rendered["img"] == 0
+    assert page_errors == []

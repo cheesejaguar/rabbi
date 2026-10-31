@@ -48,3 +48,22 @@ def sample_conversation_history():
         {"role": "user", "content": "Hello, I have a question."},
         {"role": "assistant", "content": "Shalom! I'm here to help."},
     ]
+
+
+# Sandboxed environments ship a preinstalled Chromium whose build number may
+# not match the installed Playwright package. Point pytest-playwright at it
+# when present so the browser suites run without `playwright install`.
+_PREINSTALLED_CHROMIUM = "/opt/pw-browsers/chromium"
+
+
+@pytest.fixture(scope="session")
+def browser_type_launch_args(pytestconfig):
+    import os
+
+    args = {}
+    if os.path.exists(_PREINSTALLED_CHROMIUM):
+        args["executable_path"] = _PREINSTALLED_CHROMIUM
+    headed = pytestconfig.getoption("--headed", default=False)
+    if headed:
+        args["headless"] = False
+    return args

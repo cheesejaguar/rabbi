@@ -29,15 +29,16 @@ from ..config import DEFAULT_LLM_MODEL
 # ---------------------------------------------------------------------------
 
 # Approximate token costs per 1M tokens (in USD).
-# Covers Claude Sonnet 5 (current default), Claude Sonnet 4, Claude 3.5
-# Sonnet, and Claude 3 Opus.  The "default" entry is used as a fallback for
+# Covers Claude Sonnet 5/5.5 ($2/$10 list price), Claude Sonnet 4, Claude 3.5
+# Sonnet, and Claude 3 Opus. The v2 pipeline uses ``backend/app/llm/pricing.py``.  The "default" entry is used as a fallback for
 # any unrecognised model string so cost tracking never breaks.
 TOKEN_COSTS = {
-    "anthropic/claude-sonnet-5": {"input": 3.00, "output": 15.00},
+    "anthropic/claude-sonnet-5": {"input": 2.00, "output": 10.00},
+    "anthropic/claude-sonnet-5-5": {"input": 2.00, "output": 10.00},
     "anthropic/claude-sonnet-4-20250514": {"input": 3.00, "output": 15.00},
     "anthropic/claude-3-5-sonnet-20241022": {"input": 3.00, "output": 15.00},
     "anthropic/claude-3-opus-20240229": {"input": 15.00, "output": 75.00},
-    "default": {"input": 3.00, "output": 15.00},
+    "default": {"input": 2.00, "output": 10.00},
 }
 
 
