@@ -90,13 +90,14 @@ class Settings(BaseSettings):
     # Pipeline v2 (direct Claude API) -- see docs/REWRITE_PLAN.md
     # -------------------------------------------------------------------
     # "v2" uses one cached generation call behind the guardrail layers;
-    # "v1" keeps the legacy four-agent pipeline. v2 needs ANTHROPIC_API_KEY
-    # and falls back to v1 automatically when the key is missing.
+    # "v1" keeps the legacy four-agent pipeline. v2 runs Anthropic models
+    # through Vercel AI Gateway's Anthropic-compatible Messages endpoint
+    # (GATEWAY=vercel + AI_GATEWAY_API_KEY) and falls back to v1 otherwise.
     pipeline_version: str = "v2"
-    anthropic_api_key: str = ""
-    generation_model: str = "claude-sonnet-5-5"
-    classifier_model: str = "claude-haiku-5-5"
-    audit_model: str = "claude-haiku-5-5"
+    ai_gateway_messages_base_url: str = "https://ai-gateway.vercel.sh"
+    generation_model: str = "anthropic/claude-sonnet-5.5"
+    classifier_model: str = "anthropic/claude-haiku-5.5"
+    audit_model: str = "anthropic/claude-haiku-5.5"
     # Effort per pastoral mode; counseling/crisis get more deliberation.
     generation_effort_default: str = "low"
     generation_effort_care: str = "medium"

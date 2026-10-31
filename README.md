@@ -8,14 +8,14 @@ A source-aware Jewish guidance companion for exploring thought, practice, law, e
 
 ## Overview
 
-rebbe.dev is a conversational companion for questions of Jewish thought, practice, law, ethics, and spirituality. Each answer holds four commitments: pastoral context (*how* to respond), the halachic landscape (the range of views), moral seriousness (dignity, no harm), and an honest rabbinic voice. Since pipeline v2, these live in one carefully written constitution answered by a single cached, streamed Claude Sonnet 5.5 call, wrapped in layered guardrails:
+rebbe.dev is a conversational companion for questions of Jewish thought, practice, law, ethics, and spirituality. Each answer holds four commitments: pastoral context (*how* to respond), the halachic landscape (the range of views), moral seriousness (dignity, no harm), and an honest rabbinic voice. Since pipeline v2, these live in one carefully written constitution answered by a single cached, streamed Claude Sonnet 5.5 call (served through Vercel AI Gateway), wrapped in layered guardrails:
 
 - **Deterministic crisis floor**: crisis and abuse disclosures always get human resources first, before any model runs
 - **Safety classifier** (Claude Haiku 5.5): routing and graded risk, run in parallel with source retrieval
 - **Library citations**: retrieved passages are cited with the Citations API and kept separate from general-knowledge references
 - **Post-answer audit**: every answer is checked, and an unsafe one is withdrawn
 
-See [`docs/REWRITE_PLAN.md`](docs/REWRITE_PLAN.md), [`docs/SAFETY.md`](docs/SAFETY.md), and [`docs/BUSINESS_PLAN.md`](docs/BUSINESS_PLAN.md). The original four-agent pipeline is kept as a fallback (`PIPELINE_VERSION=v1`).
+See [`docs/REWRITE_PLAN.md`](docs/REWRITE_PLAN.md), [`docs/SAFETY.md`](docs/SAFETY.md), and [`docs/BUSINESS_PLAN.md`](docs/BUSINESS_PLAN.md). The original four-agent pipeline is kept as a fallback (`PIPELINE_VERSION=v1`, or `GATEWAY=openrouter`).
 
 **Important:** This is guidance, not binding psak (legal ruling). A rabbi who knows you personally may counsel differently.
 
@@ -37,7 +37,7 @@ See [`docs/REWRITE_PLAN.md`](docs/REWRITE_PLAN.md), [`docs/SAFETY.md`](docs/SAFE
 
 - Python 3.11 or higher
 - [uv](https://docs.astral.sh/uv/) package manager
-- An [Anthropic API](https://platform.claude.com/) key (v2), or an OpenRouter / Vercel AI Gateway key for the v1 fallback
+- A [Vercel AI Gateway](https://vercel.com/ai-gateway) API key (Claude models are served through the gateway). OpenRouter also works, with the v1 pipeline
 
 ### Installation
 
@@ -69,9 +69,8 @@ See [`docs/REWRITE_PLAN.md`](docs/REWRITE_PLAN.md), [`docs/SAFETY.md`](docs/SAFE
    Edit `.env` and add your API keys:
 
    ```bash
-   ANTHROPIC_API_KEY=your-anthropic-api-key
-   # Optional: v1 fallback and d'var Torah generation
-   OPENROUTER_API_KEY=your-openrouter-api-key
+   GATEWAY=vercel
+   AI_GATEWAY_API_KEY=your-ai-gateway-key
 
    # Optional: WorkOS for authentication
    WORKOS_API_KEY=your-workos-api-key

@@ -19,13 +19,15 @@ Token assumptions: constitution about 3.5k tokens (cached), history about 1.5k, 
 
 | Pipeline | Calls per message | Est. cost / message |
 |---|---|---|
-| **Current** (Jev + Sonnet 5 × 3, +20% reconsideration, no caching) | 4–5 | **$0.0443** (+5.5% gateway fee → $0.0467) |
-| **Proposed, Sonnet 5.5** (Haiku guard + 1 cached Sonnet call + Haiku audit) | 3 (1 large) | **$0.0192** |
+| **Current** (Jev + Sonnet 5 × 3, +20% reconsideration, no caching) | 4–5 | **$0.0443** (Vercel AI Gateway, list prices; +5.5% if bought through OpenRouter credits) |
+| **Proposed, Sonnet 5.5** (Haiku guard + 1 cached Sonnet call + Haiku audit) | 3 (1 large) | **$0.0189** |
 | Proposed, Opus 5.5 instead | 3 (1 large) | $0.0374 |
 
-Breakdown of the proposed Sonnet 5.5 pipeline: classifier $0.0001, audit $0.0002, generation $0.0159 with a warm cache or $0.0257 cold (blended at a 70% warm rate = $0.0189).
+Breakdown of the proposed Sonnet 5.5 pipeline: classifier $0.0001, audit $0.0002, generation about $0.0157 with a warm cache or $0.0257 cold (blended at a 70% warm rate = $0.0187). All model calls go through Vercel AI Gateway, whose published Claude prices equal Anthropic's list prices (Sonnet 5.5 cache reads are listed at $0.10/MTok).
 
-So the rewrite cuts LLM cost per message by about **57%** and time to first token by about **90%**. Both come from the same change: one cached call instead of four sequential uncached ones, sent directly to the API.
+So the rewrite cuts LLM cost per message by about **57%** and time to first token by about **90%**. Both come from the same change: one cached call instead of four sequential uncached ones.
+
+> Correction (2026-10-31): an earlier draft said the gateway added a ~5.5% fee and recommended calling the Anthropic API directly. That fee is OpenRouter's credit fee. Vercel AI Gateway (the default provider) publishes Claude prices equal to list prices, so v2 runs through the gateway.
 
 > Note: the in-app cost dashboard currently prices `claude-sonnet-5` at $3/$15 and overstates spend by about 50%. Phase 0 of the rewrite fixes this.
 
@@ -55,10 +57,10 @@ Stripe charges **2.9% + $0.30 per payment**. On today's $1 pack the fee is **33%
 
 | Monthly messages | Loaded cost / message |
 |---|---|
-| 5,000 | $0.0373 |
-| 15,000 | $0.0283 |
-| **25,000 (planning volume)** | **$0.0266** |
-| 100,000 | $0.0245 |
+| 5,000 | $0.0369 |
+| 15,000 | $0.0280 |
+| **25,000 (planning volume)** | **$0.0262** |
+| 100,000 | $0.0242 |
 
 Below about 15k messages a month, the $65 fixed overhead dominates and a 4% price loses money. Sponsorship income should cover that gap at launch (about four $18 chai sponsorships a month, net of Stripe fees, cover all fixed costs).
 
@@ -70,11 +72,11 @@ Priced from the loaded cost at 25k messages a month, then rounded to friendly nu
 
 | Pack | Price | Per message | Margin @15k/mo | @25k/mo | @100k/mo |
 |---|---|---|---|---|---|
-| Starter | **$2 → 55 credits** | $0.036 | 5.4% | 12.4% | 21.6% |
-| Standard *(default)* | **$5 → 160 credits** | $0.031 | 0.5% | 7.2% | 16.0% |
-| Plus | **$12 → 400 credits** | $0.030 | 0.1% | 6.9% | 15.6% |
+| Starter | **$2 → 55 credits** | $0.036 | 6.7% | 13.9% | 23.4% |
+| Standard *(default)* | **$5 → 160 credits** | $0.031 | 1.7% | 8.7% | 17.7% |
+| Plus | **$12 → 400 credits** | $0.030 | 1.4% | 8.3% | 17.3% |
 
-The strict 4% sizes at 25k/month are 59 / 165 / 411 credits. The rounded ladder above keeps a few points of cushion at planning volume because the 25k figure is a guess. **Re-price each quarter** from measured cost (admin `/api/admin/costs`): as volume grows, increase the credits per pack rather than raising prices.
+The strict 4% sizes at 25k/month are 60 / 167 / 416 credits. The rounded ladder above keeps a few points of cushion at planning volume because the 25k figure is a guess. **Re-price each quarter** from measured cost (admin `/api/admin/costs`): as volume grows, increase the credits per pack rather than raising prices.
 
 Compared with today, users get about **3× more messages per dollar** ($0.031 vs $0.08–$0.10 per message), and the margin comes from efficiency, not from charging more.
 
@@ -103,7 +105,7 @@ ElevenLabs costs roughly $0.11–$0.22 per 1k characters (verify against the cur
 
 ## 5. Current state, for comparison
 
-Today's packs earn about **41–44% gross margin on LLM cost for paid messages**. Two things erase that: (a) Stripe takes 18–33% of each purchase, which is already counted in the 41–44%; (b) the free tier (3 guest chats per IP per day, which the serverless in-memory counter does not actually enforce, plus 3 signup credits) and unpriced TTS are subsidized out of the same margin, and their volume is unbounded. Users are also paying 3× more per message than they need to. The rewrite lowers the user's price and makes the remaining margin predictable.
+Today's packs earn about **48–51% gross margin on LLM cost for paid messages**. Two things erase that: (a) Stripe takes 18–33% of each purchase, which is already counted in the 48–51%; (b) the free tier (3 guest chats per IP per day, which the serverless in-memory counter does not actually enforce, plus 3 signup credits) and unpriced TTS are subsidized out of the same margin, and their volume is unbounded. Users are also paying 3× more per message than they need to. The rewrite lowers the user's price and makes the remaining margin predictable.
 
 ## 6. Key metrics (admin dashboard)
 

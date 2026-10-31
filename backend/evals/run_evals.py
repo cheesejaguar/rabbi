@@ -123,8 +123,8 @@ def main():
     mode.add_argument("--full", action="store_true")
     args = ap.parse_args()
     use_classifier = args.classifier or args.full
-    if use_classifier and not os.environ.get("ANTHROPIC_API_KEY"):
-        sys.exit("ANTHROPIC_API_KEY is required for --classifier/--full")
+    if use_classifier and not os.environ.get("AI_GATEWAY_API_KEY"):
+        sys.exit("AI_GATEWAY_API_KEY (Vercel AI Gateway) is required for --classifier/--full")
     rows = load()
     t = time.time()
     results = asyncio.run(evaluate(rows, use_classifier, args.full))

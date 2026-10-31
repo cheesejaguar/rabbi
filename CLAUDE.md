@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-rebbe.dev is a chatbot providing Torah wisdom and guidance from a progressive Modern Orthodox perspective. It uses Claude directly (Anthropic API). The default **pipeline v2** wraps one cached, streamed Sonnet 5.5 call in layered guardrails; the legacy four-agent **v1** pipeline remains as a fallback. See `docs/REWRITE_PLAN.md`, `docs/SAFETY.md`, `docs/API_CONTRACT_V2.md`, `docs/BUSINESS_PLAN.md`.
+rebbe.dev is a chatbot providing Torah wisdom and guidance from a progressive Modern Orthodox perspective. It runs Anthropic's Claude models through the Vercel AI Gateway. The default **pipeline v2** wraps one cached, streamed Sonnet 5.5 call (sent in Anthropic Messages format to the gateway's Anthropic-compatible endpoint) in layered guardrails; the legacy four-agent **v1** pipeline remains as a fallback. See `docs/REWRITE_PLAN.md`, `docs/SAFETY.md`, `docs/API_CONTRACT_V2.md`, `docs/BUSINESS_PLAN.md`.
 
 ## Development Commands
 
@@ -24,10 +24,10 @@ The app runs at http://localhost:8000
 ## Configuration
 
 Copy `.env.example` to `.env` and set:
-- `ANTHROPIC_API_KEY` (pipeline v2; without it the app falls back to v1)
-- `PIPELINE_VERSION` (`v2` default), `GENERATION_MODEL` (`claude-sonnet-5-5`), `CLASSIFIER_MODEL`/`AUDIT_MODEL` (`claude-haiku-5-5`)
+- `AI_GATEWAY_API_KEY` with `GATEWAY=vercel` (required for LLM; pipeline v2 uses it, and without it the app falls back to v1)
+- `PIPELINE_VERSION` (`v2` default), `GENERATION_MODEL` (`anthropic/claude-sonnet-5.5`), `CLASSIFIER_MODEL`/`AUDIT_MODEL` (`anthropic/claude-haiku-5.5`), all gateway model ids
 - `ADMIN_ALERT_WEBHOOK_URL` (real-time crisis alerts), `FREE_TIER_DAILY_BUDGET_USD`, `TTS_CREDIT_COST`, `SIGNUP_CREDITS`, `RETENTION_DAYS`
-- `OPENROUTER_API_KEY` or `AI_GATEWAY_API_KEY` (v1 fallback, d'var Torah generation)
+- `OPENROUTER_API_KEY` (alternative gateway; with `GATEWAY=openrouter` the app runs the v1 pipeline)
 - `LLM_MODEL` (optional, defaults to anthropic/claude-sonnet-5)
 - `PASTORAL_CLASSIFIER` (optional, `jev` default or `llm`) - `jev` needs `OPENROUTER_API_KEY`
 - `WORKOS_API_KEY` and `WORKOS_CLIENT_ID` (for authentication)
@@ -43,7 +43,7 @@ Copy `.env.example` to `.env` and set:
 1. `safety/lexicon.py` — deterministic crisis/abuse floor; a match emits the `safety_resources` card before any model call
 2. `safety/classifier.py` (Haiku 5.5, structured output) **in parallel with** `chat/retrieval.py` (library index, multi-query)
 3. `safety/policy.py` — pure function: overlays, effort, card, charge (crisis turns free and never walled)
-4. One streamed Sonnet 5.5 call: frozen `prompts/constitution.md` (1h cache) + profile block + history + library passages as citable `search_result` blocks + mid-conversation system overlay; `fallbacks: "default"`
+4. One streamed Sonnet 5.5 call through the gateway: frozen `prompts/constitution.md` (1h cache) + profile block + history + library passages as citable `search_result` blocks + mid-conversation system overlay. If the gateway rejects that shape, `pipeline.py` switches to a compatible shape (plain-text passages, overlay in the system prompt)
 5. `safety/audit.py` (Haiku) after `done`; `severe` → `retraction` event
 
 Prices live only in `llm/pricing.py`. Keep the constitution free of dates/IDs (cache prefix). Evals: `backend/evals/run_evals.py` (`--offline` runs in CI via `test_v2_safety.py`).

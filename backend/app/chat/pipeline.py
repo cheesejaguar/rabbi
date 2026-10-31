@@ -24,7 +24,7 @@ from typing import AsyncIterator, Optional
 import anthropic
 
 from ..config import get_settings
-from ..llm.client import FALLBACK_BETA, get_client
+from ..llm.client import get_client
 from ..llm.pricing import usage_cost
 from ..prompts import CONSTITUTION, PROMPT_VERSION, profile_block, turn_overlay
 from ..safety import lexicon
@@ -103,20 +103,44 @@ def build_history(history: list[dict]) -> list[dict]:
     return out
 
 
-def build_request(inp: TurnInput, policy: TurnPolicy, passages: list[Passage], *, overlay_as_system_message: bool = True) -> dict:
+# Set after the gateway rejects the full request shape once, so later turns
+# go straight to the compatible shape instead of paying a failed round trip.
+_compat_mode = False
+
+
+def _passages_as_text(passages: list[Passage]) -> str:
+    parts = ["Library passages that may be relevant (cite them as [n] when you use them):"]
+    for p in passages:
+        parts.append(f"[{p.n}] {p.title}, {p.ref}\n{p.text}")
+    return "\n\n".join(parts)
+
+
+def build_request(inp: TurnInput, policy: TurnPolicy, passages: list[Passage], *, compat: bool = False) -> dict:
+    """Anthropic Messages request, sent through the AI gateway.
+
+    Full shape: 1h-cached constitution, library passages as citable
+    ``search_result`` blocks, per-turn overlay as a mid-conversation system
+    message. ``compat`` drops the features a gateway may not pass through
+    (passages become plain text, the overlay joins the top-level system,
+    default cache TTL) so a turn never fails on request shape.
+    """
     settings = get_settings()
-    system = [{"type": "text", "text": CONSTITUTION, "cache_control": {"type": "ephemeral", "ttl": "1h"}}]
+    cache = {"type": "ephemeral"} if compat else {"type": "ephemeral", "ttl": "1h"}
+    system = [{"type": "text", "text": CONSTITUTION, "cache_control": cache}]
     profile = profile_block(inp.denomination, inp.bio)
     if profile:
         system.append({"type": "text", "text": profile})
-    user_content: list[dict] = [p.search_result_block() for p in passages]
-    user_content.append({"type": "text", "text": inp.message})
     overlay = turn_overlay(policy.overlays, policy.mode, policy.question_type)
-    messages = build_history(inp.history) + [{"role": "user", "content": user_content}]
-    if overlay_as_system_message:
-        messages.append({"role": "system", "content": overlay})
+    if compat:
+        user_content: list[dict] = ([{"type": "text", "text": _passages_as_text(passages)}] if passages else [])
     else:
+        user_content = [p.search_result_block() for p in passages]
+    user_content.append({"type": "text", "text": inp.message})
+    messages = build_history(inp.history) + [{"role": "user", "content": user_content}]
+    if compat:
         system.append({"type": "text", "text": overlay})
+    else:
+        messages.append({"role": "system", "content": overlay})
     return {
         "model": settings.generation_model,
         "max_tokens": settings.generation_max_tokens,
@@ -125,8 +149,6 @@ def build_request(inp: TurnInput, policy: TurnPolicy, passages: list[Passage], *
         "cache_control": {"type": "ephemeral"},
         "thinking": {"type": "adaptive"},
         "output_config": {"effort": policy.effort},
-        "betas": [FALLBACK_BETA],
-        "fallbacks": "default",
     }
 
 
@@ -215,7 +237,8 @@ async def run_turn(inp: TurnInput, outcome: TurnOutcome) -> AsyncIterator[dict]:
 
     # 3. Generation ---------------------------------------------------------
     yield {"type": "status", "stage": "writing", "label": "Writing…"}
-    request = build_request(inp, policy, passages)
+    global _compat_mode
+    request = build_request(inp, policy, passages, compat=_compat_mode)
     gen_usage = None
     served_model = request["model"]
     citations: list[dict] = []
@@ -227,7 +250,7 @@ async def run_turn(inp: TurnInput, outcome: TurnOutcome) -> AsyncIterator[dict]:
 
     async def _stream(req):
         nonlocal gen_usage, served_model, stop_reason, first_token_ms
-        async with get_client().beta.messages.stream(**req) as stream:
+        async with get_client().messages.stream(**req) as stream:
             async for event in stream:
                 etype = getattr(event, "type", "")
                 if etype == "content_block_delta":
@@ -259,11 +282,14 @@ async def run_turn(inp: TurnInput, outcome: TurnOutcome) -> AsyncIterator[dict]:
                 outcome.delivered_tokens = outcome.delivered_tokens or ev["type"] == "token"
                 yield ev
         except anthropic.BadRequestError as e:
-            if text_parts or "system" not in str(e).lower():
+            if text_parts or _compat_mode:
                 raise
-            # Model/platform without mid-conversation system messages.
-            logger.warning("Retrying with overlay in top-level system: %s", e)
-            request = build_request(inp, policy, passages, overlay_as_system_message=False)
+            # The gateway rejected part of the full request shape (e.g. search_result
+            # blocks or mid-conversation system messages): retry in compatible form.
+            logger.warning("Gateway rejected full request shape; using compatible mode: %s", e)
+            _compat_mode = True
+            meta["compat_mode"] = True
+            request = build_request(inp, policy, passages, compat=True)
             async for ev in _stream(request):
                 outcome.delivered_tokens = outcome.delivered_tokens or ev["type"] == "token"
                 yield ev
@@ -307,8 +333,10 @@ async def run_turn(inp: TurnInput, outcome: TurnOutcome) -> AsyncIterator[dict]:
 
     meta.update(metrics)
     meta["citations"] = citations
-    meta["sources"] = [s for s in meta["sources"] if s["n"] in cited] + [
-        {**s, "kind": "library_unused"} for s in meta["sources"] if s["n"] not in cited]
+    if not _compat_mode:
+        # Citations API: split sources the answer actually cited from those it didn't use.
+        meta["sources"] = [s for s in meta["sources"] if s["n"] in cited] + [
+            {**s, "kind": "library_unused"} for s in meta["sources"] if s["n"] not in cited]
     outcome.text = full_text
     outcome.metadata = meta
     outcome.cost_usd = total_cost

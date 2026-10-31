@@ -56,8 +56,8 @@ async def test_teaching_turn_streams_with_citations_and_metadata():
     assert meta["estimated_cost_usd"] > 0
 
     req = fake.stream_calls[0]
-    assert req["model"] == "claude-sonnet-5-5"
-    assert req["fallbacks"] == "default" and req["betas"] == [llm_client.FALLBACK_BETA]
+    assert req["model"] == "anthropic/claude-sonnet-5.5"  # gateway model id
+    assert "betas" not in req and "fallbacks" not in req
     assert req["system"][0]["cache_control"] == {"type": "ephemeral", "ttl": "1h"}
     assert req["cache_control"] == {"type": "ephemeral"}
     assert req["output_config"] == {"effort": "low"}
@@ -327,7 +327,7 @@ async def test_mid_stream_failure_keeps_partial_unbilled():
     import httpx
 
     fake = FakeClient(stream_chunks=["Partial "])
-    orig = fake.beta.messages.stream
+    orig = fake.messages.stream
 
     def stream(**kw):
         s = orig(**kw)
@@ -343,7 +343,7 @@ async def test_mid_stream_failure_keeps_partial_unbilled():
 
     async def _ret(v):
         return v
-    fake.beta.messages.stream = stream
+    fake.messages.stream = stream
     events, outcome = await collect(pl.TurnInput(message="q"), fake)
     assert events[-1]["type"] == "error" and events[-1]["partial"] is True
     assert outcome.text == "Partial " and outcome.charge is False and outcome.metadata["partial"]
@@ -356,3 +356,38 @@ def test_region_fallback_is_international_outside_covered_regions():
     card = build_card("crisis", "INTL")
     assert card["emergency_number"] == "your local emergency number"
     assert "911" not in card["message"]
+
+
+
+async def test_gateway_rejection_falls_back_to_compatible_request_shape():
+    import anthropic
+    import httpx
+
+    fake = FakeClient(stream_chunks=["Carrying ", "needs an eruv."])
+    orig = fake.messages.stream
+    calls = []
+
+    def stream(**kw):
+        calls.append(kw)
+        blocks = [b for m in kw["messages"] if isinstance(m["content"], list) for b in m["content"]]
+        if any(b.get("type") == "search_result" for b in blocks):
+            raise anthropic.BadRequestError(
+                "unsupported content block", response=httpx.Response(400, request=httpx.Request("POST", "https://x")),
+                body=None)
+        return orig(**kw)
+
+    fake.messages.stream = stream
+    pl._compat_mode = False
+    try:
+        events, outcome = await collect(pl.TurnInput(message="Can I carry on Shabbat?"), fake)
+        assert outcome.text == "Carrying needs an eruv." and outcome.metadata.get("compat_mode")
+        retry = calls[-1]
+        assert retry["messages"][-1]["role"] == "user"  # overlay moved into top-level system
+        assert "[1] Talmud Shabbat" in retry["messages"][-1]["content"][0]["text"]
+        assert all(s["kind"] == "library" for s in outcome.metadata["sources"])
+        # Later turns use the compatible shape directly (no failed round trip).
+        n = len(calls)
+        await collect(pl.TurnInput(message="And on Yom Tov?"), fake)
+        assert len(calls) == n + 1
+    finally:
+        pl._compat_mode = False

@@ -18,6 +18,12 @@ class ModelPrice:
 
 
 PRICES: dict[str, ModelPrice] = {
+    # Vercel AI Gateway ids (prices from https://ai-gateway.vercel.sh/v1/models,
+    # 2026-10-31; same per-token rates as Anthropic's list prices).
+    "anthropic/claude-sonnet-5.5": ModelPrice(2.00, 10.00, 0.10, 2.50, 4.00),
+    "anthropic/claude-haiku-5.5": ModelPrice(0.10, 0.50, 0.01, 0.125, 0.20),
+    "anthropic/claude-opus-5.5": ModelPrice(4.00, 20.00, 0.20, 5.00, 8.00),
+    # Anthropic first-party ids
     "claude-sonnet-5-5": ModelPrice(2.00, 10.00, 0.20, 2.50, 4.00),
     "claude-sonnet-5": ModelPrice(2.00, 10.00, 0.20, 2.50, 4.00),
     "claude-opus-5-5": ModelPrice(4.00, 20.00, 0.20, 5.00, 8.00),
@@ -27,7 +33,7 @@ PRICES: dict[str, ModelPrice] = {
     "anthropic/claude-sonnet-4-20250514": ModelPrice(3.00, 15.00, 0.30, 3.75, 6.00),
 }
 
-DEFAULT_PRICE = PRICES["claude-sonnet-5-5"]
+DEFAULT_PRICE = PRICES["anthropic/claude-sonnet-5.5"]
 
 
 def price_for(model: str) -> ModelPrice:

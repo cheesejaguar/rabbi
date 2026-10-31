@@ -167,14 +167,16 @@ def test_youth_card_adds_teen_lines():
 # --- Pricing -----------------------------------------------------------------
 
 def test_pricing_sonnet_55():
-    assert cost_usd("claude-sonnet-5-5", input_tokens=1_000_000) == 2.0
-    assert cost_usd("claude-sonnet-5-5", output_tokens=1_000_000) == 10.0
-    assert cost_usd("claude-sonnet-5-5", cache_read_tokens=1_000_000) == 0.2
+    # Gateway ids are priced at the gateway's published (list) rates.
+    assert cost_usd("anthropic/claude-sonnet-5.5", input_tokens=1_000_000) == 2.0
+    assert cost_usd("anthropic/claude-sonnet-5.5", output_tokens=1_000_000) == 10.0
+    assert cost_usd("anthropic/claude-sonnet-5.5", cache_read_tokens=1_000_000) == 0.1
+    assert cost_usd("anthropic/claude-haiku-5.5", input_tokens=1_000_000) == 0.1
 
 
 def test_usage_cost_handles_cache_fields():
-    m = usage_cost("claude-sonnet-5-5", usage(inp=1000, out=500, read=3000, write=0))
-    assert m["estimated_cost_usd"] == round((1000 * 2 + 500 * 10 + 3000 * 0.2) / 1e6, 6)
+    m = usage_cost("anthropic/claude-sonnet-5.5", usage(inp=1000, out=500, read=3000, write=0))
+    assert m["estimated_cost_usd"] == round((1000 * 2 + 500 * 10 + 3000 * 0.1) / 1e6, 6)
     assert usage_cost("x", None)["estimated_cost_usd"] == 0.0
 
 

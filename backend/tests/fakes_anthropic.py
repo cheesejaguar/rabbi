@@ -84,7 +84,7 @@ class FakeClient:
                     return text_message(outer.audit)
                 return text_message("{}")
 
-        class _BetaMessages:
+        class _Streamer:
             def stream(self, **kw):
                 outer.stream_calls.append(kw)
                 if outer.stream_error:
@@ -97,5 +97,6 @@ class FakeClient:
                 return FakeStream(events, NS(usage=usage(2000, 300, 3500, 0), model=kw["model"],
                                              stop_reason=outer.stop_reason))
 
+        streamer = _Streamer()
         self.messages = _Messages()
-        self.beta = NS(messages=_BetaMessages())
+        self.messages.stream = streamer.stream

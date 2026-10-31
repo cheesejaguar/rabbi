@@ -12,7 +12,7 @@ rebbe.dev is a consumer chat product for advice and learning. It is not an agent
 | **Synchronous `OpenAI` client called inside `async def`** (`agents/base.py:_call_claude`, `_call_claude_stream`) | Each LLM call blocks the event loop, so concurrent users wait in line behind each other. |
 | **No prompt caching** (system prompts are rebuilt with per-request data interleaved) | Every call pays full input price for about 1–1.5k tokens of static instructions. |
 | **Stale cost table** (`base.py: TOKEN_COSTS` uses $3/$15 for `claude-sonnet-5`; the real price is $2/$10) | The admin cost dashboard overstates spend by about 50%, so pricing decisions start from wrong numbers. |
-| **Third-party gateway** (OpenRouter / Vercel AI Gateway through an OpenAI-compatible shim) | It adds about 5.5% to every LLM dollar, which is more than the whole 4% target margin. It also blocks native features: prompt caching control, the Citations API, structured outputs, and refusal fallbacks. |
+| **OpenAI-compatible shim to the gateway** (OpenRouter / Vercel AI Gateway via the `openai` SDK) | The shim hides Claude-specific features: prompt caching control, the Citations API, and structured outputs. *(Correction: an earlier draft said the gateway adds ~5.5% to every LLM dollar. That is OpenRouter's credit fee. Vercel AI Gateway's published Claude prices match Anthropic's list prices.)* |
 | **In-memory abuse controls on serverless** (`security.py: GuestSecurityManager` uses `defaultdict` + `Lock`) | Each Vercel instance has its own counters, so rate limits, guest caps, and IP blocks are mostly ignored in production. |
 | **Prompt-injection "defense" is a 15-phrase substring list that only logs** (`security.py: InputValidator.SUSPICIOUS_PATTERNS`) | It gives no real protection, and trivial paraphrases get past it. |
 | **No guaranteed crisis floor.** Crisis resources depend on the voice LLM choosing to include them (`voice.py` "Provides crisis resources if appropriate"). No hotline appears anywhere in code (see also `docs/MISSING_FEATURES.md` #2). | A user who says they are suicidal may get no hotline, depending on the model. This is the most serious safety gap. |
@@ -58,9 +58,9 @@ The four agents encode real values: pastoral sensitivity, a range of halachic vi
 4. Per-turn `role: "system"` overlay (mode, calendar, crisis rules) appended after the user turn so the cached history is left alone.
 5. Retrieved passages as `document` blocks in the current user turn (uncached; they change every turn).
 
-**Model and effort.** `claude-sonnet-5-5` at `effort: "low"` for curiosity/teaching and `"medium"` for counseling/crisis, with adaptive thinking. Sonnet 5.5 has the same price as Sonnet 5 and is the current Sonnet. Opus 5.5 costs about 2× more (see the business plan). Pick it only if an eval shows a quality gap Sonnet cannot close. Enable `fallbacks: "default"` so that a safety-classifier refusal reroutes instead of failing, and always check `stop_reason`.
+**Model and effort.** `anthropic/claude-sonnet-5.5` (via the gateway) at `effort: "low"` for curiosity/teaching and `"medium"` for counseling/crisis, with adaptive thinking. Sonnet 5.5 has the same price as Sonnet 5 and is the current Sonnet. Opus 5.5 costs about 2× more (see the business plan). Pick it only if an eval shows a quality gap Sonnet cannot close. Always check `stop_reason` and handle refusals with a safe reply.
 
-**SDK.** Replace the `openai` shim with the official `anthropic` SDK (`AsyncAnthropic`), direct to the Claude API. This removes the gateway fee and the event-loop blocking at the same time. Keep a thin `llm.py` adapter so the provider can still be swapped.
+**SDK and provider.** Keep the existing provider, Vercel AI Gateway, but call its Anthropic-compatible Messages endpoint (`https://ai-gateway.vercel.sh`, model ids like `anthropic/claude-sonnet-5.5`) with the official `anthropic` SDK (`AsyncAnthropic`) instead of the `openai` shim. This keeps caching control, citations, and structured outputs, and removes the event-loop blocking. Server-side refusal fallbacks (`fallbacks`) are a direct-API feature and are not used. If the gateway rejects part of the full request shape, the pipeline switches to a compatible shape. Keep a thin `llm/client.py` adapter so the provider can still be swapped.
 
 ### 2.2 Retrieval
 
@@ -214,7 +214,7 @@ Existing `metadata`, `token`, `metrics`, and `error` events stay the same. New e
 backend/app/
   api/            chat.py, conversations.py, payments.py, admin.py, public.py
   core/           config.py, db.py (asyncpg pool), ratelimit.py, credits.py, logging.py
-  llm/            client.py (AsyncAnthropic, retries, timeouts, fallbacks), pricing.py (single price table)
+  llm/            client.py (AsyncAnthropic pointed at the AI gateway, retries, timeouts), pricing.py (single price table)
   safety/         lexicon.py, classifier.py, policy.py, audit.py, resources/*.json
   prompts/        constitution.md, overlays/*.md, denominations/*.md (versioned, hashed, logged per message)
   retrieval/      bm25.py, index.py
@@ -245,7 +245,7 @@ Each phase ships on its own behind a `PIPELINE=v2` flag with per-user rollout, a
 - Generation model: **Sonnet 5.5**.
 - Age policy: **13+**, with parent or guardian permission for 13–17 (`/terms`).
 - Jewish crisis resources: the organizations most consistently recommended since October 7, each verified against its own site (`docs/SAFETY.md`).
-- Gateway: **direct Anthropic API** for v2 (the gateway stays for v1 and the d'var Torah).
+- Provider: **Vercel AI Gateway** stays the provider. Anthropic models run through its Anthropic-compatible Messages endpoint. (The first build of v2 called the Anthropic API directly. The owner asked to restore the original provider, and the code was changed back to the gateway.)
 - TTS: **browser voice by default**; ElevenLabs premium voice costs 8 credits, and replays of the same answer are free.
 - `PRODUCT.md` contracts updated for the new packs and additive schema changes.
 

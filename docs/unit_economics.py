@@ -11,8 +11,8 @@ M = 1_000_000
 
 # --- Model prices, USD per 1M tokens: (input, output, cache read, 5-min cache write)
 # Read from the app's single price table so the plan and the dashboard agree.
-import sys
-from pathlib import Path
+import sys  # noqa: E402
+from pathlib import Path  # noqa: E402
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "backend"))
 from app.llm.pricing import price_for  # noqa: E402
@@ -24,14 +24,14 @@ def _p(model):
 
 
 SONNET_5 = _p("claude-sonnet-5")
-SONNET_5_5 = _p("claude-sonnet-5-5")
-OPUS_5_5 = _p("claude-opus-5-5")
-HAIKU_5_5 = _p("claude-haiku-5-5")
+SONNET_5_5 = _p("anthropic/claude-sonnet-5.5")  # Vercel AI Gateway id
+OPUS_5_5 = _p("anthropic/claude-opus-5.5")
+HAIKU_5_5 = _p("anthropic/claude-haiku-5.5")
 
 # --- Payment + ops assumptions
 STRIPE_PCT = 0.029
 STRIPE_FIXED = 0.30
-GATEWAY_FEE = 0.055          # OpenRouter-style credit purchase fee (current setup)
+GATEWAY_FEE = 0.0            # Vercel AI Gateway: published Claude prices = list prices (OpenRouter: ~5.5% credit fee)
 FIXED_MONTHLY = 65.0         # Vercel Pro + Neon + domain + misc (est., verify)
 INFRA_VAR_PER_MSG = 0.001    # function time, DB writes, bandwidth (est.)
 FREE_SHARE = 0.15            # free messages as a share of paid messages
@@ -81,7 +81,7 @@ def max_credits(price, per_msg_cost, margin=TARGET_MARGIN):
 
 if __name__ == "__main__":
     cur = current_pipeline()
-    print(f"Current pipeline LLM cost/msg:          ${cur:.4f}  (with gateway fee ${cur * (1 + GATEWAY_FEE):.4f})")
+    print(f"Current pipeline LLM cost/msg:          ${cur:.4f}  (via OpenRouter, +5.5% credit fee: ${cur * 1.055:.4f})")
     print(f"Proposed pipeline (Sonnet 5.5) cost/msg: ${new_pipeline():.4f}")
     print(f"Proposed pipeline (Opus 5.5) cost/msg:   ${new_pipeline(OPUS_5_5):.4f}")
     print()
