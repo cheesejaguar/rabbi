@@ -256,8 +256,31 @@ textarea:disabled {
   line-height: 1.45;
 }
 
-.error-banner[hidden] {
+.error-banner[hidden],
+.notice-banner[hidden] {
   display: none;
+}
+
+.notice-banner {
+  margin: 0 0 18px;
+  padding: 14px 16px;
+  color: var(--brand-text);
+  background: var(--brand-success-soft);
+  border: 1px solid color-mix(in srgb, var(--brand-success) 40%, var(--brand-line));
+  border-radius: var(--brand-radius-small);
+  line-height: 1.45;
+}
+
+#regenerateDvarBtn[aria-busy="true"] .ph-icon {
+  animation: regenerate-pulse 1.2s ease-in-out infinite;
+}
+
+@keyframes regenerate-pulse {
+  50% { opacity: 0.35; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  #regenerateDvarBtn[aria-busy="true"] .ph-icon { animation: none; }
 }
 
 #content {

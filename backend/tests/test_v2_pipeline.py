@@ -391,3 +391,28 @@ async def test_gateway_rejection_falls_back_to_compatible_request_shape():
         assert len(calls) == n + 1
     finally:
         pl._compat_mode = False
+
+
+async def test_quality_only_audit_concern_is_recorded_as_pass():
+    fake = FakeClient(audit=json.dumps({"verdict": "concern", "issues": ["claims_binding_psak"], "note": "firm"}))
+    inp = pl.TurnInput(message="q")
+    events, outcome = await collect(inp, fake)
+    await pl.finish_audit(inp, outcome)
+    audit = outcome.metadata["audit"]
+    assert audit["verdict"] == "pass" and audit["issues"] == ["claims_binding_psak"]
+
+
+async def test_missing_safety_care_without_risk_flags_is_a_pass():
+    fake = FakeClient(audit=json.dumps({"verdict": "concern", "issues": ["missing_safety_care"], "note": "x"}))
+    inp = pl.TurnInput(message="q")
+    events, outcome = await collect(inp, fake)
+    await pl.finish_audit(inp, outcome)
+    assert outcome.metadata["audit"]["verdict"] == "pass"
+
+
+async def test_harmful_audit_concern_still_reaches_review():
+    fake = FakeClient(audit=json.dumps({"verdict": "concern", "issues": ["shaming_or_cruelty"], "note": "x"}))
+    inp = pl.TurnInput(message="q")
+    events, outcome = await collect(inp, fake)
+    await pl.finish_audit(inp, outcome)
+    assert outcome.metadata["audit"]["verdict"] == "concern"

@@ -934,21 +934,38 @@
   }
 
   const regenerateDvarBtn = document.getElementById("regenerateDvarBtn");
+  const noticeBanner = document.getElementById("noticeBanner");
   if (regenerateDvarBtn) {
+    const label = regenerateDvarBtn.querySelector("[data-regenerate-label]");
+    const idleLabel = label ? label.textContent : "";
+    const showNotice = (message) => {
+      if (!noticeBanner) return;
+      noticeBanner.textContent = message;
+      noticeBanner.hidden = !message;
+    };
     regenerateDvarBtn.addEventListener("click", async () => {
-      if (!window.confirm("Rewrite this week's d'var Torah now? The current text and its recording will be replaced.")) return;
+      if (regenerateDvarBtn.getAttribute("aria-busy") === "true") return;
+      if (!window.confirm("Rewrite this week's d'var Torah now? The new text replaces the current one when it is ready, and its recording is redone on the next listen.")) return;
       regenerateDvarBtn.disabled = true;
+      regenerateDvarBtn.setAttribute("aria-busy", "true");
+      if (label) label.textContent = "Regenerating…";
+      clearError();
+      showNotice("Writing this week's d'var Torah. This usually takes 30 to 60 seconds; keep this page open.");
       announce("Regenerating this week's d'var Torah. This takes about a minute.");
       try {
         const d = new Date();
         const date = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
         const result = await apiPost(`/api/admin/dvar-torah/regenerate?client_date=${date}`, {});
-        clearError();
-        announce(`D'var Torah for Parashat ${result.parsha_name} regenerated.`);
+        const message = `D'var Torah for Parashat ${result.parsha_name} regenerated. Reload the home page to see it.`;
+        showNotice(message);
+        announce(message);
       } catch (error) {
+        showNotice("");
         showError(`Could not regenerate the d'var Torah. ${error.message}`);
       } finally {
         regenerateDvarBtn.disabled = false;
+        regenerateDvarBtn.removeAttribute("aria-busy");
+        if (label) label.textContent = idleLabel;
       }
     });
   }
