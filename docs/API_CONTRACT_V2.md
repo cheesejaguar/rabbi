@@ -50,3 +50,6 @@ Response: `text/event-stream`. Each frame is `data: <json>\n\n`. Events arrive i
 | `GET /terms` | Terms of Service page (public) |
 | `POST /api/speak` | Unchanged request. Premium voice costs `TTS_CREDIT_COST` credits (8 by default) unless the message was already voiced. Returns 402 with `{detail, code: "no_credits"}` when the balance is too low. Clients should default to browser `speechSynthesis` and offer premium voice as an explicit choice. |
 | `GET /api/credits` | Adds `tts_credit_cost` |
+| `GET /api/dvar-torah` | Adds `audio_available` (bool) |
+| `GET /api/dvar-torah/audio?client_date=` | The d'var Torah read aloud (`audio/mpeg`, `ETag`, cached for a day). Generated once per text and shared by all listeners. `202 {status: "generating", retry_after}` while the one generation runs; `503` when unavailable; `404` in holiday weeks. Free, no credits. |
+| `POST /api/admin/dvar-torah/regenerate?client_date=` | Admin only. Replaces this week's d'var Torah and drops its recording. |

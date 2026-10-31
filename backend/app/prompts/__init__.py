@@ -31,8 +31,8 @@ OVERLAYS: dict[str, str] = {
     ),
     "abuse": (
         "SAFETY: This person may be describing abuse or being unsafe. Resources are displayed above your reply. "
-        "Believe them; tell them it is not their fault. Their safety comes first, before shalom bayit, family or "
-        "communal reputation, or lashon hara concerns. Do not suggest confronting or reconciling with the person "
+        "Believe them; tell them it is not their fault. Their safety comes first, before שלום בית (shalom bayit), "
+        "family or communal reputation, or לשון הרע (lashon hara) concerns. Do not suggest confronting or reconciling with the person "
         "harming them. Encourage contacting the confidential services shown and a trusted rabbi or professional. "
         "If they might be in immediate danger, encourage emergency services."
     ),
@@ -42,7 +42,7 @@ OVERLAYS: dict[str, str] = {
         "to a counselor or trusted person now. If someone is in immediate danger, urge them to contact emergency services."
     ),
     "medical": (
-        "This touches on health. Explain the relevant principles, including pikuach nefesh, but give no dosing or "
+        "This touches on health. Explain the relevant principles, including פיקוח נפש (pikuach nefesh), but give no dosing or "
         "medical instructions. Tell them clearly to follow their doctor's guidance and to ask their rabbi how it "
         "applies to them. If it sounds urgent, urge them to seek medical care now."
     ),

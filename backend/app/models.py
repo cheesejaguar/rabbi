@@ -139,6 +139,7 @@ class DvarTorahResponse(BaseModel):
     hebrew_year: int = Field(0, description="Hebrew calendar year")
     content: str = Field("", description="The d'var Torah text")
     is_holiday_week: bool = Field(False, description="True when no regular parsha is read")
+    audio_available: bool = Field(False, description="True when a read-aloud recording can be played")
     sponsors: list[dict] = Field(
         default_factory=list,
         description="Completed sponsorship dedications for this parsha week"

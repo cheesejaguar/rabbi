@@ -191,3 +191,37 @@ class TestTermsOfService:
         srcs = [r["src"] for r in routes]
         assert srcs.index("/terms/?") < srcs.index("/(.*)")
         assert srcs.index("/c/(.*)") < srcs.index("/(.*)")
+
+
+class TestDvarTorahAudio:
+    """Read-aloud recording endpoint: generated once, then served from cache."""
+
+    DVAR = {"parsha_name": "Vayeira", "parsha_name_hebrew": "וירא", "hebrew_year": 5787,
+            "content": "On שבת (Shabbat) we learn hospitality."}
+
+    def test_ready_audio_is_served_with_cache_headers_and_etag(self, public_client):
+        with patch("app.main.get_or_generate_dvar_torah", AsyncMock(return_value=self.DVAR)), \
+             patch("app.main.dvar_audio.get_or_create_audio", AsyncMock(return_value=("ready", b"MP3DATA"))):
+            r = public_client.get("/api/dvar-torah/audio?client_date=2026-10-31")
+            assert r.status_code == 200 and r.content == b"MP3DATA"
+            assert r.headers["content-type"] == "audio/mpeg"
+            assert "max-age=86400" in r.headers["cache-control"]
+            again = public_client.get("/api/dvar-torah/audio", headers={"If-None-Match": r.headers["etag"]})
+            assert again.status_code == 304
+
+    def test_generating_returns_202_with_retry(self, public_client):
+        with patch("app.main.get_or_generate_dvar_torah", AsyncMock(return_value=self.DVAR)), \
+             patch("app.main.dvar_audio.get_or_create_audio", AsyncMock(return_value=("generating", None))):
+            r = public_client.get("/api/dvar-torah/audio")
+            assert r.status_code == 202 and r.json()["status"] == "generating"
+            assert r.headers["retry-after"] == "4"
+
+    def test_unavailable_and_holiday_weeks(self, public_client):
+        with patch("app.main.get_or_generate_dvar_torah", AsyncMock(return_value=self.DVAR)), \
+             patch("app.main.dvar_audio.get_or_create_audio", AsyncMock(return_value=("unavailable", None))):
+            assert public_client.get("/api/dvar-torah/audio").status_code == 503
+        with patch("app.main.get_or_generate_dvar_torah", AsyncMock(return_value=None)):
+            assert public_client.get("/api/dvar-torah/audio").status_code == 404
+
+    def test_regenerate_requires_admin(self, public_client):
+        assert public_client.post("/api/admin/dvar-torah/regenerate").status_code in (401, 403)

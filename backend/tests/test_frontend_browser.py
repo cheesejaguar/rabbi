@@ -1343,7 +1343,27 @@ def test_markdown_is_sanitized_and_links_open_safely(page, frontend_url):
     link = body.get_by_role("link", name="Sefaria")
     assert link.get_attribute("target") == "_blank"
     assert link.get_attribute("rel") == "noopener noreferrer"
-    assert body.locator("p").last.get_attribute("dir") == "auto"
+    assert body.locator("p").last.get_attribute("dir") == "rtl"
+
+
+def test_inline_hebrew_terms_keep_english_paragraphs_left_to_right(page, frontend_url):
+    """Answers write Hebrew terms first ("שבת (Shabbat)"). A paragraph that starts
+    with a Hebrew word must still lay out left-to-right; an all-Hebrew quote stays RTL."""
+    events = [
+        {"type": "token", "data": "צדקה (tzedakah, charitable giving) is more than charity. "},
+        {"type": "token", "data": "The רמב\"ם (Rambam) lists eight levels.\n\n"},
+        {"type": "token", "data": "- חסד (chesed, loving-kindness) goes beyond money\n\n"},
+        {"type": "token", "data": "> צדק צדק תרדף\n\nJustice, justice shall you pursue."},
+        {"type": "done"},
+    ]
+    install_app_routes(page, stream_body=sse(events))
+    start_chat(page, frontend_url)
+    body = page.locator(".message.assistant .message-content")
+    body.locator("p").filter(has_text="Justice, justice").wait_for()
+    assert body.locator("p").filter(has_text="eight levels").get_attribute("dir") == "ltr"
+    assert body.locator("li").first.get_attribute("dir") == "ltr"
+    assert body.locator("blockquote p").get_attribute("dir") == "rtl"
+    assert body.locator("p").filter(has_text="Justice, justice").get_attribute("dir") == "ltr"
 
 
 def test_no_credits_opens_the_purchase_sheet_and_keeps_the_draft(page, frontend_url):
@@ -1572,3 +1592,44 @@ def test_admin_crisis_queue_shows_guest_safety_events(page, frontend_url):
     content = page.locator("#content").inner_text()
     assert "Guest visitor" in content and "$1.25" in content
     assert "No messages currently need crisis or referral review." in content
+
+
+def test_dvar_torah_listen_waits_for_the_one_recording_then_plays(page, frontend_url):
+    """The read-aloud recording is generated once on the server; while it is being
+    prepared the endpoint answers 202 and the player waits, then shows controls."""
+    install_app_routes(page)
+    page.route("**/api/dvar-torah?*", lambda route: route.fulfill(json={
+        "parsha_name": "Vayeira", "parsha_name_hebrew": "וירא",
+        "content": "On שבת (Shabbat) we learn from אברהם (Avraham).",
+        "is_holiday_week": False, "audio_available": True, "sponsors": []}))
+    audio_calls = []
+
+    def audio(route):
+        audio_calls.append(route.request.url)
+        if len(audio_calls) == 1:
+            route.fulfill(status=202, json={"status": "generating", "retry_after": 2})
+        else:
+            route.fulfill(status=200, body=b"ID3fake-mp3", headers={"Content-Type": "audio/mpeg"})
+
+    page.route("**/api/dvar-torah/audio*", audio)
+    open_frontend(page, frontend_url, "index.html", {"width": 1280, "height": 900})
+    wait_for_signed_in_app(page)
+    page.locator("#dvarTorahSection:not(.hidden)").wait_for()
+    page.locator("#dvarTorahExpandBtn").click()
+    listen = page.get_by_role("button", name="Listen to the rebbe read it")
+    listen.click()
+    page.locator(".dvar-listen-status").filter(has_text="Preparing the recording").wait_for()
+    page.locator(".dvar-audio:not([hidden])").wait_for(timeout=15000)
+    assert page.locator(".dvar-audio").get_attribute("src").startswith("blob:")
+    assert listen.is_hidden()
+    assert len(audio_calls) == 2
+
+
+def test_dvar_torah_hides_listen_when_audio_is_not_available(page, frontend_url):
+    install_app_routes(page)
+    open_frontend(page, frontend_url, "index.html", {"width": 1280, "height": 900})
+    wait_for_signed_in_app(page)
+    page.locator("#dvarTorahSection:not(.hidden)").wait_for()
+    page.locator("#dvarTorahExpandBtn").click()
+    page.locator("#sponsorDvarBtn").wait_for()
+    assert page.locator(".dvar-listen-btn").count() == 0
