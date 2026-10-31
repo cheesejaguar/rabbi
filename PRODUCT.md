@@ -30,14 +30,15 @@ The public landing page is the anonymous entry point. FastAPI serves either that
 
 - The production frontend is plain HTML, CSS, and JavaScript with no build step.
 - FastAPI routing, `/static/*`, `/admin`, `/auth/*`, the authentication `postMessage` contract, and Vercel route ordering must remain compatible.
-- Existing API payloads, server-sent event types, analytics event names, payment request bodies, and the twenty-message conversation-history cap are stable contracts.
-- Backend enum values for denominations, `credits_10`, `credits_25`, sponsorship tiers, and dedication types must remain unchanged.
-- Credit packages are ten credits for $1.00 and twenty-five credits for $2.00.
-- The response pipeline includes pastoral context, halachic reasoning, ethical review, and final voice. These are system processes, not guarantees of correctness.
+- Existing API payloads, server-sent event types, analytics event names, payment request bodies, and the twenty-message conversation-history cap are stable contracts. Pipeline v2 extends them additively (`docs/API_CONTRACT_V2.md`).
+- Backend enum values for denominations, sponsorship tiers, and dedication types must remain unchanged. Retired package ids `credits_10` and `credits_25` stay readable in purchase history.
+- Credit packages are 55 credits for $2, 160 for $5 (recommended), and 400 for $12, priced near cost (`docs/BUSINESS_PLAN.md`). Crisis turns are never charged.
+- The response pipeline holds pastoral context, halachic reasoning, ethical review, and final voice in one constitution, wrapped in deterministic and model-based guardrails (`docs/SAFETY.md`). These are system processes, not guarantees of correctness.
+- The service is for ages 13 and up; teens use it with a parent or guardian's permission (`/terms`).
 - Retrieved source matches and model-knowledge citations must remain clearly distinguishable. A retrieved match is not a claim-level verification guarantee.
 - The product provides guidance, not binding psak. Human referral remains a foundational safety behavior.
 - Conversation access is scoped for ordinary users, while authorized administrators may review content for operations, moderation, and safety. The interface must not make an absolute privacy promise.
-- No database migration or new backend product endpoint is part of this redesign.
+- Schema changes are additive and applied idempotently at startup under the advisory lock.
 
 ## Brand Commitments
 
@@ -51,7 +52,7 @@ The approved identity is Braided Light. Its mark is a reduced lowercase `r` form
 - The four-stage reasoning mechanism is documented in `README.md` and implemented in `backend/app/agents/`.
 - Current pricing and sponsorship tiers are defined in `backend/app/payments.py`.
 - Public-page and admin authorization behavior is covered by the existing backend test suite.
-- The product has no supplied testimonials, public usage figures, terms of service, independent accuracy study, or substantiated commercial performance claims. The privacy policy is grounded in the implemented data flows and must remain current as those flows change.
+- The product has no supplied testimonials, public usage figures, independent accuracy study, or substantiated commercial performance claims. The privacy policy is grounded in the implemented data flows and must remain current as those flows change.
 
 ## Product Principles
 

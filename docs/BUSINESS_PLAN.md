@@ -1,6 +1,6 @@
 # rebbe.dev — Business Plan (post-rewrite)
 
-Status: **proposal** · Pricing goal: **cost plus about 4%**, enough to keep the lights on, not a profit engine · Model: [`unit_economics.py`](unit_economics.py) (run it to reproduce every number below) · Architecture: [`REWRITE_PLAN.md`](REWRITE_PLAN.md)
+Status: **adopted**. The new packs and the free-tier budget ship with pipeline v2 · Pricing goal: **cost plus about 4%**, enough to keep the lights on, not a profit engine · Model: [`unit_economics.py`](unit_economics.py) (run it to reproduce every number below) · Architecture: [`REWRITE_PLAN.md`](REWRITE_PLAN.md)
 
 ## 1. What we sell
 

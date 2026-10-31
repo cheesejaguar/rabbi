@@ -70,6 +70,9 @@ from .admin import router as admin_router, require_admin
 from . import database as db
 from .dvar_torah import get_or_generate_dvar_torah, resolve_local_date
 from .jewish_calendar import get_calendar_status
+from .chat.endpoint import stream_chat_v2, use_v2_for
+from .chat.retrieval import set_retriever as set_v2_retriever
+from .account import router as account_router
 
 # ---------------------------------------------------------------------------
 # App Configuration & Middleware
@@ -161,6 +164,9 @@ orchestrator = RabbiOrchestrator(
     pastoral_classifier=pastoral_classifier,
 )
 
+# The v2 pipeline shares the orchestrator's library index (one copy in memory).
+set_v2_retriever(orchestrator.retriever)
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -184,6 +190,16 @@ async def lifespan(app: FastAPI):
             logger.warning(f"Could not initialize database: {e}")
     # Pre-warm RAG index (nice-to-have; halachic agent also loads lazily)
     orchestrator.ensure_rag()
+    # Retention schedule: at most once a day across instances.
+    if settings.db_url:
+        try:
+            from . import ratelimit
+            if await ratelimit.hit("maintenance:retention", 86400) == 1:
+                purged = await db.purge_expired_conversations(settings.retention_days)
+                await db.rate_limit_prune()
+                logger.info(f"Retention: purged {purged} expired conversations")
+        except Exception as e:
+            logger.warning(f"Retention maintenance skipped: {e}")
     yield
     # Shutdown: Close database pool
     await db.close_pool()
@@ -306,6 +322,8 @@ class AuthMiddleware(BaseHTTPMiddleware):
         "/",  # Public landing page for visitors / app for signed-in users
         "/privacy",
         "/privacy/",
+        "/terms",
+        "/terms/",
         "/robots.txt",
         "/sitemap.xml",
         "/auth/login",
@@ -374,6 +392,7 @@ app.include_router(auth_router)
 app.include_router(conversations_router)
 app.include_router(payments_router)
 app.include_router(admin_router)
+app.include_router(account_router)
 
 
 # ---------------------------------------------------------------------------
@@ -592,11 +611,12 @@ async def get_credits(request: Request):
 
     if not settings.db_url:
         # If no database, return unlimited credits
-        return {"credits": -1, "unlimited": True}
+        return {"credits": -1, "unlimited": True, "tts_credit_cost": settings.tts_credit_cost}
 
     try:
         credits = await db.get_user_credits(user["id"])
-        return {"credits": credits if credits is not None else 3, "unlimited": False}
+        return {"credits": credits if credits is not None else 3, "unlimited": False,
+                "tts_credit_cost": settings.tts_credit_cost}
     except Exception as e:
         logger.error(f"Error getting credits: {e}")
         return {"credits": 3, "unlimited": False}
@@ -912,6 +932,22 @@ async def text_to_speech(request: Request):
 
     if not text:
         raise HTTPException(status_code=400, detail="No text provided")
+    text = text[:6000]
+
+    # Premium voice costs credits (ElevenLabs is ~10-25x the cost of a text
+    # reply). The charge is keyed on the text, so replaying the same answer
+    # is free. Browser speechSynthesis is the free default in the client.
+    if settings.db_url and settings.tts_credit_cost > 0:
+        import hashlib
+        ref = hashlib.sha256(f"{user['id']}:{text}".encode()).hexdigest()[:32]
+        try:
+            balance = await db.try_charge_credits(user["id"], settings.tts_credit_cost, "tts", ref)
+        except Exception as e:
+            logger.warning(f"TTS credit check failed: {e}")
+            raise HTTPException(status_code=503, detail="Unable to verify credits")
+        if balance is None:
+            return JSONResponse(status_code=402, content={
+                "detail": f"Premium voice needs {settings.tts_credit_cost} credits.", "code": "no_credits"})
 
     async def stream_audio():
         """Yield raw PCM audio chunks from ElevenLabs streaming endpoint."""
@@ -1080,6 +1116,11 @@ async def chat_stream(request: Request, chat_request: ChatRequest):
     # Get current user for database operations
     user = get_current_user(request)
 
+    # Pipeline v2 (guardrails + one cached generation call). Falls back to
+    # the legacy pipeline below when v2 is disabled or not configured.
+    if use_v2_for(user, request):
+        return await stream_chat_v2(request, chat_request, user)
+
     # Security checks for unauthenticated users
     if not user:
         # Check if IP is blocked
@@ -1175,7 +1216,7 @@ async def chat_stream(request: Request, chat_request: ChatRequest):
             )
         if not has_credit:
             return StreamingResponse(
-                iter([f"data: {json.dumps({'type': 'error', 'message': 'No credits remaining. Please contact support.'})}\n\n"]),
+                iter([f"data: {json.dumps({'type': 'error', 'code': 'no_credits', 'message': 'You are out of messages. Add more to continue.'})}\n\n"]),
                 media_type="text/event-stream",
             )
         credit_consumed = True
@@ -1202,6 +1243,15 @@ async def chat_stream(request: Request, chat_request: ChatRequest):
         try:
             # Emit session context so the client can associate this stream
             yield f"data: {json.dumps({'type': 'session', 'session_id': session_id, 'conversation_id': conversation_id})}\n\n"
+
+            # Deterministic crisis floor (same as v2): resources before any model output.
+            from .safety import lexicon as _lexicon
+            from .safety.resources import build_card as _build_card, region_for as _region_for
+            _lex = _lexicon.scan(sanitized_message)
+            if _lex.forces_crisis or _lex.forces_abuse_protocol:
+                _card = _build_card("crisis" if _lex.forces_crisis else "abuse",
+                                    _region_for(chat_request.client_tz, request.headers.get("accept-language")))
+                yield f"data: {json.dumps({'type': 'safety_resources', **_card})}\n\n"
 
             async for event in orchestrator.process_message_stream(
                 user_message=sanitized_message,
@@ -1341,6 +1391,19 @@ if os.path.exists(frontend_path):
         """Serve the public, crawlable privacy policy."""
         return FileResponse(os.path.join(frontend_path, "privacy.html"))
 
+    @app.api_route("/terms", methods=["GET", "HEAD"], include_in_schema=False)
+    @app.api_route("/terms/", methods=["GET", "HEAD"], include_in_schema=False)
+    async def serve_terms():
+        """Serve the public Terms of Service."""
+        return FileResponse(os.path.join(frontend_path, "terms.html"))
+
+    @app.get("/c/{conversation_id}", include_in_schema=False)
+    async def serve_conversation_deep_link(request: Request, conversation_id: str):
+        """Deep link to a conversation: the app for signed-in users, else the landing page."""
+        if get_current_user(request):
+            return FileResponse(os.path.join(frontend_path, "index.html"))
+        return RedirectResponse(url="/", status_code=302)
+
     @app.api_route("/", methods=["GET", "HEAD"])
     async def serve_frontend(request: Request):
         """Serve the app to signed-in users, the public landing page to visitors.
@@ -1378,6 +1441,7 @@ if os.path.exists(frontend_path):
             '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n'
             f"  <url><loc>{settings.public_base_url}/</loc><changefreq>weekly</changefreq></url>\n"
             f"  <url><loc>{settings.public_base_url}/privacy</loc><changefreq>yearly</changefreq></url>\n"
+            f"  <url><loc>{settings.public_base_url}/terms</loc><changefreq>yearly</changefreq></url>\n"
             "</urlset>\n"
         )
         return Response(content=content, media_type="application/xml")

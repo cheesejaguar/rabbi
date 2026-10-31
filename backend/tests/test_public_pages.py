@@ -82,14 +82,15 @@ class TestPrivacyPolicy:
         assert response.headers["content-type"].startswith("text/html")
         assert "Privacy Policy | rebbe.dev" in response.text
         assert '<link rel="canonical" href="https://rebbe.dev/privacy">' in response.text
-        assert "August 13, 2026" in response.text
+        assert "October 31, 2026" in response.text
         assert "Information we process" in response.text
-        assert "AI and text-to-speech processing" in response.text
+        assert "AI, safety review, and text-to-speech processing" in response.text
         assert "Retention and deletion" in response.text
         assert "WorkOS" in response.text
         assert "Stripe" in response.text
         assert "ElevenLabs" in response.text
-        assert "do not currently have an automatic expiration schedule" in response.text
+        assert "deleted automatically" in response.text
+        assert "Anthropic" in response.text
 
     def test_authenticated_visitor_still_gets_policy(self, public_client):
         with patch('app.main.get_current_user', return_value=AUTH_USER):
@@ -167,3 +168,26 @@ class TestDvarTorahEndpoint:
             response = public_client.get("/api/dvar-torah?client_date=2026-10-29")
         assert response.status_code == 200
         assert generate.call_args.args[2] == date(2026, 10, 29)
+
+
+class TestTermsOfService:
+    """The public Terms of Service page (ages 13+, not for emergencies)."""
+
+    def test_terms_page_is_public_and_states_core_terms(self, public_client):
+        client = public_client
+        response = client.get("/terms")
+        assert response.status_code == 200
+        assert "Terms of Service | rebbe.dev" in response.text
+        assert "at least 13 years old" in response.text
+        assert "Not for emergencies" in response.text
+        assert "guidance, not psak" in response.text.lower()
+        assert client.head("/terms").status_code == 200
+
+    def test_terms_route_precedes_vercel_catchall(self):
+        import json
+        from pathlib import Path
+
+        routes = json.loads((Path(__file__).parents[2] / "vercel.json").read_text())["routes"]
+        srcs = [r["src"] for r in routes]
+        assert srcs.index("/terms/?") < srcs.index("/(.*)")
+        assert srcs.index("/c/(.*)") < srcs.index("/(.*)")

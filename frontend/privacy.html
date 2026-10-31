@@ -50,7 +50,7 @@
         <p class="eyebrow">Privacy at rebbe.dev</p>
         <h1 id="policy-title">A clear account of your information.</h1>
         <p class="policy-lede">Jewish questions can be personal. This policy explains what rebbe.dev processes, why it is used, who helps process it, and what choices you have.</p>
-        <p class="policy-date">Effective and last updated <time datetime="2026-08-13">August 13, 2026</time></p>
+        <p class="policy-date">Effective and last updated <time datetime="2026-10-31">October 31, 2026</time></p>
       </div>
 
       <aside class="policy-snapshot" aria-labelledby="snapshot-title">
@@ -58,7 +58,7 @@
         <dl>
           <div>
             <dt>AI processing</dt>
-            <dd>Your question and relevant context are sent to an AI gateway and model provider.</dd>
+            <dd>Your question and relevant context are sent to Anthropic, which provides the Claude models that write and safety-check answers.</dd>
           </div>
           <div>
             <dt>Stored history</dt>
@@ -83,7 +83,7 @@
           <li><a href="#scope">Scope</a></li>
           <li><a href="#information">Information we process</a></li>
           <li><a href="#use">How we use information</a></li>
-          <li><a href="#ai">AI and text-to-speech</a></li>
+          <li><a href="#ai">AI, safety review, and speech</a></li>
           <li><a href="#disclosure">How information is disclosed</a></li>
           <li><a href="#browser">Cookies and browser storage</a></li>
           <li><a href="#retention">Retention and deletion</a></li>
@@ -158,10 +158,10 @@
 
         <section id="ai">
           <p class="section-number">04</p>
-          <h2>AI and text-to-speech processing</h2>
-          <p>To answer a question, rebbe.dev sends the current message and may send recent conversation history, optional denomination and profile context, retrieved source excerpts, and system-created pastoral, halachic, ethical, or safety context through a configured AI gateway. The current software supports <a href="https://vercel.com/legal/privacy-policy" rel="noopener noreferrer">Vercel AI Gateway</a> or <a href="https://openrouter.ai/privacy" rel="noopener noreferrer">OpenRouter</a>, which routes requests to a selected model provider.</p>
-          <p>Different model providers may have different logging, retention, review, and model-training practices. The provider can change with service configuration. Review the applicable gateway and model provider terms before including information you would not want an external AI provider to process.</p>
-          <p>If you choose <strong>Speak</strong>, the assistant response text is sent to <a href="https://elevenlabs.io/privacy-policy" rel="noopener noreferrer">ElevenLabs</a> to create audio. rebbe.dev does not record your voice or use your microphone for this feature.</p>
+          <h2>AI, safety review, and text-to-speech processing</h2>
+          <p>To answer a question, rebbe.dev sends the current message and may send recent conversation history (up to 20 turns), optional denomination and profile context, and retrieved source excerpts to <a href="https://www.anthropic.com/legal/privacy" rel="noopener noreferrer">Anthropic</a>, which provides the Claude models used by the service. The deployment can be configured to use the legacy <a href="https://vercel.com/legal/privacy-policy" rel="noopener noreferrer">Vercel AI Gateway</a> or <a href="https://openrouter.ai/privacy" rel="noopener noreferrer">OpenRouter</a> route instead.</p>
+          <p>Each message is checked by an automated safety classifier before an answer is written, and each answer is reviewed by an automated audit afterward. These checks look for signs of crisis, abuse, danger, misuse, and unsafe answers. When they detect possible danger, rebbe.dev shows crisis resources, may withdraw an unsafe answer, and records a safety event that an authorized administrator can review. For possible self-harm, abuse, or harm to others, an administrator may be notified in real time. That alert contains the type of event and a link to the review queue, not the text of your message.</p>
+          <p>If you choose <strong>Premium voice</strong>, the assistant response text is sent to <a href="https://elevenlabs.io/privacy-policy" rel="noopener noreferrer">ElevenLabs</a> to create audio. The standard voice uses your browser's built-in speech feature and is not sent to rebbe.dev for audio. rebbe.dev does not record your voice or use your microphone.</p>
         </section>
 
         <section id="disclosure">
@@ -170,7 +170,7 @@
           <p>We disclose information only for the purposes described here:</p>
           <ul>
             <li><strong>Authentication:</strong> <a href="https://workos.com/legal/privacy" rel="noopener noreferrer">WorkOS</a> provides sign-in and identity services.</li>
-            <li><strong>AI response processing:</strong> a configured gateway, such as Vercel AI Gateway or OpenRouter, and the downstream model provider process question and context data.</li>
+            <li><strong>AI response processing and safety checks:</strong> Anthropic processes question and context data (or, if configured, Vercel AI Gateway or OpenRouter and their model providers).</li>
             <li><strong>Audio:</strong> ElevenLabs processes assistant text only when you request speech.</li>
             <li><strong>Payments:</strong> <a href="https://stripe.com/privacy" rel="noopener noreferrer">Stripe</a> processes payment details and receives customer, transaction, and purchase metadata. Stripe-hosted fields keep full card numbers outside the rebbe.dev server.</li>
             <li><strong>Hosting and storage:</strong> Vercel and configured database or infrastructure providers process application, network, and stored data needed to run the service.</li>
@@ -210,7 +210,7 @@
                 <tr>
                   <td><code>guest_chats_used</code></td>
                   <td>Enforces the guest-use allowance.</td>
-                  <td>30 days</td>
+                  <td>1 year</td>
                 </tr>
                 <tr>
                   <td>Session storage</td>
@@ -231,9 +231,9 @@
         <section id="retention">
           <p class="section-number">07</p>
           <h2>Retention and deletion</h2>
-          <p>Stored account, conversation, profile, feedback, analytics, text-to-speech, error, payment, sponsorship, and admin records do not currently have an automatic expiration schedule in the application. We retain them while reasonably needed to provide and secure the service, keep transaction and audit records, resolve disputes, meet legal obligations, and maintain legitimate operational records.</p>
-          <p>You can delete an individual conversation in the application. That removes the conversation, its messages, and associated message feedback from the active database. It may not remove separate error excerpts, text-to-speech or analytics records, payment records, admin logs, provider logs, or backups. Those records can remain for operational, security, accounting, legal, or provider-retention reasons.</p>
-          <p>Guest abuse-prevention state is designed to clear after roughly 24 hours of inactivity when cleanup runs. Cookie and browser-storage durations are listed above. Provider and hosting logs follow their own schedules.</p>
+          <p>Conversations that have not been updated for 18 months are deleted automatically, along with their messages and message feedback. Safety events are kept for up to 18 months for review and safety purposes. Payment, sponsorship, and admin audit records are kept as long as reasonably needed for accounting, dispute, legal, and security purposes.</p>
+          <p>You can delete an individual conversation, download a copy of your data, or delete your whole account from Settings. Deleting your account removes your profile, conversations, messages, feedback, purchase history in the application, and credit history from the active database. Stripe keeps its own payment records. Separate error excerpts, analytics records, provider logs, and backups may remain for a limited time for operational, security, or legal reasons.</p>
+          <p>Guest abuse-prevention counters are shared across the service and expire automatically (most within 24 hours). Cookie and browser-storage durations are listed above. Provider and hosting logs follow their own schedules.</p>
         </section>
 
         <section id="security">
@@ -249,18 +249,19 @@
           <ul>
             <li>Leave optional denomination and profile context blank, or edit them in Settings.</li>
             <li>Delete individual conversations from your signed-in history.</li>
-            <li>Do not use Speak if you do not want assistant text sent to ElevenLabs.</li>
+            <li>Use the standard browser voice instead of Premium voice if you do not want assistant text sent to ElevenLabs.</li>
+            <li>Download a copy of your data or delete your account in Settings.</li>
             <li>Do not sponsor a d'var Torah if you do not want dedication text made public.</li>
             <li>Clear cookies, local storage, or session storage through your browser, understanding that some features may reset.</li>
           </ul>
           <p>Depending on where you live, you may have rights to ask for access, correction, deletion, or a portable copy of personal information, or to object to or restrict certain processing. You may also have a right to appeal a denied request or contact your local privacy regulator. We may need to verify your identity and may retain information where an exception applies.</p>
-          <p>The current product does not provide self-service account-wide export or deletion. Send a request using the contact information below. We will not discriminate against you for exercising a privacy right that applies to you.</p>
+          <p>Self-service export and account deletion are available in Settings. For other requests, use the contact information below. We will not discriminate against you for exercising a privacy right that applies to you.</p>
         </section>
 
         <section id="children">
           <p class="section-number">10</p>
           <h2>Children</h2>
-          <p>rebbe.dev is intended for adults and is not directed to children under 13. We do not knowingly solicit personal information from children under 13. If you believe a child has provided personal information, contact us so the situation can be reviewed and appropriate action taken.</p>
+          <p>rebbe.dev is for people aged 13 and older. Teens aged 13 to 17 should use it with the knowledge of a parent or guardian. Answers to people who appear to be teens are kept age-appropriate and encourage involving a trusted adult. We do not knowingly collect personal information from children under 13. If you believe a child under 13 has provided personal information, contact us and we will review it and delete it where appropriate.</p>
         </section>
 
         <section id="international">
@@ -293,7 +294,7 @@
       <img src="/static/assets/brand/braided-r.svg" alt="" width="30" height="30">
       <span>rebbe<span class="brand-wordmark-dot">.dev</span></span>
     </a>
-    <p>Jewish guidance for learning and reflection. Guidance, not psak.</p>
+    <p>Jewish guidance for learning and reflection. Guidance, not psak. <a href="/terms">Terms of Service</a></p>
     <p class="numeric">© 2026 rebbe.dev</p>
   </footer>
 </body>

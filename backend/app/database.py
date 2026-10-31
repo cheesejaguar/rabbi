@@ -136,7 +136,7 @@ CREATE TABLE IF NOT EXISTS users (
     email TEXT UNIQUE NOT NULL,
     first_name TEXT,
     last_name TEXT,
-    credits INTEGER DEFAULT 3,                 -- Chat credits remaining
+    credits INTEGER DEFAULT 10,                -- Chat credits remaining (signup grant)
     created_at TIMESTAMPTZ DEFAULT NOW(),
     updated_at TIMESTAMPTZ DEFAULT NOW()
 );
@@ -450,6 +450,55 @@ CREATE TABLE IF NOT EXISTS dvar_torah (
 
 -- Unique constraint: one cached entry per parsha per Hebrew year
 CREATE UNIQUE INDEX IF NOT EXISTS idx_dvar_torah_parsha_year ON dvar_torah(parsha_name, hebrew_year);
+
+-- =========================================================================
+-- PIPELINE v2 TABLES (docs/REWRITE_PLAN.md §3, §5)
+-- =========================================================================
+
+-- Fixed-window counters shared by every serverless instance (rate limits,
+-- guest caps, IP penalties). Replaces the per-process in-memory tracker.
+CREATE TABLE IF NOT EXISTS rate_limits (
+    key TEXT PRIMARY KEY,
+    window_start TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    count INTEGER NOT NULL DEFAULT 0
+);
+
+-- Every credit change, so balances are auditable and refunds idempotent.
+CREATE TABLE IF NOT EXISTS credit_ledger (
+    id BIGSERIAL PRIMARY KEY,
+    user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    delta INTEGER NOT NULL,
+    reason TEXT NOT NULL,          -- chat | refund | purchase | admin | signup | tts
+    ref TEXT,                      -- request id, payment intent id, ...
+    created_at TIMESTAMPTZ DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_credit_ledger_user ON credit_ledger(user_id, created_at DESC);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_credit_ledger_ref ON credit_ledger(reason, ref) WHERE ref IS NOT NULL;
+
+-- Safety events, including guest turns that have no stored conversation.
+CREATE TABLE IF NOT EXISTS safety_events (
+    id BIGSERIAL PRIMARY KEY,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    user_id TEXT REFERENCES users(id) ON DELETE SET NULL,
+    conversation_id TEXT,
+    message_id TEXT,
+    kind TEXT NOT NULL,            -- crisis | abuse | harm | audit_concern | audit_severe | manipulation
+    card_level TEXT,
+    flags JSONB DEFAULT '[]',
+    is_guest BOOLEAN DEFAULT FALSE,
+    reviewed_at TIMESTAMPTZ,
+    reviewed_by TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_safety_events_created ON safety_events(created_at DESC);
+
+-- Daily spend on free (guest) generations, for the free-tier kill switch.
+CREATE TABLE IF NOT EXISTS free_tier_spend (
+    day DATE PRIMARY KEY,
+    usd NUMERIC(12, 6) NOT NULL DEFAULT 0,
+    turns INTEGER NOT NULL DEFAULT 0
+);
+
+-- Existing message rows gain no columns; v2 data lives in metadata JSONB.
 """
 
 
@@ -494,7 +543,7 @@ async def init_schema():
 async def upsert_user(user_id: str, email: str, first_name: str = None, last_name: str = None) -> dict:
     """Create a new user or update an existing one from WorkOS authentication data.
 
-    New users receive 3 starting credits. On conflict (same ``id``), the
+    New users receive ``SIGNUP_CREDITS`` (10) starting credits. On conflict (same ``id``), the
     email, name fields, and ``updated_at`` timestamp are refreshed.
 
     Emails listed in the ``ADMIN_EMAILS`` setting are automatically
@@ -516,7 +565,7 @@ async def upsert_user(user_id: str, email: str, first_name: str = None, last_nam
         row = await conn.fetchrow(
             """
             INSERT INTO users (id, email, first_name, last_name, credits, is_admin)
-            VALUES ($1, $2, $3, $4, 3, $5)
+            VALUES ($1, $2, $3, $4, $5, $6)
             ON CONFLICT (id) DO UPDATE SET
                 email = EXCLUDED.email,
                 first_name = EXCLUDED.first_name,
@@ -525,7 +574,7 @@ async def upsert_user(user_id: str, email: str, first_name: str = None, last_nam
                 updated_at = NOW()
             RETURNING id, email, first_name, last_name, credits, is_admin, created_at, updated_at
             """,
-            user_id, email, first_name, last_name, is_admin
+            user_id, email, first_name, last_name, get_settings().signup_credits, is_admin
         )
         return dict(row)
 
@@ -823,6 +872,11 @@ async def complete_purchase(stripe_payment_intent_id: str) -> Optional[dict]:
                 WHERE id = $1
                 """,
                 purchase['user_id'], purchase['credits_purchased']
+            )
+            await conn.execute(
+                "INSERT INTO credit_ledger (user_id, delta, reason, ref) VALUES ($1, $2, 'purchase', $3) "
+                "ON CONFLICT DO NOTHING",
+                purchase['user_id'], purchase['credits_purchased'], stripe_payment_intent_id
             )
 
             # Mark purchase as completed
@@ -1828,7 +1882,9 @@ async def admin_list_flagged_messages(limit: int = 50, offset: int = 0) -> list[
                    m.metadata->>'emotional_state' AS emotional_state,
                    m.metadata->'crisis_indicators' AS crisis_indicators,
                    COALESCE((m.metadata->>'requires_human_referral')::boolean, FALSE) AS requires_human_referral,
-                   COALESCE((m.metadata->>'vulnerability_detected')::boolean, FALSE) AS vulnerability_detected
+                   COALESCE((m.metadata->>'vulnerability_detected')::boolean, FALSE) AS vulnerability_detected,
+                   m.metadata->'audit'->>'verdict' AS audit_verdict,
+                   COALESCE((m.metadata->>'retracted')::boolean, FALSE) AS retracted
             FROM messages m
             JOIN conversations c ON c.id = m.conversation_id
             JOIN users u ON u.id = c.user_id
@@ -1838,6 +1894,7 @@ async def admin_list_flagged_messages(limit: int = 50, offset: int = 0) -> list[
                   OR COALESCE((m.metadata->>'vulnerability_detected')::boolean, FALSE)
                   OR m.metadata ? 'crisis_indicators'
                   OR m.metadata->>'pastoral_mode' = 'crisis'
+                  OR m.metadata->'audit'->>'verdict' IN ('concern', 'severe')
               )
             ORDER BY m.created_at DESC
             LIMIT $1 OFFSET $2
@@ -2101,3 +2158,204 @@ async def admin_list_sponsorships(status: str = None, limit: int = 50, offset: i
             limit, offset, status
         )
         return [dict(row) for row in rows]
+
+
+# ---------------------------------------------------------------------------
+# Pipeline v2: rate limits, credit ledger, safety events, free tier, account
+# ---------------------------------------------------------------------------
+
+
+async def rate_limit_hit(key: str, window_seconds: int, amount: int = 1) -> int:
+    """Increment a fixed-window counter shared across instances; return the new count."""
+    async with get_connection() as conn:
+        return await conn.fetchval(
+            """
+            INSERT INTO rate_limits (key, window_start, count) VALUES ($1, NOW(), $3)
+            ON CONFLICT (key) DO UPDATE SET
+                count = CASE WHEN rate_limits.window_start < NOW() - make_interval(secs => $2)
+                             THEN $3 ELSE rate_limits.count + $3 END,
+                window_start = CASE WHEN rate_limits.window_start < NOW() - make_interval(secs => $2)
+                                    THEN NOW() ELSE rate_limits.window_start END
+            RETURNING count
+            """,
+            key, window_seconds, amount,
+        )
+
+
+async def rate_limit_peek(key: str, window_seconds: int) -> int:
+    async with get_connection() as conn:
+        row = await conn.fetchrow(
+            "SELECT count, window_start > NOW() - make_interval(secs => $2) AS live FROM rate_limits WHERE key = $1",
+            key, window_seconds,
+        )
+        return row["count"] if row and row["live"] else 0
+
+
+async def rate_limit_prune() -> None:
+    async with get_connection() as conn:
+        await conn.execute("DELETE FROM rate_limits WHERE window_start < NOW() - INTERVAL '400 days'")
+
+
+async def charge_credits(user_id: str, amount: int, reason: str, ref: Optional[str]) -> Optional[int]:
+    """Atomically deduct credits once per (reason, ref). Returns new balance or None if insufficient.
+
+    A repeated call with the same ``ref`` (client retry) is a no-op that
+    returns the current balance, so a retried request is never charged twice.
+    """
+    async with get_connection() as conn:
+        async with conn.transaction():
+            if ref:
+                inserted = await conn.fetchval(
+                    "INSERT INTO credit_ledger (user_id, delta, reason, ref) VALUES ($1, $2, $3, $4) "
+                    "ON CONFLICT DO NOTHING RETURNING id",
+                    user_id, -amount, reason, ref,
+                )
+                if inserted is None:
+                    return await conn.fetchval("SELECT credits FROM users WHERE id = $1", user_id)
+            row = await conn.fetchrow(
+                "UPDATE users SET credits = credits - $2, updated_at = NOW() WHERE id = $1 AND credits >= $2 RETURNING credits",
+                user_id, amount,
+            )
+            if row is None:
+                raise _InsufficientCredits()
+            if not ref:
+                await conn.execute(
+                    "INSERT INTO credit_ledger (user_id, delta, reason) VALUES ($1, $2, $3)", user_id, -amount, reason)
+            return row["credits"]
+
+
+class _InsufficientCredits(Exception):
+    pass
+
+
+async def try_charge_credits(user_id: str, amount: int, reason: str, ref: Optional[str]) -> Optional[int]:
+    try:
+        return await charge_credits(user_id, amount, reason, ref)
+    except _InsufficientCredits:
+        return None
+
+
+async def refund_credits(user_id: str, amount: int, ref: str) -> Optional[int]:
+    """Refund a prior charge once (idempotent on ``ref``)."""
+    async with get_connection() as conn:
+        async with conn.transaction():
+            inserted = await conn.fetchval(
+                "INSERT INTO credit_ledger (user_id, delta, reason, ref) VALUES ($1, $2, 'refund', $3) "
+                "ON CONFLICT DO NOTHING RETURNING id",
+                user_id, amount, ref,
+            )
+            if inserted is None:
+                return None
+            return await conn.fetchval(
+                "UPDATE users SET credits = credits + $2, updated_at = NOW() WHERE id = $1 RETURNING credits",
+                user_id, amount,
+            )
+
+
+async def record_safety_event(kind: str, flags: list, card_level: Optional[str], user_id: Optional[str],
+                              conversation_id: Optional[str], message_id: Optional[str], is_guest: bool) -> None:
+    async with get_connection() as conn:
+        await conn.execute(
+            "INSERT INTO safety_events (kind, flags, card_level, user_id, conversation_id, message_id, is_guest) "
+            "VALUES ($1, $2, $3, $4, $5, $6, $7)",
+            kind, list(flags), card_level, user_id, conversation_id, message_id, is_guest,
+        )
+
+
+async def admin_list_safety_events(limit: int = 50, offset: int = 0) -> list[dict]:
+    async with get_connection() as conn:
+        rows = await conn.fetch(
+            """
+            SELECT e.id, e.created_at, e.kind, e.card_level, e.flags, e.is_guest, e.conversation_id,
+                   e.message_id, e.reviewed_at, u.email AS user_email
+            FROM safety_events e LEFT JOIN users u ON u.id = e.user_id
+            ORDER BY e.created_at DESC LIMIT $1 OFFSET $2
+            """,
+            limit, offset,
+        )
+        return [dict(r) for r in rows]
+
+
+async def add_free_tier_spend(usd: float) -> float:
+    async with get_connection() as conn:
+        return float(await conn.fetchval(
+            """
+            INSERT INTO free_tier_spend (day, usd, turns) VALUES (CURRENT_DATE, $1, 1)
+            ON CONFLICT (day) DO UPDATE SET usd = free_tier_spend.usd + $1, turns = free_tier_spend.turns + 1
+            RETURNING usd
+            """,
+            usd,
+        ))
+
+
+async def get_free_tier_spend_today() -> float:
+    async with get_connection() as conn:
+        v = await conn.fetchval("SELECT usd FROM free_tier_spend WHERE day = CURRENT_DATE")
+        return float(v or 0)
+
+
+async def delete_messages_from(conversation_id: str, message_id: str, inclusive: bool = True) -> int:
+    """Delete a message and everything after it in its conversation (edit / regenerate)."""
+    op = ">=" if inclusive else ">"
+    async with get_connection() as conn:
+        result = await conn.execute(
+            f"""
+            DELETE FROM messages WHERE conversation_id = $1 AND created_at {op}
+                (SELECT created_at FROM messages WHERE id = $2 AND conversation_id = $1)
+            """,
+            conversation_id, message_id,
+        )
+        return int(result.split()[-1]) if result else 0
+
+
+async def update_message(message_id: str, content: str, metadata: dict) -> None:
+    async with get_connection() as conn:
+        await conn.execute(
+            "UPDATE messages SET content = $2, metadata = $3 WHERE id = $1",
+            message_id, content, metadata,
+        )
+
+
+async def export_user_data(user_id: str) -> dict:
+    async with get_connection() as conn:
+        user = await conn.fetchrow(
+            "SELECT id, email, first_name, last_name, credits, denomination, bio, created_at FROM users WHERE id = $1",
+            user_id)
+        convs = await conn.fetch(
+            "SELECT id, title, created_at, updated_at FROM conversations WHERE user_id = $1 ORDER BY created_at", user_id)
+        msgs = await conn.fetch(
+            """
+            SELECT m.conversation_id, m.role, m.content, m.created_at
+            FROM messages m JOIN conversations c ON c.id = m.conversation_id
+            WHERE c.user_id = $1 ORDER BY m.created_at
+            """,
+            user_id)
+        purchases = await conn.fetch(
+            "SELECT amount_cents, credits_purchased, package_id, status, created_at FROM purchases WHERE user_id = $1",
+            user_id)
+    by_conv: dict = {}
+    for m in msgs:
+        by_conv.setdefault(m["conversation_id"], []).append(
+            {"role": m["role"], "content": m["content"], "created_at": m["created_at"]})
+    return {
+        "user": dict(user) if user else None,
+        "conversations": [{**dict(c), "messages": by_conv.get(c["id"], [])} for c in convs],
+        "purchases": [dict(p) for p in purchases],
+    }
+
+
+async def delete_user_account(user_id: str) -> bool:
+    """Delete the user and, by cascade, their conversations, messages, feedback,
+    purchases history rows, and ledger. Stripe keeps its own payment records."""
+    async with get_connection() as conn:
+        result = await conn.execute("DELETE FROM users WHERE id = $1", user_id)
+        return result.endswith("1")
+
+
+async def purge_expired_conversations(retention_days: int) -> int:
+    async with get_connection() as conn:
+        result = await conn.execute(
+            "DELETE FROM conversations WHERE updated_at < NOW() - make_interval(days => $1)", retention_days)
+        await conn.execute(
+            "DELETE FROM safety_events WHERE created_at < NOW() - make_interval(days => $1)", retention_days)
+        return int(result.split()[-1]) if result else 0

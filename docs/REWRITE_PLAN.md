@@ -1,6 +1,6 @@
 # rebbe.dev — Chat Platform Rewrite Plan
 
-Status: **proposal, not yet implemented** · Companion: [`BUSINESS_PLAN.md`](BUSINESS_PLAN.md) · Cost model: [`unit_economics.py`](unit_economics.py)
+Status: **implemented** (pipeline v2 is the default; v1 is kept as a fallback) · Safety operations: [`SAFETY.md`](SAFETY.md) · SSE contract: [`API_CONTRACT_V2.md`](API_CONTRACT_V2.md) · Companion: [`BUSINESS_PLAN.md`](BUSINESS_PLAN.md) · Cost model: [`unit_economics.py`](unit_economics.py)
 
 ## 1. Why rewrite
 
@@ -65,9 +65,9 @@ The four agents encode real values: pastoral sensitivity, a range of halachic vi
 ### 2.2 Retrieval
 
 Keep the existing pre-built index (`rag_index.json.gz`), which needs no new infrastructure, but:
-- Replace TF-IDF with BM25 and add a cheap query rewrite: the classifier also returns 2–4 search keywords in Hebrew and English, which helps transliterated queries.
+- Add a cheap query rewrite: the classifier also returns 2–4 search keywords in Hebrew and English, which helps transliterated queries. *(Implemented as multi-query search over the existing TF-IDF index. Swapping the scorer for BM25 is deferred until the eval shows recall misses, because it means rebuilding the shipped index.)*
 - Run retrieval **in parallel** with the classifier.
-- Send the top 4–6 chunks, capped at about 2k tokens, as `document` blocks with `citations: {enabled: true}`.
+- Send the top 4–6 chunks, capped at about 2k tokens, as citable `search_result` blocks with `citations: {enabled: true}`, the Citations API's block type built for RAG.
 - Move the index load to module import so a warm Lambda pays it once. It is already gzipped JSON.
 
 Embeddings (pgvector on the existing Postgres) are a phase-2 option, only if the eval shows recall misses.
@@ -240,7 +240,16 @@ Each phase ships on its own behind a `PIPELINE=v2` flag with per-user rollout, a
 | **5. Trust and compliance** | ToS, retention and deletion/export, admin crisis alerting, privacy-policy updates | Owner sign-off |
 | **6. Cleanup** | Remove v1 agents and Jev (if shadow results support it), update CLAUDE.md/PRODUCT.md/README | v1 traffic at 0% for 14 days |
 
-## 7. Decisions needed from the owner
+## 7. Owner decisions (resolved 2026-10-31)
+
+- Generation model: **Sonnet 5.5**.
+- Age policy: **13+**, with parent or guardian permission for 13–17 (`/terms`).
+- Jewish crisis resources: the organizations most consistently recommended since October 7, each verified against its own site (`docs/SAFETY.md`).
+- Gateway: **direct Anthropic API** for v2 (the gateway stays for v1 and the d'var Torah).
+- TTS: **browser voice by default**; ElevenLabs premium voice costs 8 credits, and replays of the same answer are free.
+- `PRODUCT.md` contracts updated for the new packs and additive schema changes.
+
+### Original open questions
 
 1. **Generation model:** Sonnet 5.5 (recommended; about $0.019/msg) or Opus 5.5 (about $0.037/msg). This changes the price of every credit.
 2. **Lift the `PRODUCT.md` contracts** for credit packages (`credits_10`/`credits_25`) and "no DB migration." The new packs keep old IDs working for existing purchase history.

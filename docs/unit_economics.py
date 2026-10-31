@@ -10,10 +10,23 @@ replace FIXED_MONTHLY with real invoices.
 M = 1_000_000
 
 # --- Model prices, USD per 1M tokens: (input, output, cache read, 5-min cache write)
-SONNET_5 = (2.00, 10.00, 0.20, 2.50)
-SONNET_5_5 = (2.00, 10.00, 0.20, 2.50)
-OPUS_5_5 = (4.00, 20.00, 0.20, 5.00)
-HAIKU_5_5 = (0.10, 0.50, 0.01, 0.125)
+# Read from the app's single price table so the plan and the dashboard agree.
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "backend"))
+from app.llm.pricing import price_for  # noqa: E402
+
+
+def _p(model):
+    p = price_for(model)
+    return (p.input, p.output, p.cache_read, p.cache_write_5m)
+
+
+SONNET_5 = _p("claude-sonnet-5")
+SONNET_5_5 = _p("claude-sonnet-5-5")
+OPUS_5_5 = _p("claude-opus-5-5")
+HAIKU_5_5 = _p("claude-haiku-5-5")
 
 # --- Payment + ops assumptions
 STRIPE_PCT = 0.029
