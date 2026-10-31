@@ -113,7 +113,7 @@ function renderPackages() {
             'aria-pressed': String(selected),
             dataset: { package: pkg.id },
         },
-        pkg.recommended ? h('span', { class: 'package-badge', text: 'Most chosen' }) : null,
+        pkg.recommended ? h('span', { class: 'package-badge', text: 'Recommended' }) : null,
         pkg.label ? h('span', { class: 'package-label', text: pkg.label }) : null,
         h('span', { class: 'package-credits', text: `${pkg.credits} credits` }),
         h('span', { class: 'package-price numeric', text: pkg.display_price || '' }),

@@ -73,6 +73,16 @@ export class Thread {
         this.updatePill();
     }
 
+    /** Keep an element's top in view and stop following the stream. */
+    reveal(el) {
+        requestAnimationFrame(() => {
+            const top = el.getBoundingClientRect().top - this.scroller.getBoundingClientRect().top + this.scroller.scrollTop - 12;
+            this.pinned = false;
+            this.scroller.scrollTop = Math.max(0, top);
+            this.updatePill();
+        });
+    }
+
     append(el) {
         this.list.append(el);
         this.markLast();

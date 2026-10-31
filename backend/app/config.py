@@ -118,6 +118,8 @@ class Settings(BaseSettings):
     signup_credits: int = 10
     # Conversations untouched this long are deleted (privacy retention schedule).
     retention_days: int = 548
+    # Trust X-Forwarded-For from a reverse proxy (always trusted on Vercel).
+    trust_forwarded_for: bool = False
 
     # -------------------------------------------------------------------
     # TTS Configuration (ElevenLabs)

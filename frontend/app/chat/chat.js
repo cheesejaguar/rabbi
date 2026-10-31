@@ -247,6 +247,8 @@ function handleEvent(current, raw) {
             // The latest card in a turn replaces any earlier one.
             const data = event;
             view.showSafety(data);
+            // The resources matter more than following the stream.
+            thread.reveal(view.el.previousElementSibling || view.el);
             set({ crisisTurn: true });
             renderBalance();
             announce(`${data.title || 'Support is available'}. Contact options are shown above the reply.`);
@@ -439,18 +441,20 @@ function onTurnError(current, error) {
     }
 }
 
-/** Re-run a failed turn with the same request_id (idempotent server-side). */
+/**
+ * Re-run a failed turn. The body (and so the request_id) is reused, which the
+ * server treats as an idempotent retry: no second charge, and a partial reply
+ * is replaced rather than duplicated. `fresh` starts a new request instead
+ * (used after a deliberate Stop).
+ */
 function retry(current, { fresh = false } = {}) {
     if (state.streaming) return;
-    if (current.view.hasText) current.view.clearError();
-    else current.view.remove();
-    const body = fresh ? { ...current.body, request_id: newId() } : current.body;
-    if (current.view.hasText) {
-        // Partial answer kept: ask for a fresh one in its place.
-        current.view.remove();
-        runTurn({ message: body.message, regenerate: true }, { kind: 'regenerate' });
-        return;
+    const last = state.history[state.history.length - 1];
+    if (!state.conversationId && last && last.role === 'assistant' && last.content === current.view.content) {
+        state.history = state.history.slice(0, -1);
     }
+    current.view.remove();
+    const body = fresh ? { ...current.body, request_id: newId() } : current.body;
     runTurn({ message: body.message }, { user: current.user, kind: current.kind, body });
 }
 

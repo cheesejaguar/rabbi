@@ -21,14 +21,14 @@ Response: `text/event-stream`. Each frame is `data: <json>\n\n`. Events arrive i
 
 | `type` | Payload | Meaning |
 |---|---|---|
-| `session` | `{session_id, conversation_id, request_id}` | Always first |
+| `session` | `{session_id, conversation_id, request_id, user_message_id?}` | Always first. `user_message_id` is the stored id of the message just sent (signed-in users), used for edit-and-resend. |
 | `status` | `{stage: "safety"\|"sources"\|"writing", label}` | Progress line shown in the "thinking" shimmer |
 | `safety_resources` | `{level: "crisis"\|"abuse"\|"support", title, message, resources: [{name, description, phone?, sms?, chat_url?, url, region, hours?}]}` | **Render before any tokens, prominently, and do not let the user dismiss it during the turn.** Server-authored static content. |
 | `metadata` | v1 shape: `{requires_human_referral, pastoral_mode, question_type, vulnerability_detected, emotional_state, crisis_indicators?, sources:[...], rag_used, pipeline: "v2"}` | Before the first token |
 | `token` | `{data: "<text>"}` | Streamed text (markdown) |
 | `citation` | `{n, source: {title, ref, url?, excerpt, kind: "library"}}` | The text streamed just before this event is supported by source `n`. Render a superscript `[n]` at the current position. `n` is 1-based and stable within the message. |
 | `metrics` | v1 shape | After the last token |
-| `message_saved` | `{message_id}` | Signed-in users |
+| `message_saved` | `{message_id, user_message_id?}` | Signed-in users |
 | `message_save_failed` | `{}` | Unchanged |
 | `done` | `{message_id?, credits_remaining?, charged: bool}` | Stream complete. `charged=false` for crisis turns and failures. |
 | `retraction` | `{message_id?, reason, replacement}` | Rare. Replace the message body with `replacement` and show a notice. May arrive after `done` while the stream is still open, or as `retracted` on a later load (see below). |

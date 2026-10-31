@@ -26,7 +26,7 @@ async def send_admin_alert(kind: str, flags: list[str], conversation_id: str | N
         + (f" (conversation {conversation_id})" if conversation_id else "")
     )
     try:
-        async with httpx.AsyncClient(timeout=3.0) as client:
+        async with httpx.AsyncClient(timeout=httpx.Timeout(3.0, connect=2.0)) as client:
             r = await client.post(url, json={"text": text, "content": text})
             return r.status_code < 400
     except Exception as e:

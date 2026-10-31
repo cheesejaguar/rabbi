@@ -96,7 +96,11 @@ export class UserMessage {
             });
             cancel.addEventListener('click', () => finish(null));
             save.addEventListener('click', () => { if (field.value.trim()) finish(field.value.trim()); });
-            requestAnimationFrame(() => { fit(); field.focus(); field.setSelectionRange(field.value.length, field.value.length); });
+            // Focus and place the caret synchronously (the field is already in the DOM): doing it
+            // in a later frame could move the caret after the user started typing or pasting.
+            field.focus();
+            field.setSelectionRange(field.value.length, field.value.length);
+            requestAnimationFrame(fit);
         });
     }
 }

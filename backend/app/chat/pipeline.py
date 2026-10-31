@@ -202,11 +202,16 @@ async def run_turn(inp: TurnInput, outcome: TurnOutcome) -> AsyncIterator[dict]:
 
     meta = _metadata(policy, cls, passages, card)
     outcome.charge = policy.charge
-    yield {"type": "metadata", "data": meta}
+    outcome.metadata = meta
+    # Classifier scores and flags stay server-side: exposing them would give
+    # jailbreakers an oracle to tune prompts against.
+    yield {"type": "metadata", "data": {k: v for k, v in meta.items() if k != "safety"}}
 
+    alert_task = None
     if policy.alert_admin:
-        await send_admin_alert("crisis" if policy.card_level == "crisis" else "safety",
-                               policy.flags, inp.conversation_id, inp.is_guest)
+        # Fire now, await (bounded) after streaming: a slow webhook never delays care.
+        alert_task = asyncio.create_task(send_admin_alert(
+            "crisis" if policy.card_level == "crisis" else "safety", policy.flags, inp.conversation_id, inp.is_guest))
 
     # 3. Generation ---------------------------------------------------------
     yield {"type": "status", "stage": "writing", "label": "Writing…"}
@@ -264,14 +269,17 @@ async def run_turn(inp: TurnInput, outcome: TurnOutcome) -> AsyncIterator[dict]:
                 yield ev
     except (anthropic.APIConnectionError, anthropic.RateLimitError, anthropic.InternalServerError, anthropic.APIStatusError) as e:
         logger.error("Generation failed: %s", e)
-        outcome.failed = not text_parts
+        outcome.failed = True
+        outcome.charge = False  # never bill an answer that did not finish
         outcome.text = "".join(text_parts)
-        if not text_parts:
-            outcome.charge = False
-            yield {"type": "error", "code": "provider_unavailable",
-                   "message": "The service is busy right now. Please try again in a moment."}
-            return
-        raise
+        if outcome.text:
+            # Keep the partial answer (marked) so it is stored and audited like any other.
+            meta["partial"] = True
+            meta["citations"] = citations
+        await _await_alert(alert_task)
+        yield {"type": "error", "code": "provider_unavailable", "partial": bool(text_parts),
+               "message": "The service is busy right now. Please try again in a moment."}
+        return
 
     full_text = "".join(text_parts)
     if stop_reason == "refusal" and not full_text.strip():
@@ -304,8 +312,18 @@ async def run_turn(inp: TurnInput, outcome: TurnOutcome) -> AsyncIterator[dict]:
     outcome.text = full_text
     outcome.metadata = meta
     outcome.cost_usd = total_cost
+    await _await_alert(alert_task)
 
     # 4. Audit (the caller emits `done` first, then calls finish_audit) -----
+
+
+async def _await_alert(task) -> None:
+    if task is None:
+        return
+    try:
+        await asyncio.wait_for(task, timeout=3.0)
+    except Exception as e:
+        logger.warning("Admin alert did not complete: %s", e)
 
 
 async def finish_audit(inp: TurnInput, outcome: TurnOutcome) -> Optional[dict]:

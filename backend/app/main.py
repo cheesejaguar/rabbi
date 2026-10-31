@@ -937,9 +937,12 @@ async def text_to_speech(request: Request):
     # Premium voice costs credits (ElevenLabs is ~10-25x the cost of a text
     # reply). The charge is keyed on the text, so replaying the same answer
     # is free. Browser speechSynthesis is the free default in the client.
+    tts_charged = False
+    tts_ref = None
     if settings.db_url and settings.tts_credit_cost > 0:
         import hashlib
         ref = hashlib.sha256(f"{user['id']}:{text}".encode()).hexdigest()[:32]
+        tts_ref = ref
         try:
             balance = await db.try_charge_credits(user["id"], settings.tts_credit_cost, "tts", ref)
         except Exception as e:
@@ -948,6 +951,16 @@ async def text_to_speech(request: Request):
         if balance is None:
             return JSONResponse(status_code=402, content={
                 "detail": f"Premium voice needs {settings.tts_credit_cost} credits.", "code": "no_credits"})
+        tts_charged = True
+
+    async def refund_tts():
+        if tts_charged and tts_ref:
+            try:
+                # Refund once, and drop the replay grant so a later attempt is charged normally.
+                await db.refund_credits(user["id"], settings.tts_credit_cost, f"tts:{tts_ref}")
+                await db.forget_charge(user["id"], "tts", tts_ref)
+            except Exception as e:
+                logger.warning(f"TTS refund failed: {e}")
 
     async def stream_audio():
         """Yield raw PCM audio chunks from ElevenLabs streaming endpoint."""
@@ -967,11 +980,16 @@ async def text_to_speech(request: Request):
                 timeout=120.0
             ) as response:
                 if response.status_code != 200:
-                    error_text = await response.aread()
+                    await response.aread()
                     logger.error(f"ElevenLabs API error: {response.status_code}")
+                    await refund_tts()
                     return
+                sent = 0
                 async for chunk in response.aiter_bytes():
+                    sent += len(chunk)
                     yield chunk
+                if not sent:
+                    await refund_tts()
 
     return StreamingResponse(
         stream_audio(),

@@ -498,6 +498,13 @@ CREATE TABLE IF NOT EXISTS free_tier_spend (
     turns INTEGER NOT NULL DEFAULT 0
 );
 
+-- Hashed ids of self-deleted accounts, so re-signing up does not re-grant
+-- signup credits (no personal data is kept).
+CREATE TABLE IF NOT EXISTS deleted_accounts (
+    id_hash TEXT PRIMARY KEY,
+    deleted_at TIMESTAMPTZ DEFAULT NOW()
+);
+
 -- Existing message rows gain no columns; v2 data lives in metadata JSONB.
 """
 
@@ -565,7 +572,11 @@ async def upsert_user(user_id: str, email: str, first_name: str = None, last_nam
         row = await conn.fetchrow(
             """
             INSERT INTO users (id, email, first_name, last_name, credits, is_admin)
-            VALUES ($1, $2, $3, $4, $5, $6)
+            VALUES ($1, $2, $3, $4,
+                    CASE WHEN EXISTS (SELECT 1 FROM deleted_accounts
+                                      WHERE id_hash = encode(sha256(convert_to($1, 'UTF8')), 'hex'))
+                         THEN 0 ELSE $5 END,
+                    $6)
             ON CONFLICT (id) DO UPDATE SET
                 email = EXCLUDED.email,
                 first_name = EXCLUDED.first_name,
@@ -2348,8 +2359,12 @@ async def delete_user_account(user_id: str) -> bool:
     """Delete the user and, by cascade, their conversations, messages, feedback,
     purchases history rows, and ledger. Stripe keeps its own payment records."""
     async with get_connection() as conn:
-        result = await conn.execute("DELETE FROM users WHERE id = $1", user_id)
-        return result.endswith("1")
+        async with conn.transaction():
+            await conn.execute(
+                "INSERT INTO deleted_accounts (id_hash) VALUES (encode(sha256(convert_to($1, 'UTF8')), 'hex')) "
+                "ON CONFLICT DO NOTHING", user_id)
+            result = await conn.execute("DELETE FROM users WHERE id = $1", user_id)
+            return result.endswith("1")
 
 
 async def purge_expired_conversations(retention_days: int) -> int:
@@ -2359,3 +2374,26 @@ async def purge_expired_conversations(retention_days: int) -> int:
         await conn.execute(
             "DELETE FROM safety_events WHERE created_at < NOW() - make_interval(days => $1)", retention_days)
         return int(result.split()[-1]) if result else 0
+
+
+async def get_recent_messages(conversation_id: str, limit: int = 60) -> list[dict]:
+    """The newest ``limit`` messages of a conversation, in chronological order."""
+    async with get_connection() as conn:
+        rows = await conn.fetch(
+            """
+            SELECT id, conversation_id, role, content, metadata, created_at FROM (
+                SELECT id, conversation_id, role, content, metadata, created_at
+                FROM messages WHERE conversation_id = $1
+                ORDER BY created_at DESC LIMIT $2
+            ) recent ORDER BY created_at ASC
+            """,
+            conversation_id, limit,
+        )
+        return [dict(r) for r in rows]
+
+
+async def forget_charge(user_id: str, reason: str, ref: str) -> None:
+    """Remove a (refunded) charge's dedupe row so the same ref can be charged again later."""
+    async with get_connection() as conn:
+        await conn.execute(
+            "DELETE FROM credit_ledger WHERE user_id = $1 AND reason = $2 AND ref = $3", user_id, reason, ref)

@@ -7,6 +7,7 @@ over strictness for rate limits, while the credit system itself fails closed.
 """
 
 import logging
+import os
 import threading
 import time
 
@@ -60,11 +61,22 @@ async def peek(key: str, window: int) -> int:
     return _mem_peek(key, window)
 
 
+def _trust_forwarded() -> bool:
+    # Vercel overwrites X-Forwarded-For with the real client address, so it is
+    # trustworthy there. Elsewhere (e.g. Docker) it is client-controlled unless
+    # a trusted proxy is configured with TRUST_FORWARDED_FOR=true.
+    return bool(os.environ.get("VERCEL")) or get_settings().trust_forwarded_for
+
+
 def client_ip(request: Request) -> str:
-    # Vercel / proxies set X-Forwarded-For; the first entry is the client.
-    fwd = request.headers.get("x-forwarded-for", "")
-    if fwd:
-        return fwd.split(",")[0].strip()[:64]
+    if _trust_forwarded():
+        real = request.headers.get("x-real-ip", "").strip()
+        if real:
+            return real[:64]
+        fwd = request.headers.get("x-forwarded-for", "")
+        if fwd:
+            # Behind a trusted proxy, the right-most entry is the hop it appended.
+            return fwd.split(",")[-1].strip()[:64] if not os.environ.get("VERCEL") else fwd.split(",")[0].strip()[:64]
     return (request.client.host if request.client else "unknown")[:64]
 
 

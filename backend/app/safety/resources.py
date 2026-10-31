@@ -51,6 +51,12 @@ _GENERAL = {
          "chat_url": "https://sahar.org.il/", "whatsapp": "+972559571399", "url": "https://sahar.org.il/",
          "region": "Israel", "hours": "Sun–Thu 16:00–03:00; Fri/Sat eves 18:00–00:00"},
     ],
+    "INTL": [
+        {"name": "Find A Helpline", "description": "Free, confidential crisis lines in your country, by phone, text, or chat.",
+         "url": "https://findahelpline.com/", "region": "Worldwide"},
+        {"name": "Befrienders Worldwide", "description": "Emotional support centres around the world.",
+         "url": "https://befrienders.org/", "region": "Worldwide"},
+    ],
     "AU": [
         {"name": "Lifeline Australia", "description": "Call 13 11 14 or text, 24/7.",
          "phone": "13 11 14", "sms": "0477131114", "url": "https://www.lifeline.org.au/",
@@ -126,6 +132,7 @@ _YOUTH = {
 }
 
 _EMERGENCY = {
+    "INTL": "your local emergency number",
     "US": "911", "CA": "911", "UK": "999", "IE": "112", "IL": "101 (ambulance) / 100 (police)", "AU": "000",
 }
 
@@ -136,7 +143,15 @@ _TZ_REGION = (
     ("America/Toronto", "CA"), ("America/Vancouver", "CA"), ("America/Montreal", "CA"),
     ("America/Edmonton", "CA"), ("America/Winnipeg", "CA"), ("America/Halifax", "CA"),
     ("America/Regina", "CA"), ("America/St_Johns", "CA"),
-    ("America/", "US"), ("Pacific/Honolulu", "US"), ("US/", "US"),
+    ("America/Moncton", "CA"), ("America/Whitehorse", "CA"), ("America/Yellowknife", "CA"), ("Canada/", "CA"),
+    # United States zones only; other America/* zones (e.g. Sao_Paulo) are international.
+    ("America/New_York", "US"), ("America/Chicago", "US"), ("America/Denver", "US"),
+    ("America/Los_Angeles", "US"), ("America/Phoenix", "US"), ("America/Anchorage", "US"),
+    ("America/Detroit", "US"), ("America/Indiana/", "US"), ("America/Kentucky/", "US"),
+    ("America/North_Dakota/", "US"), ("America/Boise", "US"), ("America/Juneau", "US"),
+    ("America/Sitka", "US"), ("America/Nome", "US"), ("America/Adak", "US"),
+    ("America/Menominee", "US"), ("America/Yakutat", "US"), ("America/Metlakatla", "US"),
+    ("America/Puerto_Rico", "US"), ("Pacific/Honolulu", "US"), ("US/", "US"),
 )
 
 
@@ -148,9 +163,17 @@ def region_for(client_tz: Optional[str], accept_language: Optional[str] = None) 
     lang = (accept_language or "").lower()
     if lang.startswith("he"):
         return "IL"
-    if "en-gb" in lang:
+    if lang.startswith("en-gb"):
         return "UK"
-    return "US"
+    if lang.startswith(("en-ca", "fr-ca")):
+        return "CA"
+    if lang.startswith("en-au"):
+        return "AU"
+    if tz:
+        return "INTL"  # a known zone outside the covered regions: never show US-only numbers
+    if not lang or lang.startswith(("en-us", "en,", "en;")) or lang == "en":
+        return "US"
+    return "INTL"
 
 
 TITLES = {
@@ -166,16 +189,18 @@ def build_card(level: str, region: str, youth: bool = False) -> dict:
     emergency = _EMERGENCY.get(region, "your local emergency number")
     resources: list[dict] = []
     if level == "abuse":
-        resources += _ABUSE.get(region, _ABUSE["US"])
+        resources += _ABUSE.get(region, [])
         resources += _GENERAL[region]
     else:
         resources += _GENERAL[region]
         if youth:
             resources += _YOUTH.get(region, [])
         resources += _JEWISH_TRAUMA.get(region, [])
-    if region != "US" and level == "crisis":
+    if region not in ("US", "INTL") and level == "crisis":
         # Visitors abroad still see the US line (many users are American).
         resources += [r for r in _GENERAL["US"][:1] if r not in resources]
+    if region != "INTL":
+        resources += [r for r in _GENERAL["INTL"][:1] if r not in resources]
     message = {
         "crisis": f"If you might act on thoughts of ending your life or are in immediate danger, call {emergency} now. "
                   "Talking to someone trained can help, right now, any time.",
