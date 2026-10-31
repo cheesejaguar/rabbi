@@ -2,8 +2,9 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta name="theme-color" content="#f3f6fa">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, interactive-widget=resizes-content">
+    <meta name="theme-color" content="#f3f6fa" media="(prefers-color-scheme: light)">
+    <meta name="theme-color" content="#101722" media="(prefers-color-scheme: dark)">
     <title>rebbe.dev | Guided conversation</title>
     <meta name="description" content="A Jewish guidance companion for thoughtful questions, source-aware responses, and weekly learning.">
     <meta property="og:type" content="website">
@@ -20,56 +21,68 @@
     <link rel="icon" type="image/png" sizes="32x32" href="/static/favicon-32x32.png">
     <link rel="icon" type="image/png" sizes="16x16" href="/static/favicon-16x16.png">
     <link rel="apple-touch-icon" sizes="180x180" href="/static/apple-touch-icon.png">
+    <link rel="preload" href="/static/assets/fonts/HankenGrotesk-Variable.ttf" as="font" type="font/ttf" crossorigin>
+    <link rel="modulepreload" href="/static/vendor/markdown-it.esm.js">
+    <link rel="modulepreload" href="/static/vendor/purify.es.js">
     <link rel="stylesheet" href="/static/brand.css?v=2">
-    <link rel="stylesheet" href="/static/styles.css?v=31">
+    <link rel="stylesheet" href="/static/styles.css?v=40">
     <script src="/static/theme.js?v=1"></script>
+    <script type="module" src="/static/app/main.js?v=40"></script>
 </head>
 <body>
     <a class="skip-link" href="#mainContent">Skip to main content</a>
-    <div class="app-container">
+    <div class="app-container" id="appContainer">
         <aside class="sidebar" id="sidebar" aria-label="Conversation navigation">
             <header class="sidebar-brand-row">
-                <a class="brand-lockup" href="/" aria-label="rebbe.dev home">
-                    <img src="/static/assets/brand/braided-r.svg" alt="" width="34" height="34">
+                <a class="brand-lockup" href="/" aria-label="rebbe.dev home" data-nav-home>
+                    <img src="/static/assets/brand/braided-r.svg" alt="" width="30" height="30">
                     <span>rebbe<span class="brand-wordmark-dot">.</span>dev</span>
                 </a>
-                <button class="theme-cycle" type="button" data-theme-cycle aria-label="Change theme">
-                    <span class="ph-icon ph-sun" aria-hidden="true"></span>
-                    <span class="sr-only" data-theme-label>system</span>
-                </button>
+                <div class="sidebar-brand-actions">
+                    <button class="icon-btn theme-cycle" type="button" data-theme-cycle aria-label="Change theme">
+                        <span class="ph-icon ph-sun theme-icon-light" aria-hidden="true"></span>
+                        <span class="ph-icon ph-moon theme-icon-dark" aria-hidden="true"></span>
+                        <span class="sr-only" data-theme-label>system</span>
+                    </button>
+                    <button class="icon-btn sidebar-toggle" id="sidebarToggle" type="button" aria-label="Collapse conversation rail" aria-expanded="true" aria-controls="sidebar">
+                        <span class="ph-icon ph-sidebar" aria-hidden="true"></span>
+                    </button>
+                </div>
             </header>
 
             <div class="sidebar-header">
                 <button class="new-chat-btn" id="newChatBtn" type="button">
                     <span class="ph-icon ph-plus" aria-hidden="true"></span>
-                    <span>New conversation</span>
+                    <span class="new-chat-label">New conversation</span>
+                    <kbd class="shortcut" aria-hidden="true" data-shortcut-mod>Ctrl K</kbd>
                 </button>
-                <button class="sidebar-toggle" id="sidebarToggle" type="button" aria-label="Collapse conversation rail" aria-expanded="true">
-                    <span class="ph-icon ph-sidebar" aria-hidden="true"></span>
-                </button>
+                <div class="conversation-search">
+                    <span class="ph-icon ph-magnify" aria-hidden="true"></span>
+                    <label class="sr-only" for="conversationSearch">Search conversations</label>
+                    <input type="search" id="conversationSearch" placeholder="Search conversations" autocomplete="off" dir="auto">
+                </div>
             </div>
 
             <div class="sidebar-content">
                 <!-- Deliberately a <p>, not a heading: the rail renders before the
                      screen's <h1> in source order, so a heading here would put an
-                     h2 ahead of the page's h1 in the document outline. The section
-                     still exposes it as the region's accessible name. -->
+                     h2 ahead of the page's h1 in the document outline. -->
                 <section class="conversations-section" aria-labelledby="recentConversationsTitle">
-                    <p class="section-title" id="recentConversationsTitle">Recent conversations</p>
-                    <div class="conversations-list" id="conversationsList" aria-live="polite"></div>
+                    <p class="section-title sr-only" id="recentConversationsTitle">Recent conversations</p>
+                    <div class="conversations-list" id="conversationsList"></div>
                 </section>
             </div>
 
             <div class="sidebar-footer">
-                <button class="user-profile" id="userProfile" type="button" aria-haspopup="menu" aria-expanded="false">
+                <button class="user-profile" id="userProfile" type="button" aria-haspopup="menu" aria-expanded="false" aria-controls="sidebarDropdown">
                     <span class="user-avatar" id="sidebarUserAvatar" aria-hidden="true">?</span>
                     <span class="user-details">
-                        <span class="user-context">Account</span>
                         <span class="user-name" id="sidebarUserName" dir="auto">User</span>
+                        <span class="user-context" id="sidebarUserContext">Account</span>
                     </span>
                     <span class="user-menu-toggle ph-icon ph-dots" id="sidebarUserMenuToggle" aria-hidden="true"></span>
                 </button>
-                <div class="user-dropdown hidden" id="sidebarDropdown" role="menu">
+                <div class="user-dropdown menu hidden" id="sidebarDropdown" role="menu" aria-label="Account">
                     <button class="dropdown-item" id="settingsBtn" type="button" role="menuitem">
                         <span class="ph-icon ph-gear" aria-hidden="true"></span>
                         Settings
@@ -82,12 +95,16 @@
                         <span class="ph-icon ph-shield" aria-hidden="true"></span>
                         Admin
                     </a>
-                    <div class="dropdown-divider"></div>
+                    <div class="dropdown-divider" role="separator"></div>
                     <a href="/auth/logout" class="dropdown-item dropdown-item-danger" role="menuitem">
                         <span class="ph-icon ph-sign-out" aria-hidden="true"></span>
                         Sign out
                     </a>
                 </div>
+                <nav class="sidebar-legal" aria-label="Legal">
+                    <a href="/privacy">Privacy</a>
+                    <a href="/terms">Terms</a>
+                </nav>
             </div>
         </aside>
 
@@ -95,151 +112,150 @@
             <div class="calendar-banner hidden" id="calendarBanner" role="status" aria-live="polite"></div>
 
             <section class="welcome-screen" id="welcomeScreen" aria-labelledby="greetingText">
-                <button class="menu-btn welcome-menu-btn" id="welcomeMenuBtn" type="button" aria-label="Open conversation navigation" aria-expanded="false">
-                    <span class="ph-icon ph-sidebar" aria-hidden="true"></span>
-                </button>
+                <header class="screen-topbar">
+                    <button class="icon-btn menu-btn welcome-menu-btn" id="welcomeMenuBtn" type="button" aria-label="Open conversation navigation" aria-expanded="false" aria-controls="sidebar">
+                        <span class="ph-icon ph-sidebar" aria-hidden="true"></span>
+                    </button>
+                </header>
 
                 <div class="welcome-content">
                     <div class="welcome-intro">
-                        <img class="greeting-icon" src="/static/assets/brand/braided-r.svg" alt="" width="42" height="42">
+                        <img class="greeting-icon" src="/static/assets/brand/braided-r.svg" alt="" width="44" height="44">
                         <h1 class="greeting">
                             <span class="greeting-text hidden" id="greetingText">Shalom, how can I help?</span>
                             <span class="skeleton greeting-skeleton" id="greetingSkeleton"></span>
                         </h1>
-                        <p class="welcome-deck">Bring a question about practice, meaning, relationships, or Jewish life. Your answer will distinguish sourced material from model knowledge.</p>
+                        <p class="welcome-deck">Ask about practice, meaning, relationships, or Jewish life. Answers show which sources came from the library.</p>
                     </div>
 
-                    <div class="welcome-grid">
-                        <div class="welcome-primary">
-                            <div class="composer input-container">
-                                <label class="composer-label" for="messageInput">Ask a question</label>
-                                <textarea id="messageInput" dir="auto" placeholder="What would you like to explore?" rows="2" aria-describedby="welcomeComposerHint"></textarea>
-                                <div class="input-actions">
-                                    <span class="composer-hint" id="welcomeComposerHint">Enter to send. Shift + Enter for a new line.</span>
-                                    <button class="send-btn" id="sendBtn" type="button" aria-label="Send question" disabled>
-                                        <span class="ph-icon ph-arrow-right send-icon" aria-hidden="true"></span>
-                                        <span class="send-spinner" aria-hidden="true"></span>
-                                    </button>
-                                </div>
-                            </div>
-
-                            <section class="prompt-section" aria-labelledby="promptSectionTitle">
-                                <div class="prompt-heading">
-                                    <h2 id="promptSectionTitle">A few places to begin</h2>
-                                    <span>Curated prompts</span>
-                                </div>
-                                <div class="suggestions">
-                                    <button class="suggestion-chip" type="button" data-prompt="What does the Torah say about kindness?">
-                                        <span class="ph-icon ph-book-open" aria-hidden="true"></span>
-                                        <span><strong>Torah</strong><small>Explore a value through sources</small></span>
-                                    </button>
-                                    <button class="suggestion-chip" type="button" data-prompt="How do I observe Shabbat in a meaningful way?">
-                                        <span class="ph-icon ph-sun" aria-hidden="true"></span>
-                                        <span><strong>Shabbat</strong><small>Begin with one meaningful practice</small></span>
-                                    </button>
-                                    <button class="suggestion-chip" type="button" data-prompt="What prayers should I say when I'm going through a difficult time?">
-                                        <span class="ph-icon ph-heart" aria-hidden="true"></span>
-                                        <span><strong>Prayer</strong><small>Find language for a hard moment</small></span>
-                                    </button>
-                                    <button class="suggestion-chip" type="button" data-prompt="I'm struggling with something in my life and could use guidance.">
-                                        <span class="ph-icon ph-chat" aria-hidden="true"></span>
-                                        <span><strong>Guidance</strong><small>Think through a personal question</small></span>
-                                    </button>
-                                </div>
-                            </section>
+                    <div class="composer welcome-composer" data-composer="welcome">
+                        <label class="composer-label sr-only" for="messageInput">Ask a question</label>
+                        <textarea id="messageInput" dir="auto" placeholder="What would you like to explore?" rows="2" maxlength="4000" aria-describedby="welcomeComposerHint"></textarea>
+                        <div class="input-actions">
+                            <span class="composer-hint" id="welcomeComposerHint">Enter to send, Shift + Enter for a new line</span>
+                            <span class="char-counter numeric hidden" data-char-counter aria-live="polite"></span>
+                            <button class="send-btn" id="sendBtn" type="button" aria-label="Send question" disabled>
+                                <span class="ph-icon ph-arrow-up-bold send-icon" aria-hidden="true"></span>
+                                <span class="send-spinner" aria-hidden="true"></span>
+                            </button>
                         </div>
-
-                        <aside class="weekly-panel" aria-labelledby="weeklyPanelTitle">
-                            <div class="weekly-panel-heading">
-                                <span class="ph-icon ph-book-open" aria-hidden="true"></span>
-                                <h2 id="weeklyPanelTitle">Weekly learning</h2>
-                            </div>
-                            <div class="dvar-torah-section" id="dvarTorahSkeleton" aria-hidden="true">
-                                <div class="dvar-torah-card">
-                                    <span class="skeleton dvar-skeleton-title"></span>
-                                    <span class="skeleton dvar-skeleton-copy"></span>
-                                </div>
-                            </div>
-                            <div class="dvar-torah-section hidden" id="dvarTorahSection">
-                                <div class="dvar-torah-card">
-                                    <div class="dvar-torah-header">
-                                        <span class="dvar-torah-label">This week's Torah portion</span>
-                                        <span class="dvar-torah-parsha" id="dvarTorahParsha" dir="auto"></span>
-                                    </div>
-                                    <div class="dvar-torah-preview" id="dvarTorahPreview" dir="auto"></div>
-                                    <button class="dvar-torah-expand-btn" id="dvarTorahExpandBtn" type="button">
-                                        Read the full d'var Torah
-                                        <span class="ph-icon ph-arrow-right" aria-hidden="true"></span>
-                                    </button>
-                                </div>
-                            </div>
-                            <p class="weekly-fallback">A short source-aware reflection appears here when this week's edition is available.</p>
-                        </aside>
                     </div>
 
-                    <aside class="guidance-note">
-                        <span class="ph-icon ph-info" aria-hidden="true"></span>
-                        <p><strong>Guidance, not psak.</strong> A rabbi who knows you personally may counsel differently.</p>
+                    <section class="prompt-section" aria-labelledby="promptSectionTitle">
+                        <h2 class="sr-only" id="promptSectionTitle">A few places to begin</h2>
+                        <div class="suggestions">
+                            <button class="suggestion-chip" type="button" data-prompt="What does the Torah say about kindness?">
+                                <span class="ph-icon ph-book-open" aria-hidden="true"></span>
+                                <span><strong>Torah</strong><small>Explore a value through sources</small></span>
+                            </button>
+                            <button class="suggestion-chip" type="button" data-prompt="How do I observe Shabbat in a meaningful way?">
+                                <span class="ph-icon ph-sun" aria-hidden="true"></span>
+                                <span><strong>Shabbat</strong><small>Begin with one meaningful practice</small></span>
+                            </button>
+                            <button class="suggestion-chip" type="button" data-prompt="What prayers should I say when I'm going through a difficult time?">
+                                <span class="ph-icon ph-heart" aria-hidden="true"></span>
+                                <span><strong>Prayer</strong><small>Find language for a hard moment</small></span>
+                            </button>
+                            <button class="suggestion-chip" type="button" data-prompt="I'm struggling with something in my life and could use guidance.">
+                                <span class="ph-icon ph-chat" aria-hidden="true"></span>
+                                <span><strong>Guidance</strong><small>Think through a personal question</small></span>
+                            </button>
+                        </div>
+                    </section>
+
+                    <aside class="weekly-panel" aria-labelledby="weeklyPanelTitle">
+                        <h2 class="weekly-panel-title" id="weeklyPanelTitle">
+                            <span class="ph-icon ph-book-open" aria-hidden="true"></span>
+                            Weekly learning
+                        </h2>
+                        <div class="dvar-torah-section" id="dvarTorahSkeleton" aria-hidden="true">
+                            <div class="dvar-torah-card">
+                                <span class="skeleton dvar-skeleton-title"></span>
+                                <span class="skeleton dvar-skeleton-copy"></span>
+                            </div>
+                        </div>
+                        <div class="dvar-torah-section hidden" id="dvarTorahSection">
+                            <div class="dvar-torah-card">
+                                <div class="dvar-torah-header">
+                                    <span class="dvar-torah-label">This week's Torah portion</span>
+                                    <span class="dvar-torah-parsha" id="dvarTorahParsha" dir="auto"></span>
+                                </div>
+                                <p class="dvar-torah-preview" id="dvarTorahPreview" dir="auto"></p>
+                                <button class="text-btn dvar-torah-expand-btn" id="dvarTorahExpandBtn" type="button">
+                                    Read the full d'var Torah
+                                    <span class="ph-icon ph-arrow-right" aria-hidden="true"></span>
+                                </button>
+                            </div>
+                        </div>
                     </aside>
+
+                    <footer class="welcome-footer">
+                        <p class="guidance-note"><span class="ph-icon ph-info" aria-hidden="true"></span><span><strong>Guidance, not psak.</strong> A rabbi who knows you personally may counsel differently.</span></p>
+                        <nav class="footer-links" aria-label="Legal">
+                            <a href="/privacy">Privacy</a>
+                            <a href="/terms">Terms</a>
+                        </nav>
+                    </footer>
                 </div>
             </section>
 
             <section class="chat-screen hidden" id="chatScreen" aria-labelledby="chatTitle">
                 <header class="chat-header">
-                    <button class="menu-btn" id="menuBtn" type="button" aria-label="Open conversation navigation" aria-expanded="false">
+                    <button class="icon-btn menu-btn" id="menuBtn" type="button" aria-label="Open conversation navigation" aria-expanded="false" aria-controls="sidebar">
                         <span class="ph-icon ph-sidebar" aria-hidden="true"></span>
                     </button>
-                    <div class="chat-heading">
-                        <h1 class="chat-title" id="chatTitle" dir="auto">New conversation</h1>
-                    </div>
-                    <details class="source-key">
-                        <summary>Source key</summary>
-                        <dl>
-                            <div>
-                                <dt>Locally matched</dt>
-                                <dd>A reference matched to a passage retrieved from the local text library for this answer.</dd>
-                            </div>
-                            <div>
-                                <dt>Model knowledge</dt>
-                                <dd>A citation supplied from model knowledge and not matched against the local library.</dd>
-                            </div>
-                        </dl>
-                    </details>
+                    <h1 class="chat-title" id="chatTitle" dir="auto">New conversation</h1>
+                    <button class="icon-btn header-new-chat" id="headerNewChatBtn" type="button" aria-label="New conversation">
+                        <span class="ph-icon ph-plus" aria-hidden="true"></span>
+                    </button>
                 </header>
 
-                <div class="chat-messages" id="chatMessages" role="log" aria-live="polite" aria-relevant="additions text" aria-busy="false" tabindex="0"></div>
-
-                <aside class="referral-notice hidden" id="referralNotice" role="note" aria-live="polite">
-                    <span class="ph-icon ph-users" aria-hidden="true"></span>
-                    <div>
-                        <strong>A human conversation may help</strong>
-                        <p>This seems like a question where speaking with a rabbi or counselor who knows your situation could be valuable.</p>
-                    </div>
-                </aside>
+                <div class="chat-scroller" id="chatScroller">
+                    <div class="chat-messages" id="chatMessages" role="region" aria-label="Conversation" aria-busy="false" tabindex="0"></div>
+                </div>
 
                 <footer class="chat-input-area">
-                    <div class="chat-input-container composer">
-                        <label class="composer-label" for="chatInput">Continue the conversation</label>
-                        <textarea id="chatInput" dir="auto" placeholder="Ask a follow-up question" rows="1" aria-describedby="chatComposerHint"></textarea>
+                    <button class="jump-latest hidden" id="jumpLatest" type="button">
+                        <span class="ph-icon ph-arrow-down" aria-hidden="true"></span>
+                        Jump to latest
+                    </button>
+                    <aside class="referral-notice hidden" id="referralNotice" role="note">
+                        <span class="ph-icon ph-users" aria-hidden="true"></span>
+                        <div>
+                            <strong>A human conversation may help</strong>
+                            <p>This seems like a question where speaking with a rabbi or counselor who knows your situation could be valuable.</p>
+                        </div>
+                    </aside>
+                    <div class="chat-input-container composer" data-composer="chat">
+                        <label class="composer-label sr-only" for="chatInput">Continue the conversation</label>
+                        <textarea id="chatInput" dir="auto" placeholder="Ask a follow-up" rows="1" maxlength="4000" aria-describedby="chatComposerHint"></textarea>
                         <div class="input-actions">
-                            <span class="composer-hint" id="chatComposerHint">Enter to send. Shift + Enter for a new line.</span>
+                            <button class="credits-pill hidden" id="creditsPill" type="button" aria-describedby="creditsHint">
+                                <span class="ph-icon ph-credit-card" aria-hidden="true"></span>
+                                <span class="numeric" id="creditsPillValue"></span>
+                            </button>
+                            <span class="credits-hint hidden" id="creditsHint">Running low</span>
+                            <span class="composer-hint sr-only" id="chatComposerHint">Enter to send, Shift + Enter for a new line</span>
+                            <span class="char-counter numeric hidden" data-char-counter aria-live="polite"></span>
                             <button class="send-btn" id="chatSendBtn" type="button" aria-label="Send follow-up" disabled>
-                                <span class="ph-icon ph-arrow-right send-icon" aria-hidden="true"></span>
+                                <span class="ph-icon ph-arrow-up-bold send-icon" aria-hidden="true"></span>
                                 <span class="send-spinner" aria-hidden="true"></span>
+                            </button>
+                            <button class="send-btn stop-btn hidden" id="stopBtn" type="button" aria-label="Stop generating">
+                                <span class="ph-icon ph-stop-fill" aria-hidden="true"></span>
                             </button>
                         </div>
                     </div>
+                    <p class="composer-footnote">Guidance, not psak. Check important questions with a rabbi who knows you.</p>
                 </footer>
             </section>
 
             <section class="settings-screen hidden" id="settingsScreen" aria-labelledby="settingsTitle">
                 <header class="surface-header settings-header">
-                    <button class="back-btn" id="settingsBackBtn" type="button" aria-label="Go back">
+                    <button class="icon-btn back-btn" id="settingsBackBtn" type="button" aria-label="Go back">
                         <span class="ph-icon ph-arrow-right icon-back" aria-hidden="true"></span>
                     </button>
-                    <div>
-                        <h1 class="settings-title" id="settingsTitle">Settings</h1>
-                    </div>
+                    <h1 class="settings-title" id="settingsTitle" tabindex="-1">Settings</h1>
                 </header>
 
                 <div class="settings-content">
@@ -256,7 +272,7 @@
                     </section>
 
                     <section class="settings-section" aria-labelledby="accountTitle">
-                        <h2 class="settings-section-title" id="accountTitle">Account</h2>
+                        <h2 class="settings-section-title" id="accountTitle">Credits</h2>
                         <div class="settings-card account-card">
                             <div class="settings-row">
                                 <span class="settings-row-icon ph-icon ph-credit-card" aria-hidden="true"></span>
@@ -264,12 +280,12 @@
                                     <span class="settings-row-label">Credits remaining</span>
                                     <span class="settings-row-value numeric skeleton settings-value-skeleton" id="creditsValue"></span>
                                 </div>
-                                <button class="buy-credits-btn" id="buyCreditsBtn" type="button">
+                                <button class="btn btn-primary buy-credits-btn" id="buyCreditsBtn" type="button">
                                     <span class="ph-icon ph-plus" aria-hidden="true"></span>
                                     Buy credits
                                 </button>
                             </div>
-                            <p class="settings-row-description">Each submitted chat message uses one credit.</p>
+                            <p class="settings-row-description">Each message uses one credit. Conversations where someone may be in crisis are never charged.</p>
                         </div>
                     </section>
 
@@ -289,7 +305,7 @@
                             <div class="profile-form-grid">
                                 <div class="settings-field">
                                     <label class="settings-row-label" for="denominationSelect">Jewish background</label>
-                                    <select class="settings-select" id="denominationSelect">
+                                    <select class="settings-select" id="denominationSelect" aria-describedby="denominationHelp">
                                         <option value="">Select...</option>
                                         <option value="reconstructionist">Reconstructionist</option>
                                         <option value="renewal">Jewish Renewal</option>
@@ -306,18 +322,18 @@
                                         <option value="secular">Secular/Cultural</option>
                                         <option value="not_jewish">Not Jewish</option>
                                     </select>
-                                    <small>Your background helps tailor perspective and language.</small>
+                                    <small id="denominationHelp">Your background helps tailor perspective and language.</small>
                                 </div>
                                 <div class="settings-field">
                                     <label class="settings-row-label" for="bioInput">Context about you</label>
                                     <div class="bio-input-container">
-                                        <textarea class="settings-textarea" id="bioInput" dir="auto" maxlength="200" rows="4" placeholder="Share context that would make guidance more relevant."></textarea>
+                                        <textarea class="settings-textarea" id="bioInput" dir="auto" maxlength="200" rows="4" placeholder="Share context that would make guidance more relevant." aria-describedby="bioHelp"></textarea>
                                         <span class="char-count numeric"><span id="bioCharCount">0</span>/200</span>
                                     </div>
-                                    <small>This context is included to personalize your responses.</small>
+                                    <small id="bioHelp">This context is included to personalize your responses.</small>
                                 </div>
                             </div>
-                            <button class="save-profile-btn" id="saveProfileBtn" type="button">
+                            <button class="btn btn-primary save-profile-btn" id="saveProfileBtn" type="button">
                                 <span class="ph-icon ph-check" aria-hidden="true"></span>
                                 Save profile
                             </button>
@@ -325,16 +341,44 @@
                     </section>
 
                     <section class="settings-section" aria-labelledby="privacyTitle">
-                        <h2 class="settings-section-title" id="privacyTitle">Privacy</h2>
+                        <h2 class="settings-section-title" id="privacyTitle">Privacy and data</h2>
                         <div class="settings-card privacy-card">
-                            <div>
+                            <div class="privacy-card-copy">
                                 <h3>Know where your information goes.</h3>
                                 <p>Read what is stored, how AI and payment providers process data, and how to make a privacy request.</p>
                             </div>
-                            <a class="settings-policy-link" href="/privacy">
-                                Read privacy policy
-                                <span class="ph-icon ph-arrow-up-right" aria-hidden="true"></span>
-                            </a>
+                            <div class="privacy-links">
+                                <a class="settings-policy-link" href="/privacy">
+                                    Read privacy policy
+                                    <span class="ph-icon ph-arrow-up-right" aria-hidden="true"></span>
+                                </a>
+                                <a class="settings-policy-link" href="/terms" id="settingsTermsLink">
+                                    Terms of service
+                                    <span class="ph-icon ph-arrow-up-right" aria-hidden="true"></span>
+                                </a>
+                            </div>
+                            <div class="data-actions">
+                                <div class="data-action">
+                                    <div>
+                                        <h3>Download my data</h3>
+                                        <p>A JSON file with your profile, conversations, and messages.</p>
+                                    </div>
+                                    <button class="btn btn-quiet" id="exportDataBtn" type="button">
+                                        <span class="ph-icon ph-download-simple" aria-hidden="true"></span>
+                                        Download
+                                    </button>
+                                </div>
+                                <div class="data-action danger-zone">
+                                    <div>
+                                        <h3>Delete account</h3>
+                                        <p>Permanently removes your account, conversations, and remaining credits.</p>
+                                    </div>
+                                    <button class="btn btn-danger" id="deleteAccountBtn" type="button">
+                                        <span class="ph-icon ph-trash" aria-hidden="true"></span>
+                                        Delete account
+                                    </button>
+                                </div>
+                            </div>
                         </div>
                     </section>
                 </div>
@@ -342,56 +386,58 @@
 
             <section class="dvar-torah-screen hidden" id="dvarTorahScreen" aria-labelledby="dvarTorahScreenTitle">
                 <header class="surface-header dvar-torah-screen-header">
-                    <button class="back-btn" id="dvarTorahBackBtn" type="button" aria-label="Go back">
+                    <button class="icon-btn back-btn" id="dvarTorahBackBtn" type="button" aria-label="Go back">
                         <span class="ph-icon ph-arrow-right icon-back" aria-hidden="true"></span>
                     </button>
-                    <div>
-                        <h1 class="dvar-torah-screen-title" id="dvarTorahScreenTitle" dir="auto">D'var Torah</h1>
-                    </div>
+                    <h1 class="dvar-torah-screen-title" id="dvarTorahScreenTitle" dir="auto">D'var Torah</h1>
                 </header>
                 <article class="dvar-torah-screen-content" id="dvarTorahScreenContent" dir="auto"></article>
             </section>
 
-            <div class="loading-indicator hidden" id="loadingIndicator" role="status" aria-live="polite">
-                <span class="ph-icon ph-books" aria-hidden="true"></span>
-                <span>Preparing a response</span>
-            </div>
             <div class="sr-only" id="appLiveRegion" role="status" aria-live="polite" aria-atomic="true"></div>
+            <div class="sr-only" id="messageLiveRegion" aria-live="polite" aria-atomic="true"></div>
         </main>
+
+        <aside class="sources-panel" id="sourcesPanel" aria-labelledby="sourcesPanelTitle" hidden>
+            <header class="sources-panel-header">
+                <div>
+                    <h2 id="sourcesPanelTitle">Sources</h2>
+                    <p class="sources-panel-sub">From the library: passages retrieved for this answer. General knowledge: cited by the model, not checked against the library.</p>
+                </div>
+                <button class="icon-btn" id="closeSourcesPanel" type="button" aria-label="Close sources">
+                    <span class="ph-icon ph-x" aria-hidden="true"></span>
+                </button>
+            </header>
+            <ol class="sources-list" id="sourcesList"></ol>
+        </aside>
     </div>
 
     <div class="sidebar-overlay hidden" id="sidebarOverlay" aria-hidden="true"></div>
+    <div class="panel-overlay hidden" id="panelOverlay" aria-hidden="true"></div>
 
     <div class="modal-overlay hidden" id="purchaseModal" role="dialog" aria-modal="true" aria-hidden="true" aria-labelledby="purchaseModalTitle" tabindex="-1">
         <div class="modal-content">
+            <span class="sheet-grabber" aria-hidden="true"></span>
             <header class="modal-header">
                 <div>
-                    <h2 id="purchaseModalTitle">Choose a credit package</h2>
+                    <h2 id="purchaseModalTitle">Add credits</h2>
+                    <p class="modal-sub" id="purchaseModalReason">One credit per message. Credits never expire.</p>
                 </div>
-                <button class="modal-close" id="closePurchaseModal" type="button" aria-label="Close credit purchase">
+                <button class="icon-btn modal-close" id="closePurchaseModal" type="button" aria-label="Close credit purchase">
                     <span class="ph-icon ph-x" aria-hidden="true"></span>
                 </button>
             </header>
 
             <fieldset class="package-selection credit-package-selection" id="packageSelection">
-                <legend>Credit amount</legend>
-                <button class="package-card credit-package-card selected" type="button" data-package="credits_10" aria-pressed="true">
-                    <span class="package-credits">10 credits</span>
-                    <span class="package-price numeric">$1.00</span>
-                </button>
-                <button class="package-card credit-package-card" type="button" data-package="credits_25" aria-pressed="false">
-                    <span class="package-credits">25 credits</span>
-                    <span class="package-price numeric">$2.00</span>
-                    <span class="package-badge">Lower cost per credit</span>
-                </button>
+                <legend class="sr-only">Credit amount</legend>
             </fieldset>
 
-            <div id="paymentElementContainer" aria-live="polite">
+            <div class="payment-element" id="paymentElementContainer" aria-live="polite">
                 <div class="payment-loading">Loading payment form...</div>
             </div>
 
             <div class="modal-footer" id="modalFooter">
-                <button class="purchase-btn" id="submitPayment" type="button" disabled>
+                <button class="btn btn-primary purchase-btn" id="submitPayment" type="button" disabled>
                     <span class="purchase-spinner hidden" aria-hidden="true"></span>
                     <span class="btn-text">Pay now</span>
                 </button>
@@ -412,11 +458,12 @@
 
     <div class="modal-overlay hidden" id="sponsorModal" role="dialog" aria-modal="true" aria-hidden="true" aria-labelledby="sponsorModalTitle" tabindex="-1">
         <div class="modal-content sponsor-modal-content">
+            <span class="sheet-grabber" aria-hidden="true"></span>
             <header class="modal-header">
                 <div>
                     <h2 id="sponsorModalTitle">Sponsor this week's d'var Torah</h2>
                 </div>
-                <button class="modal-close" id="closeSponsorModal" type="button" aria-label="Close sponsorship">
+                <button class="icon-btn modal-close" id="closeSponsorModal" type="button" aria-label="Close sponsorship">
                     <span class="ph-icon ph-x" aria-hidden="true"></span>
                 </button>
             </header>
@@ -425,7 +472,7 @@
                 <p class="sponsor-intro">Dedicate this week's Torah learning. Completed dedication text is public. Amounts follow the tradition of giving in multiples of chai, 18.</p>
 
                 <fieldset class="package-selection sponsor-tier-selection">
-                    <legend>Sponsorship amount</legend>
+                    <legend class="sr-only">Sponsorship amount</legend>
                     <button class="package-card sponsor-tier-card selected" type="button" data-tier="chai" aria-pressed="true">
                         <span class="package-credits">Chai</span><span class="package-price numeric">$18</span>
                     </button>
@@ -459,16 +506,16 @@
                 <p class="sponsor-details-error hidden" id="sponsorDetailsError" role="alert"></p>
 
                 <div class="modal-footer">
-                    <button class="purchase-btn" id="sponsorContinueBtn" type="button"><span class="btn-text">Continue to payment</span></button>
+                    <button class="btn btn-primary purchase-btn" id="sponsorContinueBtn" type="button"><span class="btn-text">Continue to payment</span></button>
                 </div>
             </div>
 
             <div id="sponsorStepPayment" class="hidden">
-                <div id="sponsorPaymentElementContainer" aria-live="polite">
+                <div class="payment-element" id="sponsorPaymentElementContainer" aria-live="polite">
                     <div class="payment-loading">Loading payment form...</div>
                 </div>
                 <div class="modal-footer">
-                    <button class="purchase-btn" id="submitSponsorship" type="button" disabled><span class="btn-text">Complete dedication</span></button>
+                    <button class="btn btn-primary purchase-btn" id="submitSponsorship" type="button" disabled><span class="btn-text">Complete dedication</span></button>
                     <p class="payment-secure"><span class="ph-icon ph-shield" aria-hidden="true"></span>Payment handled by Stripe</p>
                 </div>
                 <div class="payment-error hidden" id="sponsorError" role="alert">
@@ -485,6 +532,26 @@
         </div>
     </div>
 
-    <script src="/static/app.js?v=32"></script>
+    <div class="modal-overlay hidden" id="deleteAccountModal" role="dialog" aria-modal="true" aria-hidden="true" aria-labelledby="deleteAccountTitle" aria-describedby="deleteAccountDesc" tabindex="-1">
+        <div class="modal-content modal-narrow">
+            <span class="sheet-grabber" aria-hidden="true"></span>
+            <header class="modal-header">
+                <h2 id="deleteAccountTitle">Delete your account?</h2>
+                <button class="icon-btn modal-close" id="closeDeleteAccount" type="button" aria-label="Cancel account deletion">
+                    <span class="ph-icon ph-x" aria-hidden="true"></span>
+                </button>
+            </header>
+            <p class="modal-body-copy" id="deleteAccountDesc">This permanently deletes your profile, every conversation, and any remaining credits. It cannot be undone. Consider downloading your data first.</p>
+            <label class="field-label" for="deleteAccountConfirm">Type <strong>DELETE</strong> to confirm</label>
+            <input class="text-input" type="text" id="deleteAccountConfirm" autocomplete="off" autocapitalize="characters" spellcheck="false">
+            <p class="field-error hidden" id="deleteAccountError" role="alert"></p>
+            <div class="modal-actions">
+                <button class="btn btn-quiet" id="cancelDeleteAccount" type="button">Cancel</button>
+                <button class="btn btn-danger-solid" id="confirmDeleteAccount" type="button" disabled>Delete account</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="toast-region" id="toastRegion" aria-live="polite"></div>
 </body>
 </html>

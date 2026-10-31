@@ -48,7 +48,19 @@ router = APIRouter(prefix="/api/payments", tags=["payments"])
 # the number of credits granted and the price in USD cents.
 #   - "credits_10": 10 chat credits for $1.00
 #   - "credits_25": 25 chat credits for $2.00 (better per-credit value)
+# Priced at cost plus a thin margin; see docs/BUSINESS_PLAN.md and
+# docs/unit_economics.py. Re-size packs (not prices) as measured cost changes.
 CREDIT_PACKAGES = {
+    "credits_55": {"credits": 55, "price_cents": 200, "display_price": "$2", "label": "Starter",
+                   "per_message": "3.6¢ per message"},
+    "credits_160": {"credits": 160, "price_cents": 500, "display_price": "$5", "label": "Standard",
+                    "per_message": "3.1¢ per message", "recommended": True},
+    "credits_400": {"credits": 400, "price_cents": 1200, "display_price": "$12", "label": "Plus",
+                    "per_message": "3.0¢ per message"},
+}
+
+# Retired packages: no longer sold, kept so purchase history stays readable.
+LEGACY_CREDIT_PACKAGES = {
     "credits_10": {"credits": 10, "price_cents": 100, "display_price": "$1.00"},
     "credits_25": {"credits": 25, "price_cents": 200, "display_price": "$2.00"},
 }

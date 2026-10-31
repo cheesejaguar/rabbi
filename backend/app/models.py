@@ -44,6 +44,14 @@ class ChatRequest(BaseModel):
         description="Optional conversation ID for persisting to database",
         max_length=100
     )
+    request_id: Optional[str] = Field(
+        None, description="Client-generated correlation id (not a billing key)", max_length=64
+    )
+    regenerate: bool = Field(False, description="Answer the last user message again (v2)")
+    edit_message_id: Optional[str] = Field(
+        None, description="Replace this user message and everything after it (v2)", max_length=100
+    )
+    client_tz: Optional[str] = Field(None, description="IANA time zone for regional crisis resources", max_length=64)
 
     @field_validator('conversation_history')
     @classmethod

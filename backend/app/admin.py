@@ -260,6 +260,24 @@ async def list_flagged(
         raise HTTPException(status_code=500, detail="Failed to list flagged messages")
 
 
+@router.get("/safety-events")
+async def list_safety_events(
+    admin: dict = Depends(require_admin),
+    limit: int = Query(50, ge=1, le=200),
+    offset: int = Query(0, ge=0),
+):
+    """Safety events from pipeline v2, including guest turns with no stored conversation:
+    crisis/abuse cards shown, harm-to-others flags, audit concerns and retractions."""
+    _require_db()
+    try:
+        events = await db.admin_list_safety_events(limit=limit, offset=offset)
+        free_spend = await db.get_free_tier_spend_today()
+        return {"events": events, "free_tier_spend_today_usd": free_spend}
+    except Exception as e:
+        logger.error(f"Error listing safety events: {e}")
+        raise HTTPException(status_code=500, detail="Failed to list safety events")
+
+
 @router.get("/feedback")
 async def list_feedback(
     admin: dict = Depends(require_admin),

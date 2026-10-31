@@ -222,7 +222,7 @@ class TestChatStreamEndpoint:
 
         assert response.status_code == 200
         body = response.text
-        assert "No credits remaining" in body
+        assert "no_credits" in body
         assert '"type": "token"' not in body
 
     def test_successful_credit_consumption_allows_chat(self, client_and_mock):

@@ -8,12 +8,14 @@ A source-aware Jewish guidance companion for exploring thought, practice, law, e
 
 ## Overview
 
-rebbe.dev is a conversational companion for questions of Jewish thought, practice, law, ethics, and spirituality. It uses a multi-agent architecture where specialized agents handle different parts of a response:
+rebbe.dev is a conversational companion for questions of Jewish thought, practice, law, ethics, and spirituality. Each answer holds four commitments: pastoral context (*how* to respond), the halachic landscape (the range of views), moral seriousness (dignity, no harm), and an honest rabbinic voice. Since pipeline v2, these live in one carefully written constitution answered by a single cached, streamed Claude Sonnet 5.5 call (served through Vercel AI Gateway), wrapped in layered guardrails:
 
-- **Pastoral Context Agent** - Determines *how* to respond based on emotional context
-- **Halachic Reasoning Agent** - Provides the landscape of Jewish legal opinions
-- **Moral-Ethical Agent** - Ensures responses preserve human dignity
-- **Meta-Rabbinic Voice Agent** - Crafts the final response with appropriate tone
+- **Deterministic crisis floor**: crisis and abuse disclosures always get human resources first, before any model runs
+- **Safety classifier** (Claude Haiku 5.5): routing and graded risk, run in parallel with source retrieval
+- **Library citations**: retrieved passages are cited with the Citations API and kept separate from general-knowledge references
+- **Post-answer audit**: every answer is checked, and an unsafe one is withdrawn
+
+See [`docs/REWRITE_PLAN.md`](docs/REWRITE_PLAN.md), [`docs/SAFETY.md`](docs/SAFETY.md), and [`docs/BUSINESS_PLAN.md`](docs/BUSINESS_PLAN.md). The original four-agent pipeline is kept as a fallback (`PIPELINE_VERSION=v1`, or `GATEWAY=openrouter`).
 
 **Important:** This is guidance, not binding psak (legal ruling). A rabbi who knows you personally may counsel differently.
 
@@ -22,11 +24,12 @@ rebbe.dev is a conversational companion for questions of Jewish thought, practic
 - Real-time streaming responses
 - WorkOS SSO authentication
 - Responsive light and dark themes with a persisted system preference
-- Multi-agent reasoning pipeline
-- Token-by-token response streaming
-- Credit-based usage with Stripe payments
-- Tiered credit packages ($1 for 10 credits, $2 for 25 credits)
-- Public, product-specific privacy policy at `/privacy`
+- Guardrailed single-call pipeline with prompt caching (first words in about a second)
+- Stop, regenerate, and edit-and-resend; conversation search and deep links
+- Credit-based usage with Stripe payments, priced near cost (55 for $2, 160 for $5, 400 for $12)
+- Crisis turns are always free; failed answers are refunded automatically
+- Self-service data export and account deletion; 18-month retention schedule
+- Public privacy policy at `/privacy` and Terms of Service at `/terms` (ages 13+)
 
 ## Quick Start
 
@@ -34,7 +37,7 @@ rebbe.dev is a conversational companion for questions of Jewish thought, practic
 
 - Python 3.11 or higher
 - [uv](https://docs.astral.sh/uv/) package manager
-- An [OpenRouter](https://openrouter.ai/) API key
+- A [Vercel AI Gateway](https://vercel.com/ai-gateway) API key (Claude models are served through the gateway). OpenRouter also works, with the v1 pipeline
 
 ### Installation
 
@@ -66,7 +69,8 @@ rebbe.dev is a conversational companion for questions of Jewish thought, practic
    Edit `.env` and add your API keys:
 
    ```bash
-   OPENROUTER_API_KEY=your-openrouter-api-key
+   GATEWAY=vercel
+   AI_GATEWAY_API_KEY=your-ai-gateway-key
 
    # Optional: WorkOS for authentication
    WORKOS_API_KEY=your-workos-api-key

@@ -28,6 +28,7 @@ dependencies = [
     "stripe>=8.0.0",
     # Hebrew calendar for d'var Torah
     "pyluach>=2.2.0",
+    "anthropic>=2.3.0",
 ]
 
 [project.optional-dependencies]

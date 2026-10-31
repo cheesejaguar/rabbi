@@ -27,12 +27,14 @@ class TestGetPackagesEndpoint:
         assert response.status_code == 200
         data = response.json()
         assert "packages" in data
-        assert "credits_10" in data["packages"]
-        assert "credits_25" in data["packages"]
-        assert data["packages"]["credits_10"]["credits"] == 10
-        assert data["packages"]["credits_10"]["price_cents"] == 100
-        assert data["packages"]["credits_25"]["credits"] == 25
-        assert data["packages"]["credits_25"]["price_cents"] == 200
+        pkgs = data["packages"]
+        assert set(pkgs) == {"credits_55", "credits_160", "credits_400"}
+        assert (pkgs["credits_55"]["credits"], pkgs["credits_55"]["price_cents"]) == (55, 200)
+        assert (pkgs["credits_160"]["credits"], pkgs["credits_160"]["price_cents"]) == (160, 500)
+        assert (pkgs["credits_400"]["credits"], pkgs["credits_400"]["price_cents"]) == (400, 1200)
+        assert [k for k, v in pkgs.items() if v.get("recommended")] == ["credits_160"]
+        # Retired packages are no longer offered.
+        assert "credits_10" not in pkgs and "credits_25" not in pkgs
 
 
 class TestCreateIntentEndpoint:
@@ -81,7 +83,7 @@ class TestCreateIntentEndpoint:
         """Test that create-intent requires authentication."""
         response = client_no_auth.post(
             "/api/payments/create-intent",
-            json={"package_id": "credits_10"}
+            json={"package_id": "credits_55"}
         )
 
         assert response.status_code == 401
@@ -113,7 +115,7 @@ class TestCreateIntentEndpoint:
 
                 response = client.post(
                     "/api/payments/create-intent",
-                    json={"package_id": "credits_10"}
+                    json={"package_id": "credits_55"}
                 )
 
                 assert response.status_code == 503
@@ -152,7 +154,7 @@ class TestCreateIntentEndpoint:
 
                         response = client.post(
                             "/api/payments/create-intent",
-                            json={"package_id": "credits_10"}
+                            json={"package_id": "credits_55"}
                         )
 
                         assert response.status_code == 200
