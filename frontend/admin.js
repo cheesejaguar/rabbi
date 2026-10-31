@@ -933,6 +933,26 @@
     }
   }
 
+  const regenerateDvarBtn = document.getElementById("regenerateDvarBtn");
+  if (regenerateDvarBtn) {
+    regenerateDvarBtn.addEventListener("click", async () => {
+      if (!window.confirm("Rewrite this week's d'var Torah now? The current text and its recording will be replaced.")) return;
+      regenerateDvarBtn.disabled = true;
+      announce("Regenerating this week's d'var Torah. This takes about a minute.");
+      try {
+        const d = new Date();
+        const date = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+        const result = await apiPost(`/api/admin/dvar-torah/regenerate?client_date=${date}`, {});
+        clearError();
+        announce(`D'var Torah for Parashat ${result.parsha_name} regenerated.`);
+      } catch (error) {
+        showError(`Could not regenerate the d'var Torah. ${error.message}`);
+      } finally {
+        regenerateDvarBtn.disabled = false;
+      }
+    });
+  }
+
   tabs.addEventListener("click", (event) => {
     const button = event.target.closest("button[data-tab]");
     if (button) activateTab(button.dataset.tab);

@@ -69,6 +69,7 @@ from .payments import router as payments_router
 from .admin import router as admin_router, require_admin
 from . import database as db
 from .dvar_torah import get_or_generate_dvar_torah, resolve_local_date
+from . import dvar_audio
 from .jewish_calendar import get_calendar_status
 from .chat.endpoint import stream_chat_v2, use_v2_for
 from .chat.retrieval import set_retriever as set_v2_retriever
@@ -336,6 +337,7 @@ class AuthMiddleware(BaseHTTPMiddleware):
         "/api/chat/stream",  # Allow guest free chat (handled in endpoint)
         "/api/greeting",  # Allow guests to see greeting
         "/api/dvar-torah",  # Weekly d'var Torah (public, cached)
+        "/api/dvar-torah/audio",  # Read-aloud recording (public, generated once)
         "/api/calendar-status",  # Shabbat/yom tov awareness (public)
         "/docs",
         "/openapi.json",
@@ -479,6 +481,7 @@ async def get_dvar_torah(request: Request, client_date: str = None):
         hebrew_year=result["hebrew_year"],
         content=result["content"],
         is_holiday_week=False,
+        audio_available=bool(settings.elevenlabs_api_key),
         sponsors=sponsors,
     )
 
@@ -486,6 +489,68 @@ async def get_dvar_torah(request: Request, client_date: str = None):
         content=response.model_dump(),
         headers={"Cache-Control": "public, max-age=300"},
     )
+
+
+@app.get("/api/dvar-torah/audio")
+@limiter.limit("30/minute")
+async def get_dvar_torah_audio(request: Request, client_date: str = None):
+    """The rebbe's voice reading this week's d'var Torah (MP3).
+
+    Generated once per d'var Torah text and stored (see ``dvar_audio.py``),
+    so ElevenLabs is paid once, not per play. While the first generation is
+    running, other callers get ``202`` with ``retry_after`` seconds.
+    """
+    try:
+        result = await get_or_generate_dvar_torah(
+            orchestrator.client, orchestrator.model, resolve_local_date(client_date)
+        )
+    except Exception as e:
+        logger.error(f"D'var Torah error (audio): {e}")
+        result = None
+    if not result or not result.get("content"):
+        return JSONResponse(status_code=404, content={"status": "unavailable"})
+    try:
+        status, audio = await dvar_audio.get_or_create_audio(
+            result["content"], result["parsha_name"], result["hebrew_year"])
+    except Exception as e:
+        logger.error(f"D'var Torah audio error: {e}")
+        status, audio = "unavailable", None
+    if status == "generating":
+        return JSONResponse(status_code=202, content={"status": "generating", "retry_after": 4},
+                            headers={"Retry-After": "4", "Cache-Control": "no-store"})
+    if status != "ready" or not audio:
+        return JSONResponse(status_code=503, content={"status": "unavailable"}, headers={"Cache-Control": "no-store"})
+    etag = dvar_audio.etag_for(audio)
+    cache = {"ETag": etag, "Cache-Control": "public, max-age=86400"}
+    if request.headers.get("if-none-match") == etag:
+        return Response(status_code=304, headers=cache)
+    return Response(content=audio, media_type=dvar_audio.MIME,
+                    headers={**cache, "Content-Disposition": 'inline; filename="dvar-torah.mp3"'})
+
+
+@app.post("/api/admin/dvar-torah/regenerate")
+async def regenerate_dvar_torah(request: Request, client_date: str = None, admin: dict = Depends(require_admin)):
+    """Admin: discard this week's cached d'var Torah and its audio, then write it again.
+
+    Use after changing the d'var Torah prompt. The new audio is generated on
+    the next play.
+    """
+    from .dvar_torah import get_current_parsha
+    if not settings.db_url:
+        raise HTTPException(status_code=503, detail="Database not configured")
+    parsha = get_current_parsha(resolve_local_date(client_date))
+    if not parsha:
+        raise HTTPException(status_code=404, detail="No regular parsha this week")
+    deleted = await db.delete_dvar_torah(parsha["parsha_name"], parsha["hebrew_year"])
+    result = await get_or_generate_dvar_torah(
+        orchestrator.client, orchestrator.model, resolve_local_date(client_date))
+    await db.log_admin_action(admin_user_id=admin["id"], action="regenerate_dvar_torah",
+                              details={"parsha": parsha["parsha_name"], "hebrew_year": parsha["hebrew_year"],
+                                       "replaced": deleted})
+    if not result:
+        raise HTTPException(status_code=502, detail="Regeneration failed; try again")
+    return {"regenerated": True, "parsha_name": result["parsha_name"], "hebrew_year": result["hebrew_year"],
+            "content": result["content"]}
 
 
 @app.get("/api/calendar-status")

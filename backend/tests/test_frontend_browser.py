@@ -1592,3 +1592,44 @@ def test_admin_crisis_queue_shows_guest_safety_events(page, frontend_url):
     content = page.locator("#content").inner_text()
     assert "Guest visitor" in content and "$1.25" in content
     assert "No messages currently need crisis or referral review." in content
+
+
+def test_dvar_torah_listen_waits_for_the_one_recording_then_plays(page, frontend_url):
+    """The read-aloud recording is generated once on the server; while it is being
+    prepared the endpoint answers 202 and the player waits, then shows controls."""
+    install_app_routes(page)
+    page.route("**/api/dvar-torah?*", lambda route: route.fulfill(json={
+        "parsha_name": "Vayeira", "parsha_name_hebrew": "וירא",
+        "content": "On שבת (Shabbat) we learn from אברהם (Avraham).",
+        "is_holiday_week": False, "audio_available": True, "sponsors": []}))
+    audio_calls = []
+
+    def audio(route):
+        audio_calls.append(route.request.url)
+        if len(audio_calls) == 1:
+            route.fulfill(status=202, json={"status": "generating", "retry_after": 2})
+        else:
+            route.fulfill(status=200, body=b"ID3fake-mp3", headers={"Content-Type": "audio/mpeg"})
+
+    page.route("**/api/dvar-torah/audio*", audio)
+    open_frontend(page, frontend_url, "index.html", {"width": 1280, "height": 900})
+    wait_for_signed_in_app(page)
+    page.locator("#dvarTorahSection:not(.hidden)").wait_for()
+    page.locator("#dvarTorahExpandBtn").click()
+    listen = page.get_by_role("button", name="Listen to the rebbe read it")
+    listen.click()
+    page.locator(".dvar-listen-status").filter(has_text="Preparing the recording").wait_for()
+    page.locator(".dvar-audio:not([hidden])").wait_for(timeout=15000)
+    assert page.locator(".dvar-audio").get_attribute("src").startswith("blob:")
+    assert listen.is_hidden()
+    assert len(audio_calls) == 2
+
+
+def test_dvar_torah_hides_listen_when_audio_is_not_available(page, frontend_url):
+    install_app_routes(page)
+    open_frontend(page, frontend_url, "index.html", {"width": 1280, "height": 900})
+    wait_for_signed_in_app(page)
+    page.locator("#dvarTorahSection:not(.hidden)").wait_for()
+    page.locator("#dvarTorahExpandBtn").click()
+    page.locator("#sponsorDvarBtn").wait_for()
+    assert page.locator(".dvar-listen-btn").count() == 0

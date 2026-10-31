@@ -76,6 +76,8 @@ The `RabbiOrchestrator` (`orchestrator.py`) coordinates this pipeline. If the mo
 - `GET /api/account/export`, `DELETE /api/account` - Self-service data export / account deletion (`account.py`)
 - `GET /terms` - Terms of Service (ages 13+); `GET /c/{id}` - conversation deep link
 - `GET /api/dvar-torah` - Weekly d'var Torah with sponsor dedications
+- `GET /api/dvar-torah/audio` - The rebbe's voice reading the d'var Torah (MP3). Generated once per d'var Torah text with ElevenLabs and stored in `dvar_torah_audio` (`dvar_audio.py`), so later plays cost nothing; `202` while the one generation runs
+- `POST /api/admin/dvar-torah/regenerate` - Admin: rewrite this week's d'var Torah (and drop its recording) after prompt changes
 - `GET /api/calendar-status` - Shabbat/yom tov status for the client's local time (`jewish_calendar.py`)
 - `GET /robots.txt`, `GET /sitemap.xml` - Crawler surface
 
@@ -116,6 +118,7 @@ PostgreSQL with asyncpg. Key tables:
 - `rate_limits` - Fixed-window counters shared across instances (`ratelimit.py`)
 - `credit_ledger` - Every credit change; unique `(reason, ref)` makes charges/refunds idempotent
 - `safety_events` - Crisis/abuse/harm/audit events (18-month retention); `free_tier_spend` - daily guest spend
+- `dvar_torah_audio` - Cached d'var Torah recordings keyed by a hash of voice + model + spoken text
 
 Schema auto-initializes on startup with advisory locks for concurrent safety.
 

@@ -505,6 +505,19 @@ CREATE TABLE IF NOT EXISTS deleted_accounts (
     deleted_at TIMESTAMPTZ DEFAULT NOW()
 );
 
+-- Read-aloud audio for the weekly d'var Torah, generated once per text.
+-- key = sha256(voice | model | format | spoken text); audio NULL while generating.
+CREATE TABLE IF NOT EXISTS dvar_torah_audio (
+    key TEXT PRIMARY KEY,
+    parsha_name TEXT NOT NULL,
+    hebrew_year INTEGER NOT NULL,
+    audio BYTEA,
+    mime TEXT,
+    chars INTEGER,
+    claimed_at TIMESTAMPTZ DEFAULT NOW(),
+    created_at TIMESTAMPTZ
+);
+
 -- Existing message rows gain no columns; v2 data lives in metadata JSONB.
 """
 
@@ -2397,3 +2410,55 @@ async def forget_charge(user_id: str, reason: str, ref: str) -> None:
     async with get_connection() as conn:
         await conn.execute(
             "DELETE FROM credit_ledger WHERE user_id = $1 AND reason = $2 AND ref = $3", user_id, reason, ref)
+
+
+# ---------------------------------------------------------------------------
+# D'var Torah audio (dvar_audio.py)
+# ---------------------------------------------------------------------------
+
+
+async def get_dvar_audio(key: str) -> Optional[dict]:
+    async with get_connection() as conn:
+        row = await conn.fetchrow("SELECT key, audio, mime FROM dvar_torah_audio WHERE key = $1", key)
+        return dict(row) if row else None
+
+
+async def claim_dvar_audio(key: str, parsha_name: str, hebrew_year: int, stale_seconds: int) -> bool:
+    """Claim the one generation for ``key``; take over a claim older than ``stale_seconds``."""
+    async with get_connection() as conn:
+        claimed = await conn.fetchval(
+            """
+            INSERT INTO dvar_torah_audio (key, parsha_name, hebrew_year, claimed_at)
+            VALUES ($1, $2, $3, NOW())
+            ON CONFLICT (key) DO UPDATE SET claimed_at = NOW()
+                WHERE dvar_torah_audio.audio IS NULL
+                  AND dvar_torah_audio.claimed_at < NOW() - make_interval(secs => $4)
+            RETURNING key
+            """,
+            key, parsha_name, hebrew_year, stale_seconds,
+        )
+        return claimed is not None
+
+
+async def complete_dvar_audio(key: str, audio: bytes, mime: str, chars: int) -> None:
+    async with get_connection() as conn:
+        await conn.execute(
+            "UPDATE dvar_torah_audio SET audio = $2, mime = $3, chars = $4, created_at = NOW() WHERE key = $1",
+            key, audio, mime, chars,
+        )
+
+
+async def release_dvar_audio_claim(key: str) -> None:
+    async with get_connection() as conn:
+        await conn.execute("DELETE FROM dvar_torah_audio WHERE key = $1 AND audio IS NULL", key)
+
+
+async def delete_dvar_torah(parsha_name: str, hebrew_year: int) -> int:
+    """Drop the cached d'var Torah and its audio for one parsha (admin regenerate)."""
+    async with get_connection() as conn:
+        async with conn.transaction():
+            await conn.execute(
+                "DELETE FROM dvar_torah_audio WHERE parsha_name = $1 AND hebrew_year = $2", parsha_name, hebrew_year)
+            result = await conn.execute(
+                "DELETE FROM dvar_torah WHERE parsha_name = $1 AND hebrew_year = $2", parsha_name, hebrew_year)
+            return int(result.split()[-1]) if result else 0

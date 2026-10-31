@@ -2400,6 +2400,31 @@ body[data-streaming="true"] .edit-btn {
     line-height: 1.82;
 }
 
+.dvar-listen {
+    display: grid;
+    justify-items: start;
+    gap: 8px;
+    margin-bottom: 24px;
+}
+
+.dvar-listen-btn {
+    min-height: 44px;
+}
+
+.dvar-audio {
+    width: 100%;
+    max-width: 480px;
+}
+
+.dvar-listen-status:empty {
+    display: none;
+}
+
+.dvar-listen-status {
+    color: var(--brand-muted);
+    font-size: 0.9rem;
+}
+
 .dvar-sponsors {
     margin-bottom: 24px;
     padding: 14px 18px;

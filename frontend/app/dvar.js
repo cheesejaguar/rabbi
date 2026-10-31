@@ -2,7 +2,7 @@
  * Weekly d'var Torah: welcome-screen preview, full reading screen with
  * sponsor dedications, and the sponsor call to action.
  */
-import { $, h, localDateString, showScreen } from './dom.js';
+import { $, h, icon, localDateString, showScreen } from './dom.js';
 import { state } from './store.js';
 import { openSponsorModal } from './sponsor.js';
 import { showLoginPrompt } from './auth.js';
@@ -53,6 +53,7 @@ export function showDvarTorah() {
         parts.push(h('div', { class: 'dvar-sponsors' },
             ...data.sponsors.map((s) => h('p', { class: 'dvar-sponsor-line', dir: 'auto', text: formatDedication(s) }))));
     }
+    if (data.audio_available) parts.push(listenControl());
     parts.push(h('div', { class: 'dvar-torah-body' },
         ...data.content.split('\n\n').filter((p) => p.trim())
             .map((p) => h('p', { dir: blockDirection(p), text: p.replace(/\n/g, ' ') }))));
@@ -80,4 +81,62 @@ export async function refreshAfterSponsorship() {
 export function initDvar() {
     $('dvarTorahExpandBtn').addEventListener('click', showDvarTorah);
     $('dvarTorahBackBtn').addEventListener('click', hideDvarTorah);
+}
+
+/* ---------------- Read-aloud recording ---------------- */
+
+// The recording is generated once on the server and cached; within a page
+// session the downloaded file is reused, so replays cost nothing.
+let audioUrl = null;
+let audioFor = null;
+
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+async function fetchRecording(status) {
+    const url = `/api/dvar-torah/audio?client_date=${encodeURIComponent(localDateString())}`;
+    for (let attempt = 0; attempt < 60; attempt += 1) {
+        const response = await fetch(url, { credentials: 'same-origin' });
+        if (response.status === 200) return URL.createObjectURL(await response.blob());
+        if (response.status !== 202) throw new Error(`audio ${response.status}`);
+        // Someone (often this listener) is generating the one recording; wait for it.
+        status.textContent = attempt === 0
+            ? 'Preparing the recording. The first listen takes up to a minute.'
+            : 'Still preparing the recording…';
+        const body = await response.json().catch(() => ({}));
+        await sleep(Math.min(10, Math.max(2, Number(body.retry_after) || 4)) * 1000);
+    }
+    throw new Error('audio timeout');
+}
+
+function listenControl() {
+    const status = h('p', { class: 'dvar-listen-status', role: 'status', 'aria-live': 'polite' });
+    const player = h('audio', { class: 'dvar-audio', controls: '', preload: 'none' });
+    player.hidden = true;
+    const button = h('button', { class: 'btn btn-quiet dvar-listen-btn', type: 'button' },
+        icon('speaker'), h('span', { text: 'Listen to the rebbe read it' }));
+
+    const ready = (src) => {
+        player.src = src;
+        player.hidden = false;
+        button.hidden = true;
+        status.textContent = '';
+    };
+    if (audioUrl && audioFor === data.content) ready(audioUrl);
+
+    button.addEventListener('click', async () => {
+        button.disabled = true;
+        status.textContent = 'Loading the recording…';
+        try {
+            const src = await fetchRecording(status);
+            audioUrl = src;
+            audioFor = data.content;
+            ready(src);
+            player.play().catch(() => {});
+        } catch (error) {
+            console.warn("D'var Torah audio unavailable:", error);
+            status.textContent = 'The recording is not available right now. Please try again later.';
+            button.disabled = false;
+        }
+    });
+    return h('div', { class: 'dvar-listen' }, button, player, status);
 }
