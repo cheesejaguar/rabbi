@@ -231,7 +231,10 @@ def test_static_assets_are_served_with_usable_content_types(live_app, page):
     expectations = {
         "/static/brand.css": "text/css",
         "/static/theme.js": "javascript",
-        "/static/app.js": "javascript",
+        "/static/app/main.js": "javascript",
+        "/static/app/chat/markdown.js": "javascript",
+        "/static/vendor/markdown-it.esm.js": "javascript",
+        "/static/vendor/purify.es.js": "javascript",
         "/static/admin.js": "javascript",
         "/static/assets/fonts/HankenGrotesk-Variable.ttf": "font",
         "/static/assets/fonts/NotoSansHebrew-Variable.ttf": "font",
