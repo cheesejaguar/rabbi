@@ -202,3 +202,24 @@ def test_eval_lexicon_has_no_false_crisis_on_benign():
             if r["category"] in benign and (lexicon.scan(r["message"]).forces_crisis
                                             or lexicon.scan(r["message"]).forces_abuse_protocol)]
     assert hits == []
+
+
+# --- Hebrew-first style rule (constitution + eval checker) -------------------------
+
+def test_constitution_requires_hebrew_letters_first():
+    from app.prompts import CONSTITUTION
+    assert "Hebrew letters first" in CONSTITUTION
+    assert "שבת (Shabbat)" in CONSTITUTION
+    # The Hebrew principles the constitution quotes are themselves written Hebrew-first.
+    assert "גדול כבוד הבריות (gadol kavod habriyot)" in CONSTITUTION
+    assert "פיקוח נפש (pikuach nefesh)" in CONSTITUTION
+
+
+def test_hebrew_style_checker():
+    from evals.hebrew_style import bare_transliterations, uses_hebrew_first
+    good = 'On שבת (Shabbat) the הלכה (halacha) follows the רמב"ם (Rambam), as the שולחן ערוך (Shulchan Aruch) rules.'
+    assert bare_transliterations(good) == []
+    assert uses_hebrew_first(good)
+    bad = "On Shabbat the halacha follows the Rambam."
+    assert bare_transliterations(bad) == ["Shabbat", "halacha", "Rambam"]
+    assert not uses_hebrew_first(bad)

@@ -1343,7 +1343,27 @@ def test_markdown_is_sanitized_and_links_open_safely(page, frontend_url):
     link = body.get_by_role("link", name="Sefaria")
     assert link.get_attribute("target") == "_blank"
     assert link.get_attribute("rel") == "noopener noreferrer"
-    assert body.locator("p").last.get_attribute("dir") == "auto"
+    assert body.locator("p").last.get_attribute("dir") == "rtl"
+
+
+def test_inline_hebrew_terms_keep_english_paragraphs_left_to_right(page, frontend_url):
+    """Answers write Hebrew terms first ("שבת (Shabbat)"). A paragraph that starts
+    with a Hebrew word must still lay out left-to-right; an all-Hebrew quote stays RTL."""
+    events = [
+        {"type": "token", "data": "צדקה (tzedakah, charitable giving) is more than charity. "},
+        {"type": "token", "data": "The רמב\"ם (Rambam) lists eight levels.\n\n"},
+        {"type": "token", "data": "- חסד (chesed, loving-kindness) goes beyond money\n\n"},
+        {"type": "token", "data": "> צדק צדק תרדף\n\nJustice, justice shall you pursue."},
+        {"type": "done"},
+    ]
+    install_app_routes(page, stream_body=sse(events))
+    start_chat(page, frontend_url)
+    body = page.locator(".message.assistant .message-content")
+    body.locator("p").filter(has_text="Justice, justice").wait_for()
+    assert body.locator("p").filter(has_text="eight levels").get_attribute("dir") == "ltr"
+    assert body.locator("li").first.get_attribute("dir") == "ltr"
+    assert body.locator("blockquote p").get_attribute("dir") == "rtl"
+    assert body.locator("p").filter(has_text="Justice, justice").get_attribute("dir") == "ltr"
 
 
 def test_no_credits_opens_the_purchase_sheet_and_keeps_the_draft(page, frontend_url):

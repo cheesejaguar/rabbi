@@ -20,12 +20,31 @@ const CLOSE = '';
 const MARKER = /(\d{1,3})/g;
 const BLOCK_TAGS = new Set(['P', 'LI', 'H1', 'H2', 'H3', 'H4', 'H5', 'H6', 'BLOCKQUOTE', 'TD', 'TH', 'DT', 'DD']);
 
+const HEBREW = /[\u0590-\u05FF\uFB1D-\uFB4F]/g;
+const LATIN = /[A-Za-z\u00C0-\u024F]/g;
+
+/**
+ * Direction for one block, by majority script rather than first letter.
+ * Answers are mostly English with inline Hebrew terms ("תורה (Torah) teaches…"),
+ * and `dir="auto"` would flip such a paragraph to RTL just because it starts
+ * with a Hebrew word. A block that is mostly Hebrew (a quoted verse, or an
+ * answer to a question asked in Hebrew) still renders RTL.
+ * @param {string} text
+ * @returns {'ltr'|'rtl'|'auto'}
+ */
+export function blockDirection(text) {
+    const he = (String(text || '').match(HEBREW) || []).length;
+    const la = (String(text || '').match(LATIN) || []).length;
+    if (!he && !la) return 'auto';
+    return he > la ? 'rtl' : 'ltr';
+}
+
 DOMPurify.addHook('afterSanitizeAttributes', (node) => {
     if (node.tagName === 'A' && node.hasAttribute('href')) {
         node.setAttribute('target', '_blank');
         node.setAttribute('rel', 'noopener noreferrer');
     }
-    if (BLOCK_TAGS.has(node.tagName)) node.setAttribute('dir', 'auto');
+    if (BLOCK_TAGS.has(node.tagName)) node.setAttribute('dir', blockDirection(node.textContent));
 });
 
 const PURIFY = {
