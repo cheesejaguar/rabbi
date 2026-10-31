@@ -14,11 +14,13 @@ This is how pipeline v2 protects users and the service. The design is in `docs/R
 | 4. Post-stream audit | `safety/audit.py` (Haiku) | Grades every answer. `concern` → admin queue; `severe` → retraction event, stored text replaced (original kept for review), admin alert | Audit error → stored as `available: false` and the answer is kept |
 | 5. Humans | `safety/alerts.py`, `/api/admin/safety-events`, `/api/admin/flagged` | Webhook alert (no message text) for crisis, abuse, harm, and retraction; review queues including guest turns | Alerting is best-effort with a 3 s timeout |
 
+**The crisis floor runs before every other check.** Rate limits, IP blocks, input-length errors, walls, and credit errors can't suppress the resource card. An overlong crisis message is truncated and answered rather than rejected.
+
 **Walls never block a crisis turn.** If a guest is over the limit or a user has no credits, the endpoint still checks the message (lexicon, then classifier). A possible crisis or abuse disclosure is answered, free of charge. Crisis and abuse turns are never charged.
 
 ## Crisis resources
 
-Static, versioned content lives in `safety/resources.py` (`RESOURCES_VERSION`). The region comes from the client's IANA time zone, falling back to `Accept-Language`. Ordering rule: emergency number and 24/7 general lines first, then community services (several of which are referral or limited-hours lines, not crisis lines).
+Static, versioned content lives in `safety/resources.py` (`RESOURCES_VERSION`). The region comes from the client's IANA time zone, falling back to `Accept-Language`. A zone outside the covered regions gets the international card ("your local emergency number" plus worldwide directories), never US-only numbers. Ordering rule: emergency number and 24/7 general lines first, then community services (several of which are referral or limited-hours lines, not crisis lines).
 
 Verification (2026-10-31), against each organization's own site unless noted:
 
@@ -45,6 +47,7 @@ Verification (2026-10-31), against each organization's own site unless noted:
 | Jewish Women's Aid 0808 801 0500 | jwa.org.uk | limited hours |
 | Trevor Project, Teen Line | thetrevorproject.org, didihirsch.org/teenline | youth card |
 | Kids Help Phone (CA) | kidshelpphone.ca | youth card |
+| Find A Helpline, Befrienders Worldwide | well-known international directories | shown for regions without a dedicated list ("INTL": time zones outside the US, Canada, UK, Ireland, Israel, Australia). **Re-verify before launch.** |
 
 Not included (could not be verified): Childline UK, Jewish Board DV line, BeWell regional lines, NATAL 1800-363-363. CST (UK, 0800 032 3263), ADL incident reporting, and the Secure Community Network duty desk (844-726-3375) were verified as **antisemitism incident** resources. They are not crisis lines and are not shown on the crisis card.
 
@@ -56,9 +59,13 @@ Re-verify every quarter, bump `RESOURCES_VERSION`, and have a human approve any 
 
 Grow the set from real flagged traffic (anonymized) and keep crisis recall as the deciding metric.
 
+## Independent review
+
+A separate review pass over v2 (2026-10-31) found 14 defects, including two high-severity safety gaps: early exits that skipped the crisis floor, and a wall override that ignored crisis follow-ups. All 14 are fixed, with regression tests in `backend/tests/test_v2_pipeline.py`.
+
 ## Operating checklist
 
 - Set `ADMIN_ALERT_WEBHOOK_URL` before launch, and keep someone on call for alerts.
-- Review `/admin` safety events and the flagged queue daily.
+- Review the `/admin` Crisis queue daily. It shows safety events (including guest turns), today's free-tier spend, and flagged or withdrawn answers.
 - Run `--classifier` evals after any change to the prompt, classifier, or model, and `--full` before a release.
 - Watch the free-tier spend in the safety-events response (`free_tier_spend_today_usd`).

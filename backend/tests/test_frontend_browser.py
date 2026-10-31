@@ -662,6 +662,7 @@ def test_admin_all_views_empty_states_and_mobile_selector(page, frontend_url):
         "costs": {"costs": []},
         "users": {"users": [], "total": 0},
         "flagged": {"flagged": []},
+        "safety-events": {"events": [], "free_tier_spend_today_usd": 0},
         "feedback": {"feedback": []},
         "errors": {"errors": [], "stats": []},
         "purchases": {"purchases": []},
@@ -1545,3 +1546,29 @@ def test_mobile_composer_targets_and_bottom_sheet(page, frontend_url):
     sheet = page.locator("#purchaseModal .modal-content").bounding_box()
     assert abs((sheet["y"] + sheet["height"]) - 844) <= 1, "purchase sheet should dock to the bottom on phones"
     assert_no_horizontal_overflow(page, "chat at 390px")
+
+
+def test_admin_crisis_queue_shows_guest_safety_events(page, frontend_url):
+    responses = {
+        "overview": {"overview": {}},
+        "costs": {"costs": []},
+        "flagged": {"flagged": []},
+        "safety-events": {
+            "events": [{"id": 1, "created_at": "2026-10-31T10:00:00Z", "kind": "crisis", "card_level": "crisis",
+                        "flags": ["self_harm"], "is_guest": True, "conversation_id": None}],
+            "free_tier_spend_today_usd": 1.25,
+        },
+    }
+
+    def fulfill_admin(route):
+        key = route.request.url.split("/api/admin/", 1)[1].split("?", 1)[0]
+        route.fulfill(json=responses.get(key, {}))
+
+    page.route("**/api/admin/**", fulfill_admin)
+    open_frontend(page, frontend_url, "admin.html", {"width": 1440, "height": 1000})
+    page.wait_for_selector("#content[aria-busy='false']")
+    page.locator("#tabs [data-tab='flagged']").click()
+    page.wait_for_selector("text=crisis resources shown")
+    content = page.locator("#content").inner_text()
+    assert "Guest visitor" in content and "$1.25" in content
+    assert "No messages currently need crisis or referral review." in content

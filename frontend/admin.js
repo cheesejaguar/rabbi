@@ -12,7 +12,7 @@
     },
     flagged: {
       title: "Crisis queue",
-      description: "Messages marked for crisis, vulnerability, or human referral review.",
+      description: "Safety events (including guests), crisis and referral messages, and answers the automatic audit flagged or withdrew.",
     },
     feedback: {
       title: "Feedback",
@@ -363,15 +363,60 @@
     const pills = [];
     if (item.requires_human_referral) pills.push('<span class="pill error">human referral</span>');
     if (item.vulnerability_detected) pills.push('<span class="pill warning">vulnerability</span>');
+    if (item.retracted) pills.push('<span class="pill error">withdrawn by audit</span>');
+    else if (item.audit_verdict === "concern") pills.push('<span class="pill warning">audit concern</span>');
     parseCrisisIndicators(item.crisis_indicators).forEach((indicator) => {
       pills.push(`<span class="pill error">${esc(indicator)}</span>`);
     });
     return pills.join("") || '<span class="pill neutral">review signal</span>';
   }
 
+  const EVENT_LABELS = {
+    crisis: ["error", "crisis resources shown"],
+    abuse: ["error", "abuse resources shown"],
+    harm: ["error", "harm to others"],
+    audit_severe: ["error", "answer withdrawn"],
+    audit_concern: ["warning", "audit concern"],
+    manipulation: ["neutral", "manipulation attempt"],
+  };
+
+  async function loadSafetyEvents(signal) {
+    let data;
+    try {
+      data = await api("/api/admin/safety-events?limit=100", signal);
+    } catch (_error) {
+      return "";
+    }
+    const events = data.events || [];
+    const spend = Number(data.free_tier_spend_today_usd || 0).toFixed(2);
+    const summary = `<p class="cell-muted">Free-tier (guest) spend today: <strong class="numeric">$${esc(spend)}</strong></p>`;
+    if (!events.length) return summary;
+    const pill = (kind) => {
+      const [tone, label] = EVENT_LABELS[kind] || ["neutral", kind];
+      return `<span class="pill ${tone}">${esc(label)}</span>`;
+    };
+    const rows = events.map((e) => `<tr>
+      <td class="cell-muted numeric">${esc(fmtDate(e.created_at))}</td>
+      <td>${pill(e.kind)}</td>
+      <td dir="auto">${esc(e.is_guest ? "Guest visitor" : (e.user_email || "Deleted account"))}</td>
+      <td class="cell-muted">${parseCrisisIndicators(e.flags).map((f) => esc(f)).join(", ") || "None"}</td>
+      <td>${e.conversation_id ? `<button class="action" type="button" data-convo="${esc(e.conversation_id)}">Review</button>` : '<span class="cell-muted">No stored conversation</span>'}</td>
+    </tr>`);
+    const mobile = events.map((e) => mobileResult(
+      e.is_guest ? "Guest visitor" : (e.user_email || "Deleted account"),
+      pill(e.kind),
+      [["When", fmtDate(e.created_at)], ["Flags", parseCrisisIndicators(e.flags).join(", ") || "None"]],
+      e.conversation_id ? `<button class="action" type="button" data-convo="${esc(e.conversation_id)}">Review conversation</button>` : ""
+    ));
+    return summary + desktopTable("Safety events", ["When", "Event", "Who", "Flags", "Action"], rows) + mobileResults(mobile, "Safety events");
+  }
+
   async function loadFlagged(signal) {
-    const { flagged = [] } = await api("/api/admin/flagged?limit=100", signal);
-    if (!flagged.length) return emptyState("No messages currently need crisis or referral review.");
+    const [{ flagged = [] }, eventsHtml] = await Promise.all([
+      api("/api/admin/flagged?limit=100", signal),
+      loadSafetyEvents(signal),
+    ]);
+    if (!flagged.length) return eventsHtml + emptyState("No messages currently need crisis or referral review.");
     const rows = flagged.map((item) => `<tr>
       <td class="cell-muted numeric">${esc(fmtDate(item.created_at))}</td>
       <td dir="auto">${esc(item.user_email || "Not available")}</td>
@@ -390,7 +435,7 @@
       ],
       `<button class="action" type="button" data-convo="${esc(item.conversation_id)}">Review conversation</button>`
     ));
-    return desktopTable("Messages awaiting human review", ["When", "User", "Signals", "Mode and state", "Excerpt", "Action"], rows) + mobileResults(mobile, "Messages awaiting human review");
+    return eventsHtml + desktopTable("Messages awaiting human review", ["When", "User", "Signals", "Mode and state", "Excerpt", "Action"], rows) + mobileResults(mobile, "Messages awaiting human review");
   }
 
   async function loadFeedback(signal) {
