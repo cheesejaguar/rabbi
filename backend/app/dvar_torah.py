@@ -258,39 +258,35 @@ def _generate_dvar_torah(client: OpenAI, model: str, parsha_name: str, parsha_na
     return content, metrics
 
 
+def _result(parsha_name: str, parsha_name_hebrew: str, hebrew_year: int, content: str) -> dict:
+    return {
+        "parsha_name": parsha_name,
+        "parsha_name_hebrew": parsha_name_hebrew,
+        "hebrew_year": hebrew_year,
+        "content": clean_dvar_torah_content(content),
+    }
+
+
+def _ready(row: Optional[dict]) -> bool:
+    return bool(row and not row["generating"] and row["content"])
+
+
 async def get_or_generate_dvar_torah(
-    client: OpenAI, model: str, local_date: Optional[date] = None
+    client: OpenAI, model: str, local_date: Optional[date] = None,
+    wait_seconds: float = 40, poll_seconds: float = 2,
 ) -> Optional[dict]:
     """Get the current week's d'var Torah, generating it if not yet cached.
 
-    Orchestrates the full lifecycle of d'var Torah retrieval:
+    1. Return the cached commentary when there is one.
+    2. Otherwise try to claim the generation slot (``db.claim_dvar_torah_generation``,
+       an atomic upsert that also takes over a dead placeholder). The winner
+       generates the text off the event loop and stores it.
+    3. Everyone else polls the cache until ``wait_seconds`` runs out, trying
+       the claim again on each poll in case the winner died.
 
-    1. **Parsha lookup**: Determines which parsha to show today (see
-       ``get_current_parsha``). Returns ``None`` during holiday weeks.
-    2. **Cache check**: Queries the database for an existing, completed
-       commentary for this parsha and Hebrew year.
-    3. **Generation-in-progress wait**: If another request is already
-       generating the commentary (``generating=True``), polls the cache
-       every 2 seconds for up to 30 seconds before giving up.
-    4. **Atomic slot claim**: Calls ``db.claim_dvar_torah_generation()``
-       which performs an atomic INSERT (or returns ``None`` if another
-       request claimed the slot first). This prevents duplicate concurrent
-       LLM calls -- only one request will proceed with generation.
-    5. **LLM generation**: Calls ``_generate_dvar_torah()`` and stores
-       the result via ``db.complete_dvar_torah_generation()``.
-    6. **Failure handling**: On generation error, marks the slot as
-       failed via ``db.fail_dvar_torah_generation()`` so future requests
-       can retry.
-
-    Args:
-        client: An initialized ``OpenAI``-compatible API client.
-        model: The model identifier string for generation.
-        local_date: The user's local date, used to pick the week's parsha.
-
-    Returns:
-        A dictionary with ``parsha_name``, ``parsha_name_hebrew``,
-        ``hebrew_year``, and ``content``, or ``None`` during holiday
-        weeks or if generation fails/times out.
+    Returns ``None`` during holiday weeks or when generation fails or times
+    out; the caller shows its fallback. The wait is bounded, so a stuck row
+    can never hang a request.
     """
     parsha = get_current_parsha(local_date)
     if not parsha:
@@ -300,58 +296,55 @@ async def get_or_generate_dvar_torah(
     parsha_name_hebrew = parsha["parsha_name_hebrew"]
     hebrew_year = parsha["hebrew_year"]
 
-    # Check cache for an already-completed commentary.
-    cached = await db.get_dvar_torah(parsha_name, hebrew_year)
-    if cached and not cached["generating"] and cached["content"]:
-        return {
-            "parsha_name": cached["parsha_name"],
-            "parsha_name_hebrew": cached["parsha_name_hebrew"],
-            "hebrew_year": cached["hebrew_year"],
-            "content": clean_dvar_torah_content(cached["content"]),
-        }
+    loop = asyncio.get_running_loop()
+    deadline = loop.time() + wait_seconds
+    while True:
+        cached = await db.get_dvar_torah(parsha_name, hebrew_year)
+        if _ready(cached):
+            return _result(cached["parsha_name"], cached["parsha_name_hebrew"], cached["hebrew_year"],
+                           cached["content"])
 
-    # If another request is already generating, wait and retry.
-    # Poll every 2 seconds for up to 30 seconds (15 iterations).
-    if cached and cached["generating"]:
-        for _ in range(15):
-            await asyncio.sleep(2)
-            cached = await db.get_dvar_torah(parsha_name, hebrew_year)
-            if cached and not cached["generating"] and cached["content"]:
-                return {
-                    "parsha_name": cached["parsha_name"],
-                    "parsha_name_hebrew": cached["parsha_name_hebrew"],
-                    "hebrew_year": cached["hebrew_year"],
-                    "content": clean_dvar_torah_content(cached["content"]),
-                }
-        # Timed out waiting - return None to show fallback
-        logger.warning(f"Timed out waiting for d'var Torah generation for {parsha_name}")
-        return None
+        row_id = await db.claim_dvar_torah_generation(parsha_name, parsha_name_hebrew, hebrew_year)
+        if row_id:
+            break
+        if loop.time() >= deadline:
+            logger.warning("Timed out waiting for d'var Torah generation for %s", parsha_name)
+            return None
+        await asyncio.sleep(poll_seconds)
 
-    # Claim the generation slot atomically.
-    # claim_dvar_torah_generation() performs an atomic database INSERT that
-    # succeeds only if no row exists for this (parsha_name, hebrew_year).
-    # If another request claimed the slot between our cache check and this
-    # call, it returns None, and we retry from the cache.
-    row_id = await db.claim_dvar_torah_generation(parsha_name, parsha_name_hebrew, hebrew_year)
-    if not row_id:
-        # Another request claimed it first, retry from cache
-        await asyncio.sleep(2)
-        return await get_or_generate_dvar_torah(client, model, local_date)
-
-    # Generate the d'var Torah via LLM.
     try:
-        logger.info(f"Generating d'var Torah for Parashat {parsha_name}")
-        content, metrics = _generate_dvar_torah(client, model, parsha_name, parsha_name_hebrew)
-        await db.complete_dvar_torah_generation(row_id, content, metrics)
-        logger.info(f"D'var Torah generated for Parashat {parsha_name} ({metrics['latency_ms']}ms)")
-        return {
-            "parsha_name": parsha_name,
-            "parsha_name_hebrew": parsha_name_hebrew,
-            "hebrew_year": hebrew_year,
-            "content": clean_dvar_torah_content(content),
-        }
+        logger.info("Generating d'var Torah for Parashat %s", parsha_name)
+        content, metrics = await asyncio.to_thread(
+            _generate_dvar_torah, client, model, parsha_name, parsha_name_hebrew)
+        if not content or not content.strip():
+            raise ValueError("model returned an empty d'var Torah")
+        if not await db.complete_dvar_torah_generation(row_id, content, metrics):
+            logger.warning("D'var Torah placeholder for %s was replaced while generating", parsha_name)
+        logger.info("D'var Torah generated for Parashat %s (%sms)", parsha_name, metrics["latency_ms"])
+        return _result(parsha_name, parsha_name_hebrew, hebrew_year, content)
     except Exception as e:
-        # Mark the generation slot as failed so future requests can retry.
-        logger.error(f"Failed to generate d'var Torah for {parsha_name}: {e}")
+        logger.error("Failed to generate d'var Torah for %s: %s", parsha_name, e)
         await db.fail_dvar_torah_generation(row_id)
         return None
+
+
+async def regenerate_dvar_torah(client: OpenAI, model: str, local_date: Optional[date] = None) -> Optional[dict]:
+    """Write this week's d'var Torah again and replace the cached one (admin).
+
+    The new text is generated first and stored in one atomic upsert, so
+    readers keep the old text until the new one is ready and a failed or
+    repeated regeneration never leaves the cache empty or stuck. Raises on
+    generation failure; returns ``None`` in a holiday week.
+    """
+    parsha = get_current_parsha(local_date)
+    if not parsha:
+        return None
+    parsha_name, parsha_name_hebrew, hebrew_year = (
+        parsha["parsha_name"], parsha["parsha_name_hebrew"], parsha["hebrew_year"])
+    content, metrics = await asyncio.to_thread(
+        _generate_dvar_torah, client, model, parsha_name, parsha_name_hebrew)
+    if not content or not content.strip():
+        raise ValueError("model returned an empty d'var Torah")
+    await db.save_dvar_torah(parsha_name, parsha_name_hebrew, hebrew_year, content, metrics)
+    logger.info("D'var Torah regenerated for Parashat %s (%sms)", parsha_name, metrics["latency_ms"])
+    return _result(parsha_name, parsha_name_hebrew, hebrew_year, content)

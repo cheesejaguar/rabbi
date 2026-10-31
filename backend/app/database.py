@@ -1552,36 +1552,30 @@ async def get_dvar_torah(parsha_name: str, hebrew_year: int) -> Optional[dict]:
         return dict(row) if row else None
 
 
-async def claim_dvar_torah_generation(parsha_name: str, parsha_name_hebrew: str, hebrew_year: int) -> Optional[str]:
-    """Atomically claim a d'var Torah generation slot using INSERT ... ON CONFLICT DO NOTHING.
+async def claim_dvar_torah_generation(parsha_name: str, parsha_name_hebrew: str, hebrew_year: int,
+                                      stale_after_seconds: int = 180) -> Optional[str]:
+    """Atomically claim the d'var Torah generation slot for one parsha.
 
-    This implements optimistic locking: the first caller to insert wins
-    and receives the new row's ID; subsequent callers for the same
-    (parsha, year) get ``None`` and should wait for the winner to finish.
-
-    Args:
-        parsha_name: English transliterated parsha name.
-        parsha_name_hebrew: Hebrew parsha name.
-        hebrew_year: The Hebrew calendar year.
-
-    Returns:
-        The UUID of the newly created row if this caller claimed the
-        generation slot, or ``None`` if another instance already claimed it.
+    The first caller inserts a ``generating=TRUE`` placeholder and gets its id.
+    A later caller can take the slot over only when the existing row is dead:
+    a placeholder older than ``stale_after_seconds`` (its instance died
+    mid-generation) or a finished row with empty content. Anyone else gets
+    ``None`` and should wait for the winner.
     """
     async with get_connection() as conn:
-        try:
-            row = await conn.fetchrow(
-                """
-                INSERT INTO dvar_torah (parsha_name, parsha_name_hebrew, hebrew_year, generating)
-                VALUES ($1, $2, $3, TRUE)
-                ON CONFLICT (parsha_name, hebrew_year) DO NOTHING
-                RETURNING id
-                """,
-                parsha_name, parsha_name_hebrew, hebrew_year
-            )
-            return row['id'] if row else None
-        except Exception:
-            return None
+        row = await conn.fetchrow(
+            """
+            INSERT INTO dvar_torah (parsha_name, parsha_name_hebrew, hebrew_year, generating)
+            VALUES ($1, $2, $3, TRUE)
+            ON CONFLICT (parsha_name, hebrew_year) DO UPDATE
+                SET generating = TRUE, created_at = NOW(), parsha_name_hebrew = EXCLUDED.parsha_name_hebrew
+                WHERE (dvar_torah.generating AND dvar_torah.created_at < NOW() - make_interval(secs => $4))
+                   OR (NOT dvar_torah.generating AND dvar_torah.content = '')
+            RETURNING id
+            """,
+            parsha_name, parsha_name_hebrew, hebrew_year, stale_after_seconds
+        )
+        return row['id'] if row else None
 
 
 async def complete_dvar_torah_generation(row_id: str, content: str, metadata: dict = None) -> bool:
@@ -1881,12 +1875,24 @@ async def admin_list_feedback(feedback_type: str = None, limit: int = 50, offset
         return [dict(row) for row in rows]
 
 
+# Audit issues that warrant review (mirrors safety.audit.REVIEW_ISSUES, except
+# missing_safety_care, which only counts when the turn had a real risk flag).
+FLAG_REVIEW_ISSUES = [
+    "self_harm_method_or_encouragement", "harmful_medical_advice", "advice_endangering_abuse_victim",
+    "shaming_or_cruelty", "hateful_content", "inappropriate_for_minor",
+]
+FLAG_RISK_FLAGS = ["self_harm", "crisis_mode", "crisis_followup", "abuse_disclosure", "harm_to_others",
+                   "medical", "minor"]
+
+
 async def admin_list_flagged_messages(limit: int = 50, offset: int = 0) -> list[dict]:
     """Crisis / human-referral review queue.
 
-    Surfaces assistant messages whose pipeline metadata indicates a crisis,
-    detected vulnerability, or a recommendation to consult a human rabbi,
-    so an administrator can follow up.
+    Surfaces assistant messages a person should actually look at: crisis or
+    abuse turns, harm-to-others flags, retracted or severe answers, and audit
+    concerns about real harm. Routing hints (counseling mode, "vulnerability",
+    human-referral suggestions) and quality-only audit notes are not enough
+    on their own; they flagged nearly every personal question.
 
     Args:
         limit: Maximum rows to return.
@@ -1914,16 +1920,22 @@ async def admin_list_flagged_messages(limit: int = 50, offset: int = 0) -> list[
             JOIN users u ON u.id = c.user_id
             WHERE m.role = 'assistant'
               AND (
-                  COALESCE((m.metadata->>'requires_human_referral')::boolean, FALSE)
-                  OR COALESCE((m.metadata->>'vulnerability_detected')::boolean, FALSE)
-                  OR m.metadata ? 'crisis_indicators'
-                  OR m.metadata->>'pastoral_mode' = 'crisis'
-                  OR m.metadata->'audit'->>'verdict' IN ('concern', 'severe')
+                  m.metadata->>'pastoral_mode' = 'crisis'
+                  OR m.metadata->'safety'->>'card_level' IN ('crisis', 'abuse')
+                  OR (jsonb_typeof(m.metadata->'crisis_indicators') = 'array'
+                      AND jsonb_array_length(m.metadata->'crisis_indicators') > 0)
+                  OR COALESCE(m.metadata->'safety'->'flags', '[]'::jsonb) ? 'harm_to_others'
+                  OR COALESCE((m.metadata->>'retracted')::boolean, FALSE)
+                  OR m.metadata->'audit'->>'verdict' = 'severe'
+                  OR (m.metadata->'audit'->>'verdict' = 'concern'
+                      AND (COALESCE(m.metadata->'audit'->'issues', '[]'::jsonb) ?| $3::text[]
+                           OR (m.metadata->'audit'->'issues' ? 'missing_safety_care'
+                               AND COALESCE(m.metadata->'safety'->'flags', '[]'::jsonb) ?| $4::text[])))
               )
             ORDER BY m.created_at DESC
             LIMIT $1 OFFSET $2
             """,
-            limit, offset
+            limit, offset, FLAG_REVIEW_ISSUES, FLAG_RISK_FLAGS
         )
         return [dict(row) for row in rows]
 
@@ -2453,12 +2465,25 @@ async def release_dvar_audio_claim(key: str) -> None:
         await conn.execute("DELETE FROM dvar_torah_audio WHERE key = $1 AND audio IS NULL", key)
 
 
-async def delete_dvar_torah(parsha_name: str, hebrew_year: int) -> int:
-    """Drop the cached d'var Torah and its audio for one parsha (admin regenerate)."""
+async def save_dvar_torah(parsha_name: str, parsha_name_hebrew: str, hebrew_year: int,
+                          content: str, metadata: dict = None) -> None:
+    """Store a finished d'var Torah, replacing any row for that parsha, and drop its old audio.
+
+    Used by the admin regenerate: the new text is written in one step after it
+    has been generated, so readers keep seeing the old text until then and no
+    concurrent request can be left holding a deleted placeholder.
+    """
     async with get_connection() as conn:
         async with conn.transaction():
             await conn.execute(
+                """
+                INSERT INTO dvar_torah (parsha_name, parsha_name_hebrew, hebrew_year, content, generating, metadata)
+                VALUES ($1, $2, $3, $4, FALSE, $5)
+                ON CONFLICT (parsha_name, hebrew_year) DO UPDATE
+                    SET content = EXCLUDED.content, generating = FALSE, metadata = EXCLUDED.metadata,
+                        parsha_name_hebrew = EXCLUDED.parsha_name_hebrew, created_at = NOW()
+                """,
+                parsha_name, parsha_name_hebrew, hebrew_year, content, metadata or {}
+            )
+            await conn.execute(
                 "DELETE FROM dvar_torah_audio WHERE parsha_name = $1 AND hebrew_year = $2", parsha_name, hebrew_year)
-            result = await conn.execute(
-                "DELETE FROM dvar_torah WHERE parsha_name = $1 AND hebrew_year = $2", parsha_name, hebrew_year)
-            return int(result.split()[-1]) if result else 0

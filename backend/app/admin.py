@@ -248,8 +248,9 @@ async def list_flagged(
 ):
     """Crisis / human-referral review queue.
 
-    Surfaces assistant messages whose pipeline metadata flagged a crisis,
-    vulnerability, or human-referral recommendation.
+    Surfaces assistant messages that need a person: crisis/abuse turns,
+    harm-to-others flags, retractions, and audit concerns about real harm
+    (see ``db.admin_list_flagged_messages``).
     """
     _require_db()
     try:

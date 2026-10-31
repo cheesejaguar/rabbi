@@ -229,3 +229,23 @@ def test_dvar_torah_prompt_requires_hebrew_letters_first():
     from app.dvar_torah import DVAR_TORAH_SYSTEM_PROMPT
     assert "HEBREW LETTERS FIRST" in DVAR_TORAH_SYSTEM_PROMPT
     assert "שבת (Shabbat)" in DVAR_TORAH_SYSTEM_PROMPT
+
+
+# --- Review signals stay quiet on ordinary questions ---------------------------
+
+def test_personal_question_alone_is_not_vulnerability():
+    # Counseling mode on an everyday personal question is routing, not a review signal.
+    p = decide(lexicon.scan("How do I explain to my parents I want to keep Shabbat?"),
+               cls(mode="counseling", emotional_state="anxious"))
+    assert p.mode == "counseling" and not p.vulnerability_detected and not p.requires_human_referral
+
+
+def test_unavailable_classifier_is_not_vulnerability():
+    p = decide(lexicon.scan("What is the meaning of the Shema?"), ClassifierResult.unavailable("Timeout"))
+    assert p.mode == "counseling" and not p.vulnerability_detected
+
+
+def test_distress_with_risk_signal_is_vulnerability():
+    p = decide(lexicon.scan("Since my father died I barely eat"),
+               cls(mode="counseling", emotional_state="grieving", risk={"medical_or_eating_disorder": 1}))
+    assert p.vulnerability_detected

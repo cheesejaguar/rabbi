@@ -13,6 +13,7 @@ from .classifier import ClassifierResult
 from .lexicon import LexiconResult
 
 CARE_MODES = ("counseling", "crisis")
+VULNERABLE_STATES = ("grieving", "ashamed", "distressed", "lonely")
 
 
 @dataclass
@@ -105,8 +106,11 @@ def decide(lex: LexiconResult, cls: ClassifierResult, *, prior_crisis: bool = Fa
         p.retrieve = False  # warmth first; no source analysis in a crisis turn
         p.charge = False    # crisis turns are always free
         p.requires_human_referral = True
-    p.vulnerability_detected = p.mode in CARE_MODES or cls.emotional_state in (
-        "grieving", "ashamed", "distressed", "lonely", "anxious")
+    # A review signal, not a routing input: counseling mode alone (any personal
+    # question) or an unavailable classifier is not evidence of vulnerability.
+    p.vulnerability_detected = bool(p.card_level in ("crisis", "abuse") or (
+        cls.available and p.mode in CARE_MODES and cls.emotional_state in VULNERABLE_STATES
+        and max(r["self_harm"], r["abuse_disclosure"], r["medical_or_eating_disorder"]) >= 1))
     if p.mode == "counseling":
         p.requires_human_referral = p.requires_human_referral or r["self_harm"] >= 1
     p.effort = effort_care if p.mode in CARE_MODES else effort_default

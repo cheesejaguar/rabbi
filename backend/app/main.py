@@ -68,7 +68,7 @@ from .conversations import router as conversations_router
 from .payments import router as payments_router
 from .admin import router as admin_router, require_admin
 from . import database as db
-from .dvar_torah import get_or_generate_dvar_torah, resolve_local_date
+from .dvar_torah import get_or_generate_dvar_torah, regenerate_dvar_torah as regenerate_weekly_dvar, resolve_local_date
 from . import dvar_audio
 from .jewish_calendar import get_calendar_status
 from .chat.endpoint import stream_chat_v2, use_v2_for
@@ -530,25 +530,29 @@ async def get_dvar_torah_audio(request: Request, client_date: str = None):
 
 @app.post("/api/admin/dvar-torah/regenerate")
 async def regenerate_dvar_torah(request: Request, client_date: str = None, admin: dict = Depends(require_admin)):
-    """Admin: discard this week's cached d'var Torah and its audio, then write it again.
+    """Admin: write this week's d'var Torah again with the current prompt.
 
-    Use after changing the d'var Torah prompt. The new audio is generated on
-    the next play.
+    The new text replaces the cached one only once it is ready (the old text
+    stays up meanwhile), and the old recording is dropped; the new one is
+    generated on the next play.
     """
     from .dvar_torah import get_current_parsha
     if not settings.db_url:
         raise HTTPException(status_code=503, detail="Database not configured")
-    parsha = get_current_parsha(resolve_local_date(client_date))
+    local_date = resolve_local_date(client_date)
+    parsha = get_current_parsha(local_date)
     if not parsha:
         raise HTTPException(status_code=404, detail="No regular parsha this week")
-    deleted = await db.delete_dvar_torah(parsha["parsha_name"], parsha["hebrew_year"])
-    result = await get_or_generate_dvar_torah(
-        orchestrator.client, orchestrator.model, resolve_local_date(client_date))
+    try:
+        result = await regenerate_weekly_dvar(orchestrator.client, orchestrator.model, local_date)
+    except Exception as e:
+        logger.error("D'var Torah regeneration failed: %s", e)
+        result = None
     await db.log_admin_action(admin_user_id=admin["id"], action="regenerate_dvar_torah",
                               details={"parsha": parsha["parsha_name"], "hebrew_year": parsha["hebrew_year"],
-                                       "replaced": deleted})
+                                       "ok": bool(result)})
     if not result:
-        raise HTTPException(status_code=502, detail="Regeneration failed; try again")
+        raise HTTPException(status_code=502, detail="Regeneration failed; the current d'var Torah is unchanged. Try again.")
     return {"regenerated": True, "parsha_name": result["parsha_name"], "hebrew_year": result["hebrew_year"],
             "content": result["content"]}
 
