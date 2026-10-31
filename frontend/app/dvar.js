@@ -6,6 +6,7 @@ import { $, h, localDateString, showScreen } from './dom.js';
 import { state } from './store.js';
 import { openSponsorModal } from './sponsor.js';
 import { showLoginPrompt } from './auth.js';
+import { blockDirection } from './chat/markdown.js';
 
 let data = null;
 let returnScreen = 'welcomeScreen';
@@ -31,6 +32,7 @@ export async function loadDvarTorah(fresh = false) {
         $('dvarTorahParsha').textContent = `${data.parsha_name} / ${data.parsha_name_hebrew}`;
         const preview = data.content.replace(/\s+/g, ' ').trim();
         $('dvarTorahPreview').textContent = preview.length > 200 ? preview.slice(0, 200).replace(/\s+\S*$/, '') + '…' : preview;
+        $('dvarTorahPreview').dir = blockDirection(preview);
         $('dvarTorahSection').classList.remove('hidden');
     } catch (error) {
         console.warn("Failed to load d'var Torah:", error);
@@ -53,7 +55,7 @@ export function showDvarTorah() {
     }
     parts.push(h('div', { class: 'dvar-torah-body' },
         ...data.content.split('\n\n').filter((p) => p.trim())
-            .map((p) => h('p', { dir: 'auto', text: p.replace(/\n/g, ' ') }))));
+            .map((p) => h('p', { dir: blockDirection(p), text: p.replace(/\n/g, ' ') }))));
     const sponsor = h('button', { class: 'btn btn-quiet sponsor-btn', id: 'sponsorDvarBtn', type: 'button', text: "Sponsor this week's d'var Torah" });
     sponsor.addEventListener('click', () => {
         if (!state.user) { showLoginPrompt(); return; }

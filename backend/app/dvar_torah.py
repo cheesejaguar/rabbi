@@ -73,6 +73,16 @@ both feel nourished. Use concrete analogies from everyday life.
 FORMATTING: Write as flowing prose, as if speaking. Do not use bullet points, headers,
 numbered lists, or markdown formatting. Paragraphs only.
 
+HEBREW TERMS — HEBREW LETTERS FIRST: Most readers are native English speakers who read little
+Hebrew, and we want them to get used to Hebrew letters. Write every Hebrew or Aramaic term in
+Hebrew script followed by its transliteration in parentheses, every time it appears, never
+transliteration alone: שבת (Shabbat), תשובה (teshuvah), רש"י (Rashi), רמב"ן (Ramban),
+בראשית (Bereshit). Add a short English gloss inside the parentheses when a beginner may not know
+the word: חסד (chesed, loving-kindness). Use plain letters without vowel points. If you are
+unsure of the Hebrew spelling of an uncommon name, give the transliteration alone. Plain English
+words ("rabbi", "Sabbath") stay English. When you quote a verse, give the Hebrew first and then
+the English translation.
+
 AVOID: Do not include disclaimers about being an AI. This is a prepared teaching, not a
 conversation. Do not use the word "delve"."""
 

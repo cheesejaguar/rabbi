@@ -223,3 +223,9 @@ def test_hebrew_style_checker():
     bad = "On Shabbat the halacha follows the Rambam."
     assert bare_transliterations(bad) == ["Shabbat", "halacha", "Rambam"]
     assert not uses_hebrew_first(bad)
+
+
+def test_dvar_torah_prompt_requires_hebrew_letters_first():
+    from app.dvar_torah import DVAR_TORAH_SYSTEM_PROMPT
+    assert "HEBREW LETTERS FIRST" in DVAR_TORAH_SYSTEM_PROMPT
+    assert "שבת (Shabbat)" in DVAR_TORAH_SYSTEM_PROMPT
