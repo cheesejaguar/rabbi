@@ -117,7 +117,7 @@ function renderPanel(items, highlight) {
                 icon(item.kind === 'library' ? 'books' : 'info'), KIND_LABEL[item.kind]));
         li.append(head);
         li.append(h('p', { class: 'source-item-ref', dir: 'auto', text: item.ref }));
-        if (item.title && item.title !== item.ref) {
+        if (item.title && !norm(item.ref).includes(norm(item.title))) {
             li.append(h('p', { class: 'source-item-title', dir: 'auto', text: item.title }));
         }
         if (item.excerpt) {

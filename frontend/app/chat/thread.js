@@ -21,8 +21,18 @@ export class Thread {
         /** @type {Map<string, number>} */
         this.positions = new Map();
 
+        // Only a reader's own gesture may unpin. A scroll event caused by our
+        // own pinning can land after more tokens have grown the list, which
+        // would otherwise read as "the reader scrolled away".
+        let intentUntil = 0;
+        const intent = () => { intentUntil = performance.now() + 700; };
+        scroller.addEventListener('wheel', intent, { passive: true });
+        scroller.addEventListener('touchmove', intent, { passive: true });
+        scroller.addEventListener('pointerdown', intent);
+        scroller.addEventListener('keydown', intent);
         scroller.addEventListener('scroll', () => {
-            this.pinned = this.distanceFromBottom() <= PIN_THRESHOLD;
+            if (this.distanceFromBottom() <= PIN_THRESHOLD) this.pinned = true;
+            else if (performance.now() < intentUntil) this.pinned = false;
             this.updatePill();
         }, { passive: true });
 

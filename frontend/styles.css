@@ -1432,7 +1432,11 @@ body.rail-collapsed .header-new-chat {
 
 /* Citation markers */
 .cite {
+    position: relative;
+    top: -0.42em;
+    font-size: 1rem;
     line-height: 0;
+    vertical-align: baseline;
 }
 
 .cite-marker {
@@ -1448,7 +1452,8 @@ body.rail-collapsed .header-new-chat {
     font-size: 0.68rem;
     font-weight: 720;
     font-variant-numeric: tabular-nums;
-    vertical-align: super;
+    line-height: 1;
+    vertical-align: baseline;
     background: var(--brand-accent-soft);
     border: 0;
     border-radius: 5px;
