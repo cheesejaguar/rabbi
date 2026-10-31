@@ -132,3 +132,4 @@ This system prioritizes pastoral responsibility over halachic maximalism. Key co
 - Crisis resources are server-authored static content (`safety/resources.py`), never model-generated; crisis turns are free and never blocked by limits
 - Users are 13+; minors get age-appropriate overlays
 - Present ranges of opinion, not single conclusions
+- English answers write Hebrew/Aramaic terms Hebrew-first with the transliteration in parentheses, every time: `שבת (Shabbat)`, `חסד (chesed, loving-kindness)`. This exposes English-speaking readers to Hebrew letters. The rule lives in `prompts/constitution.md` (and `agents/voice.py` for v1), the frontend sets paragraph direction by majority script (`chat/markdown.js`), and `evals/hebrew_style.py` measures adherence in `run_evals.py --full`
