@@ -36,6 +36,13 @@ from .agents.base import TOKEN_COSTS
 
 logger = logging.getLogger(__name__)
 
+# Claude Sonnet 5 enables adaptive thinking by default. With the old 2,048-token
+# cap, a long reasoning pass could consume the entire budget and return an empty
+# (or truncated) commentary. Ask for low effort so the tokens go to the prose,
+# and keep enough headroom for a 600-word teaching.
+DVAR_TORAH_MAX_TOKENS = 4096
+DVAR_TORAH_REASONING_EFFORT = "low"
+
 # ---------------------------------------------------------------------------
 # System Prompt
 # ---------------------------------------------------------------------------
@@ -231,10 +238,22 @@ def _generate_dvar_torah(client: OpenAI, model: str, parsha_name: str, parsha_na
     start_time = time.time()
     response = client.chat.completions.create(
         model=model,
-        max_tokens=2048,
+        max_tokens=DVAR_TORAH_MAX_TOKENS,
+        reasoning_effort=DVAR_TORAH_REASONING_EFFORT,
         messages=messages,
     )
     latency_ms = int((time.time() - start_time) * 1000)
+
+    if not response.choices:
+        raise ValueError("model returned no choices for the d'var Torah")
+
+    choice = response.choices[0]
+    content = choice.message.content or ""
+    if choice.finish_reason == "length":
+        raise ValueError(
+            f"model hit the {DVAR_TORAH_MAX_TOKENS}-token limit before finishing the d'var Torah")
+    if not content.strip():
+        raise ValueError("model returned an empty d'var Torah")
 
     input_tokens = getattr(response.usage, 'prompt_tokens', 0) if response.usage else 0
     output_tokens = getattr(response.usage, 'completion_tokens', 0) if response.usage else 0
@@ -246,7 +265,6 @@ def _generate_dvar_torah(client: OpenAI, model: str, parsha_name: str, parsha_na
         6
     )
 
-    content = response.choices[0].message.content
     metrics = {
         "input_tokens": input_tokens,
         "output_tokens": output_tokens,

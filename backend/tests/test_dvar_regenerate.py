@@ -1,7 +1,8 @@
 """Caching, claim and admin-regenerate behaviour of the weekly d'var Torah."""
 
 from datetime import date
-from unittest.mock import AsyncMock, patch
+from types import SimpleNamespace
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -20,6 +21,36 @@ def row(content="", generating=False):
 def gen():
     with patch.object(dvar_torah, "_generate_dvar_torah", return_value=("On שבת (Shabbat) we learn.", METRICS)) as g:
         yield g
+
+
+def completion(content="On שבת (Shabbat) we learn.", finish_reason="stop"):
+    return SimpleNamespace(
+        choices=[SimpleNamespace(message=SimpleNamespace(content=content), finish_reason=finish_reason)],
+        usage=SimpleNamespace(prompt_tokens=927, completion_tokens=1206),
+    )
+
+
+def test_generation_asks_for_low_reasoning_and_headroom():
+    client = MagicMock()
+    client.chat.completions.create.return_value = completion()
+    content, metrics = dvar_torah._generate_dvar_torah(
+        client, "anthropic/claude-sonnet-5", "Vayeira", "וירא")
+    kwargs = client.chat.completions.create.call_args.kwargs
+    assert kwargs["max_tokens"] == dvar_torah.DVAR_TORAH_MAX_TOKENS
+    assert kwargs["reasoning_effort"] == "low"
+    assert content == "On שבת (Shabbat) we learn."
+    assert metrics["output_tokens"] == 1206
+
+
+@pytest.mark.parametrize("response", [
+    completion(content=""),
+    completion(content="A teaching that stops mid-", finish_reason="length"),
+])
+def test_generation_rejects_empty_or_truncated_output(response):
+    client = MagicMock()
+    client.chat.completions.create.return_value = response
+    with pytest.raises(ValueError):
+        dvar_torah._generate_dvar_torah(client, "anthropic/claude-sonnet-5", "Vayeira", "וירא")
 
 
 async def test_cached_text_is_served_without_generating(gen):
