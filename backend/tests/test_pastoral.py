@@ -2,7 +2,6 @@
 
 import pytest
 import json
-from unittest.mock import Mock
 
 from app.agents.pastoral import PastoralContextAgent
 from app.agents.base import (
@@ -99,7 +98,6 @@ class TestPastoralContextAgent:
         context = AgentContext(user_message="What is Shabbat?")
         result = await agent.process(context)
 
-        assert result.pastoral_context is not None
         assert result.pastoral_context.mode == PastoralMode.CURIOSITY
         assert result.pastoral_context.vulnerability_detected is False
 

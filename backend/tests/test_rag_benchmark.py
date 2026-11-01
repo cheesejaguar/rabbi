@@ -18,7 +18,6 @@ The benchmark runs against both the mini fixture library and the real pre-built
 index (when available), producing a per-query report and aggregate scores.
 """
 
-import math
 import os
 import textwrap
 from dataclasses import dataclass, field
@@ -78,7 +77,7 @@ class BenchmarkReport:
 
     def summary(self) -> str:
         lines = [
-            f"RAG Accuracy Benchmark Report",
+            "RAG Accuracy Benchmark Report",
             f"{'=' * 50}",
             f"Queries: {self.total_queries}",
             f"Passing (R>=0.5, P>=0.4): {self.queries_passing}/{self.total_queries}",
@@ -108,7 +107,6 @@ def _evaluate_query(retriever: TextRetriever, bq: BenchmarkQuery) -> QueryResult
         bq.query, top_k=bq.top_k, category=bq.expected_category_filter
     )
     returned_titles = [r.chunk.title for r in results]
-    returned_categories = [r.chunk.category for r in results]
 
     # Recall: what fraction of expected titles were found?
     if bq.expected_titles:
@@ -120,7 +118,6 @@ def _evaluate_query(retriever: TextRetriever, bq: BenchmarkQuery) -> QueryResult
     # Precision: what fraction of returned results are relevant?
     # A result is "relevant" if its title is in expected_titles OR
     # its category is in expected_categories.
-    relevant_set = bq.expected_titles | bq.expected_categories
     if results:
         relevant_count = 0
         for i, r in enumerate(results):
@@ -823,12 +820,13 @@ class TestRealIndexBenchmark:
                                       category=bq.expected_category_filter)
             }
             if bq.expected_categories:
-                overlap = found_categories & bq.expected_categories
-                # Hebrew queries may return results from unexpected categories
-                # due to shared vocabulary; just ensure we get some results
-                assert result.result_count >= bq.min_results, (
-                    f"[{bq.description}] too few results: {result.result_count}"
+                assert found_categories & bq.expected_categories, (
+                    f"[{bq.description}] no result from {bq.expected_categories}, "
+                    f"got {found_categories}"
                 )
+            assert result.result_count >= bq.min_results, (
+                f"[{bq.description}] too few results: {result.result_count}"
+            )
 
     def test_category_filter_integrity(self, real_retriever):
         """Category-filtered queries return only matching categories."""

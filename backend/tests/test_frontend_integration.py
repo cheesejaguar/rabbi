@@ -289,8 +289,6 @@ def test_deep_link_serves_the_app_and_the_module_graph_boots(page, live_app):
 
     page.set_viewport_size({"width": 1280, "height": 900})
     response = page.goto(f"{base_url}/c/conversation-integration", wait_until="domcontentloaded")
-    if response.status == 404:
-        pytest.skip("this backend build does not serve /c/{id} yet")
     assert response.status == 200
     assert page.locator("#chatMessages").count() == 1
 

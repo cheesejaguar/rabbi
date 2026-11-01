@@ -1,138 +1,150 @@
-"""Tests for main.py - FastAPI endpoints."""
+"""Tests for main.py - FastAPI endpoints.
+
+The real app, orchestrator and agents run end to end. Only the LLM provider
+client is replaced (``FakeLLM``), and the database is the real test
+PostgreSQL (``live_db``).
+"""
 
 import asyncio
+import json
+from types import SimpleNamespace as NS
+
 import pytest
-import sys
-from unittest.mock import patch, Mock, AsyncMock, MagicMock
+from fastapi.testclient import TestClient
+
+import app.main as main_module
+from app.auth import create_session_token
+from app.main import app
+
+USER = {"id": "test-user-id", "email": "test@example.com", "first_name": "Test", "last_name": "User"}
 
 
-@pytest.fixture(scope="module")
-def test_app():
-    """Create the app with mocked orchestrator and authentication."""
-    # Create mock orchestrator before importing app.main
-    mock_orchestrator_instance = Mock()
-    mock_orchestrator_instance.get_greeting = AsyncMock(
-        return_value="Shalom and welcome!"
-    )
-    mock_orchestrator_instance.process_message = AsyncMock(return_value={
-        "response": "Test response",
-        "requires_human_referral": False,
-        "metadata": {"pastoral_mode": "teaching"},
-    })
+class FakeLLM:
+    """OpenAI-compatible client double for the orchestrator's agents.
 
-    # Mock user for authentication
-    mock_user = {
-        "id": "test-user-id",
-        "email": "test@example.com",
-        "first_name": "Test",
-        "last_name": "User",
-    }
+    Non-streaming calls (pastoral, halachic, moral agents) get ``reply``;
+    streaming calls (the voice agent) get ``stream_chunks``, then optionally
+    raise ``stream_error``.
+    """
 
-    # Patch the RabbiOrchestrator class before importing main
-    with patch.dict(sys.modules, {}):
-        # Clear cached modules
-        mods_to_remove = [k for k in sys.modules if k.startswith('app')]
-        for mod in mods_to_remove:
-            del sys.modules[mod]
+    def __init__(self, reply="{}", stream_chunks=("Shalom", " friend."), stream_error=None, error=None):
+        self.reply, self.stream_chunks = reply, stream_chunks
+        self.stream_error, self.error = stream_error, error
+        self.calls = []
+        self.chat = NS(completions=NS(create=self._create))
 
-        with patch('app.agents.orchestrator.OpenAI'):
-            with patch('app.agents.RabbiOrchestrator', return_value=mock_orchestrator_instance):
-                # Mock authentication to always return a user
-                with patch('app.auth.get_current_user', return_value=mock_user):
-                    with patch('app.main.get_current_user', return_value=mock_user):
-                        from app.main import app
-                        from fastapi.testclient import TestClient
-                        client = TestClient(app)
-                        yield client, mock_orchestrator_instance, app
+    def _create(self, **kwargs):
+        self.calls.append(kwargs)
+        if self.error:
+            raise self.error
+        if kwargs.get("stream"):
+            return self._stream()
+        return NS(choices=[NS(message=NS(content=self.reply))],
+                  usage=NS(prompt_tokens=10, completion_tokens=5))
+
+    def _stream(self):
+        for text in self.stream_chunks:
+            yield NS(choices=[NS(delta=NS(content=text))], usage=None)
+        if self.stream_error:
+            raise self.stream_error
+        yield NS(choices=[], usage=NS(prompt_tokens=10, completion_tokens=5))
+
+
+@pytest.fixture(autouse=True)
+def fresh_rate_limits():
+    app.state.limiter.reset()
+    yield
 
 
 @pytest.fixture
-def client_and_mock(test_app):
-    """Get client and mock orchestrator."""
-    client, mock_orch, app = test_app
-    # Reset mock for each test
-    mock_orch.process_message.reset_mock()
-    return client, mock_orch
+def llm(monkeypatch):
+    """Install a FakeLLM as the provider client of every orchestrator agent."""
+    fake = FakeLLM()
+    orch = main_module.orchestrator
+    for holder in (orch, orch.pastoral_agent, orch.halachic_agent, orch.moral_agent, orch.voice_agent):
+        monkeypatch.setattr(holder, "client", fake)
+    return fake
+
+
+@pytest.fixture
+def client():
+    with TestClient(app) as c:
+        yield c
+
+
+@pytest.fixture
+def signed_in():
+    """Signed-in client (real session cookie), no database configured."""
+    with TestClient(app) as c:
+        c.cookies.set("session", create_session_token(USER))
+        yield c
+
+
+@pytest.fixture
+def user_client(live_db):
+    """Signed-in client (real session cookie) backed by the real test DB."""
+    with TestClient(app) as c:
+        c.portal.call(live_db.upsert_user, USER["id"], USER["email"], USER["first_name"], USER["last_name"])
+        c.cookies.set("session", create_session_token(USER))
+        yield c
+
+
+def events(body):
+    return [json.loads(line[len("data: "):]) for line in body.splitlines() if line.startswith("data: ")]
+
+
+def credits(c, db):
+    return c.portal.call(db.get_user_credits, USER["id"])
 
 
 class TestHealthEndpoint:
     """Test /api/health endpoint."""
 
-    def test_health_check(self, client_and_mock):
-        client, _ = client_and_mock
+    def test_health_check(self, client):
         response = client.get("/api/health")
 
         assert response.status_code == 200
         data = response.json()
         assert data["status"] == "healthy"
-        assert "version" in data
+        assert data["version"] == app.version
 
 
 class TestGreetingEndpoint:
     """Test /api/greeting endpoint."""
 
-    def test_get_greeting(self, client_and_mock):
-        client, mock_orch = client_and_mock
+    def test_get_greeting(self, client):
         response = client.get("/api/greeting")
 
         assert response.status_code == 200
-        data = response.json()
-        assert "greeting" in data
+        greeting = response.json()["greeting"]
         # The greeting comes from the real orchestrator's get_greeting method
-        assert "Shalom" in data["greeting"]
+        assert greeting.startswith("Shalom and welcome.")
+        assert "I'm an AI" in greeting
 
 
 class TestChatEndpoint:
-    """Test /api/chat endpoint."""
+    """Test /api/chat endpoint (non-streaming v1 pipeline)."""
 
-    def test_chat_simple_message(self, client_and_mock):
-        client, mock_orch = client_and_mock
-        mock_orch.process_message = AsyncMock(return_value={
-            "response": "Shalom! Shabbat is the Jewish day of rest.",
-            "requires_human_referral": False,
-            "metadata": {"pastoral_mode": "teaching", "vulnerability_detected": False},
-        })
-
-        response = client.post(
-            "/api/chat",
-            json={"message": "What is Shabbat?"},
-        )
+    def test_chat_simple_message(self, signed_in, llm):
+        llm.reply = "Shabbat is the Jewish day of rest."
+        response = signed_in.post("/api/chat", json={"message": "What is Shabbat?"})
 
         assert response.status_code == 200
         data = response.json()
-        assert "response" in data
-        assert "session_id" in data
+        assert data["response"] == "Shabbat is the Jewish day of rest."
         assert data["requires_human_referral"] is False
+        assert data["session_id"]
+        # The user's question reached the provider.
+        assert any("What is Shabbat?" in json.dumps(c["messages"]) for c in llm.calls)
 
-    def test_chat_with_session_id(self, client_and_mock):
-        client, mock_orch = client_and_mock
-        mock_orch.process_message = AsyncMock(return_value={
-            "response": "Response",
-            "requires_human_referral": False,
-            "metadata": {},
-        })
-
-        response = client.post(
-            "/api/chat",
-            json={
-                "message": "Question",
-                "session_id": "existing-session-123",
-            },
-        )
+    def test_chat_with_session_id(self, signed_in, llm):
+        response = signed_in.post("/api/chat", json={"message": "Question", "session_id": "existing-session-123"})
 
         assert response.status_code == 200
-        data = response.json()
-        assert data["session_id"] == "existing-session-123"
+        assert response.json()["session_id"] == "existing-session-123"
 
-    def test_chat_with_conversation_history(self, client_and_mock):
-        client, mock_orch = client_and_mock
-        mock_orch.process_message = AsyncMock(return_value={
-            "response": "Follow-up response",
-            "requires_human_referral": False,
-            "metadata": {},
-        })
-
-        response = client.post(
+    def test_chat_with_conversation_history(self, signed_in, llm):
+        response = signed_in.post(
             "/api/chat",
             json={
                 "message": "Follow-up question",
@@ -144,204 +156,167 @@ class TestChatEndpoint:
         )
 
         assert response.status_code == 200
+        # Prior turns are forwarded to the model.
+        sent = json.dumps(llm.calls[-1]["messages"])
+        assert "First question" in sent and "First answer" in sent
 
-    def test_chat_empty_message_fails(self, client_and_mock):
-        client, _ = client_and_mock
-        response = client.post(
-            "/api/chat",
-            json={"message": ""},
-        )
+    def test_chat_requires_sign_in(self, client, llm):
+        assert client.post("/api/chat", json={"message": "Hi"}).status_code == 401
+        assert llm.calls == []
 
-        assert response.status_code == 422
+    def test_chat_empty_message_fails(self, signed_in):
+        assert signed_in.post("/api/chat", json={"message": ""}).status_code == 422
 
-    def test_chat_missing_message_fails(self, client_and_mock):
-        client, _ = client_and_mock
-        response = client.post(
-            "/api/chat",
-            json={},
-        )
+    def test_chat_missing_message_fails(self, signed_in):
+        assert signed_in.post("/api/chat", json={}).status_code == 422
 
-        assert response.status_code == 422
+    def test_chat_error_handling(self, signed_in, llm):
+        llm.error = RuntimeError("API Error from provider")
 
-    def test_chat_error_handling(self, client_and_mock):
-        client, mock_orch = client_and_mock
-        mock_orch.process_message = AsyncMock(side_effect=Exception("API Error"))
-
-        response = client.post(
-            "/api/chat",
-            json={"message": "Test question"},
-        )
+        response = signed_in.post("/api/chat", json={"message": "Test question"})
 
         assert response.status_code == 500
-        assert "error" in response.json()["detail"].lower()
+        detail = response.json()["detail"]
+        assert detail == "An error occurred processing your message. Please try again."
+        assert "API Error" not in detail
 
 
 class TestChatStreamEndpoint:
     """Test /api/chat/stream endpoint - credit handling and error safety.
 
     ``StreamingResponse`` always returns HTTP 200; success/failure is
-    signalled inside the SSE body via ``{"type": "..."}`` events, so these
-    tests assert on ``response.text`` rather than the status code.
+    signalled inside the SSE body via ``{"type": "..."}`` events.
     """
 
-    async def _token_stream(self, tokens=("Hello",)):
-        for t in tokens:
-            yield {"type": "token", "data": t}
-
-    def test_credit_check_failure_fails_closed(self, client_and_mock):
+    def test_credit_check_failure_fails_closed(self, user_client, live_db, llm):
         """If consume_credit() raises, the chat must be blocked, not given away for free."""
-        client, mock_orch = client_and_mock
-        mock_orch.process_message_stream = lambda **kwargs: self._token_stream()
 
-        import app.main as main_module
-        with patch.object(main_module.settings, 'database_url', 'postgresql://test/db'):
-            with patch('app.main.db.get_user_profile', new=AsyncMock(return_value=None)):
-                with patch(
-                    'app.main.db.consume_credit',
-                    new=AsyncMock(side_effect=RuntimeError("db unavailable")),
-                ) as mock_consume:
-                    response = client.post("/api/chat/stream", json={"message": "Hello"})
+        async def break_credit_updates():
+            async with live_db.get_connection() as conn:
+                await conn.execute("""
+                    CREATE FUNCTION fail_credit_update() RETURNS trigger AS $$
+                    BEGIN RAISE EXCEPTION 'db unavailable'; END $$ LANGUAGE plpgsql;
+                    CREATE TRIGGER fail_credit_update BEFORE UPDATE ON users
+                    FOR EACH ROW EXECUTE FUNCTION fail_credit_update();
+                """)
 
-        assert response.status_code == 200
-        body = response.text
-        assert '"type": "error"' in body
-        # The orchestrator must never have been reached - no token events emitted.
-        assert '"type": "token"' not in body
-        mock_consume.assert_called_once()
+        async def restore():
+            async with live_db.get_connection() as conn:
+                await conn.execute("DROP TRIGGER fail_credit_update ON users; DROP FUNCTION fail_credit_update();")
 
-    def test_no_credits_remaining_blocks_chat(self, client_and_mock):
-        """Existing behavior: a False return from consume_credit blocks the chat."""
-        client, mock_orch = client_and_mock
-        mock_orch.process_message_stream = lambda **kwargs: self._token_stream()
-
-        import app.main as main_module
-        with patch.object(main_module.settings, 'database_url', 'postgresql://test/db'):
-            with patch('app.main.db.get_user_profile', new=AsyncMock(return_value=None)):
-                with patch('app.main.db.consume_credit', new=AsyncMock(return_value=False)):
-                    response = client.post("/api/chat/stream", json={"message": "Hello"})
+        before = credits(user_client, live_db)
+        user_client.portal.call(break_credit_updates)
+        try:
+            response = user_client.post("/api/chat/stream", json={"message": "Hello"})
+        finally:
+            user_client.portal.call(restore)
 
         assert response.status_code == 200
-        body = response.text
-        assert "no_credits" in body
-        assert '"type": "token"' not in body
+        types = [e["type"] for e in events(response.text)]
+        assert types == ["error"]
+        assert llm.calls == []  # the model was never reached
+        assert credits(user_client, live_db) == before
 
-    def test_successful_credit_consumption_allows_chat(self, client_and_mock):
-        """A credit is consumed and the orchestrator stream is delivered."""
-        client, mock_orch = client_and_mock
-        mock_orch.process_message_stream = lambda **kwargs: self._token_stream(("Shalom",))
+    def test_no_credits_remaining_blocks_chat(self, user_client, live_db, llm):
+        user_client.portal.call(live_db.add_credits, USER["id"], -credits(user_client, live_db))
 
-        import app.main as main_module
-        with patch.object(main_module.settings, 'database_url', 'postgresql://test/db'):
-            with patch('app.main.db.get_user_profile', new=AsyncMock(return_value=None)):
-                with patch('app.main.db.consume_credit', new=AsyncMock(return_value=True)):
-                    with patch('app.main.db.add_message', new=AsyncMock(return_value=None)):
-                        with patch('app.main.db.get_conversation', new=AsyncMock(return_value=None)):
-                            response = client.post("/api/chat/stream", json={"message": "Hello"})
+        response = user_client.post("/api/chat/stream", json={"message": "Hello"})
 
-        assert response.status_code == 200
-        body = response.text
-        assert '"type": "token"' in body
-        assert "Shalom" in body
+        [event] = events(response.text)
+        assert event["type"] == "error" and event["code"] == "no_credits"
+        assert llm.calls == []
 
-    def test_stream_failure_refunds_consumed_credit(self, client_and_mock):
-        """If a credit was consumed but the pipeline then fails, refund it."""
-        client, mock_orch = client_and_mock
+    def test_successful_chat_consumes_one_credit_and_streams(self, user_client, live_db, llm):
+        before = credits(user_client, live_db)
 
-        async def _failing_stream(**kwargs):
-            raise RuntimeError("pipeline exploded")
-            yield  # pragma: no cover - makes this an async generator
+        response = user_client.post("/api/chat/stream", json={"message": "Hello"})
 
-        mock_orch.process_message_stream = _failing_stream
+        evs = events(response.text)
+        assert [e["data"] for e in evs if e["type"] == "token"] == ["Shalom", " friend."]
+        assert evs[0]["type"] == "session" and evs[-1]["type"] == "done"
+        assert credits(user_client, live_db) == before - 1
 
-        import app.main as main_module
-        with patch.object(main_module.settings, 'database_url', 'postgresql://test/db'):
-            with patch('app.main.db.get_user_profile', new=AsyncMock(return_value=None)):
-                with patch('app.main.db.consume_credit', new=AsyncMock(return_value=True)):
-                    with patch('app.main.db.add_credits', new=AsyncMock(return_value=5)) as mock_refund:
-                        with patch('app.main.db.log_error', new=AsyncMock(return_value=None)):
-                            response = client.post("/api/chat/stream", json={"message": "Hello"})
+    def test_stream_saves_both_messages_to_the_conversation(self, user_client, live_db, llm):
+        conv = user_client.portal.call(live_db.create_conversation, USER["id"])
 
-        assert response.status_code == 200
-        assert '"type": "error"' in response.text
+        response = user_client.post("/api/chat/stream", json={"message": "Hello", "conversation_id": str(conv["id"])})
+
+        saved = [e for e in events(response.text) if e["type"] == "message_saved"]
+        assert len(saved) == 1
+        messages = user_client.portal.call(live_db.get_messages, str(conv["id"]))
+        assert [(m["role"], m["content"]) for m in messages] == [("user", "Hello"), ("assistant", "Shalom friend.")]
+        assert str(messages[1]["id"]) == str(saved[0]["message_id"])
+
+    def test_stream_failure_refunds_consumed_credit(self, user_client, live_db, llm):
+        """If a credit was consumed but the pipeline then fails, refund it and log the error."""
+        llm.error = RuntimeError("pipeline exploded")
+        before = credits(user_client, live_db)
+
+        response = user_client.post("/api/chat/stream", json={"message": "Hello"})
+
+        assert events(response.text)[-1]["type"] == "error"
         # No raw exception text should leak into the SSE payload.
         assert "pipeline exploded" not in response.text
-        mock_refund.assert_called_once_with("test-user-id", 1)
+        assert credits(user_client, live_db) == before
+        errors = user_client.portal.call(live_db.admin_list_errors)
+        assert [(e["error_type"], e["error_message"]) for e in errors] == [("llm_error", "pipeline exploded")]
 
-    def test_client_disconnect_refunds_credit_when_no_tokens_sent(self, client_and_mock):
+    def test_client_disconnect_refunds_credit_when_no_tokens_sent(self, user_client, live_db, llm):
         """CancelledError (client abort / the 90s frontend watchdog) is a
         BaseException, not an Exception, so it needs its own handler to
         refund a consumed credit rather than silently dropping it.
-
-        Starlette closes the connection as soon as the generator raises, so
-        the client never observes the exception itself - only the server-side
-        refund call is directly observable here.
         """
-        client, mock_orch = client_and_mock
+        llm.stream_chunks = ()
+        llm.stream_error = asyncio.CancelledError()
+        before = credits(user_client, live_db)
 
-        async def _cancelled_stream(**kwargs):
-            raise asyncio.CancelledError()
-            yield  # pragma: no cover - makes this an async generator
-
-        mock_orch.process_message_stream = _cancelled_stream
-
-        import app.main as main_module
-        with patch.object(main_module.settings, 'database_url', 'postgresql://test/db'):
-            with patch('app.main.db.get_user_profile', new=AsyncMock(return_value=None)):
-                with patch('app.main.db.consume_credit', new=AsyncMock(return_value=True)):
-                    with patch('app.main.db.add_credits', new=AsyncMock(return_value=5)) as mock_refund:
-                        response = client.post("/api/chat/stream", json={"message": "Hello"})
+        response = user_client.post("/api/chat/stream", json={"message": "Hello"})
 
         assert response.status_code == 200
         assert '"type": "token"' not in response.text
-        mock_refund.assert_called_once_with("test-user-id", 1)
+        assert credits(user_client, live_db) == before
 
-    def test_client_disconnect_does_not_refund_after_partial_response(self, client_and_mock):
+    def test_client_disconnect_does_not_refund_after_partial_response(self, user_client, live_db, llm):
         """If some assistant content was already delivered before the client
         disconnected, the user got value for the credit - don't refund."""
-        client, mock_orch = client_and_mock
+        llm.stream_chunks = ("Shalom",)
+        llm.stream_error = asyncio.CancelledError()
+        before = credits(user_client, live_db)
 
-        async def _cancelled_after_token_stream(**kwargs):
-            yield {"type": "token", "data": "Shalom"}
-            raise asyncio.CancelledError()
+        response = user_client.post("/api/chat/stream", json={"message": "Hello"})
 
-        mock_orch.process_message_stream = _cancelled_after_token_stream
-
-        import app.main as main_module
-        with patch.object(main_module.settings, 'database_url', 'postgresql://test/db'):
-            with patch('app.main.db.get_user_profile', new=AsyncMock(return_value=None)):
-                with patch('app.main.db.consume_credit', new=AsyncMock(return_value=True)):
-                    with patch('app.main.db.add_credits', new=AsyncMock(return_value=5)) as mock_refund:
-                        response = client.post("/api/chat/stream", json={"message": "Hello"})
-
-        assert response.status_code == 200
         assert '"type": "token"' in response.text
-        mock_refund.assert_not_called()
+        assert credits(user_client, live_db) == before - 1
 
 
 class TestCORSMiddleware:
     """Test CORS middleware configuration."""
 
-    def test_cors_headers_present(self, client_and_mock):
-        client, _ = client_and_mock
+    def test_cors_preflight_allows_configured_origin(self, client):
+        origin = main_module.settings.cors_origins[0]
         response = client.options(
             "/api/health",
-            headers={
-                "Origin": "http://localhost:8613",
-                "Access-Control-Request-Method": "GET",
-            },
+            headers={"Origin": origin, "Access-Control-Request-Method": "GET"},
         )
 
         assert response.status_code == 200
+        assert response.headers["access-control-allow-origin"] == origin
+        assert response.headers["access-control-allow-credentials"] == "true"
+
+    def test_cors_preflight_rejects_unknown_origin(self, client):
+        response = client.options(
+            "/api/health",
+            headers={"Origin": "https://evil.example", "Access-Control-Request-Method": "GET"},
+        )
+
+        assert "access-control-allow-origin" not in response.headers
 
 
 class TestAppMetadata:
     """Test app metadata."""
 
-    def test_app_has_description(self, test_app):
-        _, _, app = test_app
-        assert app.description is not None
+    def test_app_has_description(self):
         assert "progressive Modern Orthodox" in app.description
 
-    def test_app_has_title(self, test_app):
-        _, _, app = test_app
-        assert app.title is not None
+    def test_app_has_title(self):
+        assert app.title.strip()

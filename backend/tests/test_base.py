@@ -1,7 +1,6 @@
 """Tests for base.py - data structures and BaseAgent."""
 
 import pytest
-from unittest.mock import Mock
 
 from app.agents.base import (
     PastoralMode,
@@ -149,7 +148,9 @@ class TestAgentContext:
 
         assert ctx.pastoral_context.mode == PastoralMode.TEACHING
         assert ctx.halachic_landscape.majority_view == "Test"
-        assert ctx.moral_assessment is not None
+        assert ctx.moral_assessment is moral
+        assert ctx.intermediate_response == "Draft response"
+        assert ctx.final_response == "Final response"
         assert ctx.metadata["key"] == "value"
 
 

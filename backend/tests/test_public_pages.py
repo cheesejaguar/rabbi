@@ -2,10 +2,17 @@
 and the Shabbat/yom tov calendar-status endpoint."""
 
 import json
+from datetime import datetime, timezone
 from pathlib import Path
-import sys
+
 import pytest
-from unittest.mock import patch, Mock, AsyncMock
+from fastapi.testclient import TestClient
+
+import app.main as main_module
+from app import dvar_audio, dvar_torah
+from app.auth import create_session_token
+from app.config import get_settings
+from app.main import app
 
 
 AUTH_USER = {
@@ -16,25 +23,34 @@ AUTH_USER = {
 }
 
 
-@pytest.fixture(scope="module")
-def public_client():
-    """Create the app with a mocked orchestrator; no auth patched by default."""
-    mock_orchestrator_instance = Mock()
-    mock_orchestrator_instance.get_greeting = AsyncMock(return_value="Shalom!")
-    mock_orchestrator_instance.ensure_rag = Mock()
+@pytest.fixture
+def public_client(monkeypatch):
+    """The real app with no database configured and no session cookie."""
+    _set_db_url(monkeypatch, "")
+    return TestClient(app)
 
-    # patch.dict snapshots sys.modules and restores originals on teardown
-    with patch.dict(sys.modules, {}):
-        mods_to_remove = [k for k in sys.modules if k.startswith('app')]
-        for mod in mods_to_remove:
-            del sys.modules[mod]
 
-        with patch('app.agents.orchestrator.OpenAI'):
-            with patch('app.agents.RabbiOrchestrator', return_value=mock_orchestrator_instance):
-                from app.main import app
-                from fastapi.testclient import TestClient
-                client = TestClient(app)
-                yield client
+def _set_db_url(monkeypatch, url):
+    for settings in {id(s): s for s in (get_settings(), main_module.settings)}.values():
+        monkeypatch.setattr(settings, "database_url", url)
+        monkeypatch.setattr(settings, "postgres_url", "")
+        monkeypatch.setattr(settings, "pghost", "")
+        monkeypatch.setattr(settings, "postgres_host", "")
+
+
+def _logged_in(client):
+    client.cookies.set("session", create_session_token(AUTH_USER))
+    return client
+
+
+def _freeze_utc_now(monkeypatch, frozen):
+    """Pin the server clock the d'var Torah week is resolved against."""
+    class FrozenDatetime(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return frozen.astimezone(tz) if tz else frozen.replace(tzinfo=None)
+
+    monkeypatch.setattr(dvar_torah, "datetime", FrozenDatetime)
 
 
 class TestLandingPage:
@@ -51,8 +67,7 @@ class TestLandingPage:
         assert 'href="/privacy"' in response.text
 
     def test_authenticated_user_gets_app(self, public_client):
-        with patch('app.main.get_current_user', return_value=AUTH_USER):
-            response = public_client.get("/")
+        response = _logged_in(public_client).get("/")
         assert response.status_code == 200
         # The app shell, not the marketing page
         assert 'id="welcomeScreen"' in response.text
@@ -93,8 +108,7 @@ class TestPrivacyPolicy:
         assert "Anthropic" in response.text
 
     def test_authenticated_visitor_still_gets_policy(self, public_client):
-        with patch('app.main.get_current_user', return_value=AUTH_USER):
-            response = public_client.get("/privacy")
+        response = _logged_in(public_client).get("/privacy")
 
         assert response.status_code == 200
         assert "Privacy Policy | rebbe.dev" in response.text
@@ -157,17 +171,23 @@ class TestCalendarStatusEndpoint:
 class TestDvarTorahEndpoint:
     """Test GET /api/dvar-torah uses the client's local date."""
 
-    def test_client_date_selects_parsha_week(self, public_client):
-        # 03:42 UTC Friday is still Thursday evening in the US.
-        from datetime import date, datetime, timezone
-        utc_now = datetime(2026, 10, 30, 3, 42, tzinfo=timezone.utc)
-        generate = AsyncMock(return_value=None)
-        with patch('app.main.get_or_generate_dvar_torah', generate), \
-                patch('app.dvar_torah.datetime') as mock_dt:
-            mock_dt.now.return_value = utc_now
-            response = public_client.get("/api/dvar-torah?client_date=2026-10-29")
-        assert response.status_code == 200
-        assert generate.call_args.args[2] == date(2026, 10, 29)
+    def test_client_date_selects_parsha_week(self, live_db, pg_url, monkeypatch):
+        # 03:42 UTC Friday is still Thursday evening in the US: the client's
+        # Thursday date keeps last Shabbat's parsha (Lech Lecha) rather than
+        # moving on to the coming one (Vayeira).
+        _set_db_url(monkeypatch, pg_url)
+        _freeze_utc_now(monkeypatch, datetime(2026, 10, 30, 3, 42, tzinfo=timezone.utc))
+        with TestClient(app) as client:
+            client.portal.call(live_db.save_dvar_torah, "Lech Lecha", "לך לך", 5787, "Go forth.")
+            client.portal.call(live_db.save_dvar_torah, "Vayeira", "וירא", 5787, "Hospitality.")
+            thursday = client.get("/api/dvar-torah?client_date=2026-10-29").json()
+            friday = client.get("/api/dvar-torah?client_date=2026-10-30").json()
+            out_of_range = client.get("/api/dvar-torah?client_date=2026-10-20").json()
+        assert (thursday["parsha_name"], thursday["content"]) == ("Lech Lecha", "Go forth.")
+        assert thursday["is_holiday_week"] is False
+        assert friday["parsha_name"] == "Vayeira"
+        # A client date more than a day off is ignored in favour of server time.
+        assert out_of_range["parsha_name"] == "Vayeira"
 
 
 class TestTermsOfService:
@@ -196,32 +216,53 @@ class TestTermsOfService:
 class TestDvarTorahAudio:
     """Read-aloud recording endpoint: generated once, then served from cache."""
 
-    DVAR = {"parsha_name": "Vayeira", "parsha_name_hebrew": "וירא", "hebrew_year": 5787,
-            "content": "On שבת (Shabbat) we learn hospitality."}
+    CONTENT = "On שבת (Shabbat) we learn hospitality."
 
-    def test_ready_audio_is_served_with_cache_headers_and_etag(self, public_client):
-        with patch("app.main.get_or_generate_dvar_torah", AsyncMock(return_value=self.DVAR)), \
-             patch("app.main.dvar_audio.get_or_create_audio", AsyncMock(return_value=("ready", b"MP3DATA"))):
-            r = public_client.get("/api/dvar-torah/audio?client_date=2026-10-31")
-            assert r.status_code == 200 and r.content == b"MP3DATA"
-            assert r.headers["content-type"] == "audio/mpeg"
-            assert "max-age=86400" in r.headers["cache-control"]
-            again = public_client.get("/api/dvar-torah/audio", headers={"If-None-Match": r.headers["etag"]})
-            assert again.status_code == 304
+    @pytest.fixture
+    def audio_client(self, live_db, pg_url, monkeypatch):
+        """Vayeira week, with this week's d'var Torah already written."""
+        _set_db_url(monkeypatch, pg_url)
+        monkeypatch.setattr(get_settings(), "elevenlabs_api_key", "")
+        _freeze_utc_now(monkeypatch, datetime(2026, 10, 31, 12, 0, tzinfo=timezone.utc))
+        with TestClient(app) as client:
+            client.portal.call(live_db.save_dvar_torah, "Vayeira", "וירא", 5787, self.CONTENT)
+            client.db = live_db
+            yield client
 
-    def test_generating_returns_202_with_retry(self, public_client):
-        with patch("app.main.get_or_generate_dvar_torah", AsyncMock(return_value=self.DVAR)), \
-             patch("app.main.dvar_audio.get_or_create_audio", AsyncMock(return_value=("generating", None))):
-            r = public_client.get("/api/dvar-torah/audio")
-            assert r.status_code == 202 and r.json()["status"] == "generating"
-            assert r.headers["retry-after"] == "4"
+    def _key(self):
+        return dvar_audio.audio_key(dvar_audio.speech_text(self.CONTENT))
 
-    def test_unavailable_and_holiday_weeks(self, public_client):
-        with patch("app.main.get_or_generate_dvar_torah", AsyncMock(return_value=self.DVAR)), \
-             patch("app.main.dvar_audio.get_or_create_audio", AsyncMock(return_value=("unavailable", None))):
-            assert public_client.get("/api/dvar-torah/audio").status_code == 503
-        with patch("app.main.get_or_generate_dvar_torah", AsyncMock(return_value=None)):
-            assert public_client.get("/api/dvar-torah/audio").status_code == 404
+    def test_ready_audio_is_served_with_cache_headers_and_etag(self, audio_client):
+        db = audio_client.db
+        assert audio_client.portal.call(db.claim_dvar_audio, self._key(), "Vayeira", 5787, 300)
+        audio_client.portal.call(db.complete_dvar_audio, self._key(), b"MP3DATA", dvar_audio.MIME, 10)
+
+        r = audio_client.get("/api/dvar-torah/audio?client_date=2026-10-31")
+        assert r.status_code == 200 and r.content == b"MP3DATA"
+        assert r.headers["content-type"] == "audio/mpeg"
+        assert "max-age=86400" in r.headers["cache-control"]
+        again = audio_client.get("/api/dvar-torah/audio", headers={"If-None-Match": r.headers["etag"]})
+        assert again.status_code == 304
+
+    def test_generating_returns_202_with_retry(self, audio_client, monkeypatch):
+        # Another request holds the generation claim and has not finished yet.
+        monkeypatch.setattr(get_settings(), "elevenlabs_api_key", "test-key-not-used")
+        assert audio_client.portal.call(audio_client.db.claim_dvar_audio, self._key(), "Vayeira", 5787, 300)
+
+        r = audio_client.get("/api/dvar-torah/audio")
+        assert r.status_code == 202 and r.json()["status"] == "generating"
+        assert r.headers["retry-after"] == "4"
+
+    def test_unavailable_without_tts_key(self, audio_client):
+        r = audio_client.get("/api/dvar-torah/audio")
+        assert r.status_code == 503
+        assert r.json()["status"] == "unavailable"
+
+    def test_holiday_week_has_no_audio(self, public_client, monkeypatch):
+        # Shabbat chol hamoed Sukkot: no weekly parsha, so nothing to read.
+        _freeze_utc_now(monkeypatch, datetime(2026, 10, 1, 12, 0, tzinfo=timezone.utc))
+        assert public_client.get("/api/dvar-torah/audio").status_code == 404
 
     def test_regenerate_requires_admin(self, public_client):
-        assert public_client.post("/api/admin/dvar-torah/regenerate").status_code in (401, 403)
+        assert public_client.post("/api/admin/dvar-torah/regenerate").status_code == 401
+        assert _logged_in(public_client).post("/api/admin/dvar-torah/regenerate").status_code == 403

@@ -38,6 +38,7 @@ dev = [
     "pytest-cov>=6.1.1",
     "pytest-mock>=3.14.0",
     "pytest-playwright>=0.8.0",
+    "pgserver>=0.1.4",          # Real throwaway PostgreSQL for the database tests
     "ruff>=0.8.0",
 ]
 
@@ -56,6 +57,7 @@ dev-dependencies = [
     "pytest-cov>=6.1.1",
     "pytest-mock>=3.14.0",
     "pytest-playwright>=0.8.0",
+    "pgserver>=0.1.4",          # Real throwaway PostgreSQL for the database tests
     "ruff>=0.8.0",
 ]
 

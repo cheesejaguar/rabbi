@@ -22,11 +22,10 @@ import gzip
 import json
 import math
 import os
-import tempfile
 import textwrap
 
 import pytest
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch
 
 from app.agents.rag import (
     TextChunk,
@@ -38,7 +37,6 @@ from app.agents.rag import (
     _cosine_similarity,
     build_index_cli,
     DEFAULT_INDEX_PATH,
-    DEFAULT_LIBRARY_PATH,
 )
 
 
@@ -824,12 +822,12 @@ class TestSaveLoadRoundTrip:
             assert len(orig_results) == len(loaded_results), f"Mismatch for: {query}"
 
             # Same chunks returned (order and title should match)
-            for o, l in zip(orig_results, loaded_results):
-                assert o.chunk.title == l.chunk.title
-                assert o.chunk.section == l.chunk.section
+            for o, reloaded in zip(orig_results, loaded_results):
+                assert o.chunk.title == reloaded.chunk.title
+                assert o.chunk.section == reloaded.chunk.section
                 # Scores may differ slightly due to float rounding in save
-                assert abs(o.score - l.score) < 0.05, (
-                    f"Score divergence for {query}: {o.score} vs {l.score}"
+                assert abs(o.score - reloaded.score) < 0.05, (
+                    f"Score divergence for {query}: {o.score} vs {reloaded.score}"
                 )
 
     def test_save_returns_path(self, indexed_retriever, tmp_path):
@@ -837,12 +835,14 @@ class TestSaveLoadRoundTrip:
         returned = indexed_retriever.save(path)
         assert returned == path
 
-    def test_save_default_path(self, indexed_retriever):
-        """save() with no arg uses DEFAULT_INDEX_PATH."""
-        with patch("gzip.open", MagicMock()):
-            with patch("os.path.getsize", return_value=1024):
-                result = indexed_retriever.save()
-                assert result == DEFAULT_INDEX_PATH
+    def test_save_default_path(self, indexed_retriever, tmp_path, monkeypatch):
+        """save() with no arg writes to DEFAULT_INDEX_PATH."""
+        import app.agents.rag as rag_module
+        default = str(tmp_path / "default_index.json.gz")
+        monkeypatch.setattr(rag_module, "DEFAULT_INDEX_PATH", default)
+        assert indexed_retriever.save() == default
+        reloaded = TextRetriever()
+        assert reloaded.load(default) == len(indexed_retriever.chunks)
 
     def test_load_legacy_format(self, tmp_path):
         """Test that load still supports legacy (v1 / dict-based) format."""
@@ -1079,13 +1079,15 @@ class TestHalachicRAGIntegration:
 
         context = AgentContext(user_message="Question")
         result = await agent.process(context)
-        assert result.halachic_landscape is not None
+        assert result.halachic_landscape.majority_view == "Answer without sources"
+        user_msg = mock_anthropic_client.chat.completions.create.call_args[1]["messages"][1]["content"]
+        assert "RELEVANT SOURCE TEXTS FROM LIBRARY" not in user_msg
 
     @pytest.mark.asyncio
     async def test_halachic_agent_calls_ensure_loaded(
-        self, mock_anthropic_client, mock_claude_response
+        self, mock_anthropic_client, mock_claude_response, indexed_retriever, tmp_path, monkeypatch
     ):
-        """Agent should call ensure_loaded before searching."""
+        """An unloaded retriever is loaded on first use (no lifespan on Vercel), then searched."""
         from app.agents.halachic import HalachicReasoningAgent
         from app.agents.base import AgentContext
 
@@ -1105,7 +1107,16 @@ class TestHalachicRAGIntegration:
             })
         )
 
-        with patch.object(retriever, 'ensure_loaded', return_value=0) as mock_ensure:
-            context = AgentContext(user_message="Question about Shabbat?")
-            await agent.process(context)
-            mock_ensure.assert_called_once()
+        import app.agents.rag as rag_module
+        index_path = str(tmp_path / "lazy_index.json.gz")
+        indexed_retriever.save(index_path)
+        monkeypatch.setattr(rag_module, "DEFAULT_INDEX_PATH", index_path)
+        assert retriever.is_indexed is False
+
+        context = AgentContext(user_message="Question about Shabbat?")
+        await agent.process(context)
+
+        assert retriever.is_indexed is True
+        assert len(retriever.chunks) == len(indexed_retriever.chunks)
+        user_msg = mock_anthropic_client.chat.completions.create.call_args[1]["messages"][1]["content"]
+        assert "RELEVANT SOURCE TEXTS FROM LIBRARY" in user_msg

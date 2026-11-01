@@ -2,13 +2,12 @@
 
 import pytest
 import time
-from unittest.mock import Mock, MagicMock, patch
+from unittest.mock import Mock
 from fastapi import Request
 
 from app.security import (
     GuestSecurityManager,
     InputValidator,
-    IPTracker,
     GUEST_IP_CHAT_LIMIT,
     GUEST_RATE_LIMIT_PER_MINUTE,
     IP_BLOCK_THRESHOLD,

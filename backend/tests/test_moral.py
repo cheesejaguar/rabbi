@@ -2,7 +2,6 @@
 
 import pytest
 import json
-from unittest.mock import Mock
 
 from app.agents.moral import MoralEthicalAgent
 from app.agents.base import (
@@ -100,7 +99,6 @@ class TestMoralEthicalAgent:
         context = AgentContext(user_message="Simple question")
         result = await agent.process(context)
 
-        assert result.moral_assessment is not None
         assert result.moral_assessment.increases_holiness is True
 
     @pytest.mark.asyncio
@@ -127,7 +125,9 @@ class TestMoralEthicalAgent:
         )
         result = await agent.process(context)
 
-        assert result.moral_assessment is not None
+        assert result.moral_assessment.increases_holiness is True
+        sent = json.dumps(agent.client.chat.completions.create.call_args.kwargs["messages"])
+        assert "anxious" in sent and "stress" in sent
 
     @pytest.mark.asyncio
     async def test_process_with_halachic_landscape(self, agent, mock_claude_response):
@@ -153,7 +153,9 @@ class TestMoralEthicalAgent:
         )
         result = await agent.process(context)
 
-        assert result.moral_assessment is not None
+        assert result.moral_assessment.dignity_preserved is True
+        sent = json.dumps(agent.client.chat.completions.create.call_args.kwargs["messages"])
+        assert "Strict view" in sent and "boundary1" in sent
 
     @pytest.mark.asyncio
     async def test_process_with_intermediate_response(self, agent, mock_claude_response):
