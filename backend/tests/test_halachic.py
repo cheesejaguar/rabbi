@@ -2,15 +2,12 @@
 
 import pytest
 import json
-from unittest.mock import Mock, MagicMock
 
 from app.agents.halachic import HalachicReasoningAgent, _should_use_rag
 from app.agents.base import (
     AgentContext,
     PastoralContext,
     PastoralMode,
-    ToneConstraint,
-    AuthorityLevel,
     HalachicLandscape,
 )
 
@@ -100,7 +97,6 @@ class TestHalachicReasoningAgent:
         context = AgentContext(user_message="What is the law about X?")
         result = await agent.process(context)
 
-        assert result.halachic_landscape is not None
         assert result.halachic_landscape.majority_view == "The answer is..."
         assert result.intermediate_response == "The answer is..."
 
@@ -128,8 +124,11 @@ class TestHalachicReasoningAgent:
         )
         result = await agent.process(context)
 
-        assert result.halachic_landscape is not None
-        assert len(result.halachic_landscape.precedents_for_leniency) > 0
+        assert result.halachic_landscape.precedents_for_leniency == ["In difficult times"]
+        assert result.halachic_landscape.minority_views == ["Lenient view"]
+        # The pastoral state is passed to the model.
+        sent = json.dumps(agent.client.chat.completions.create.call_args.kwargs["messages"])
+        assert "distressed" in sent
 
     @pytest.mark.asyncio
     async def test_process_sets_intermediate_response(self, agent, mock_claude_response):
@@ -206,19 +205,18 @@ class TestHalachicReasoningAgent:
         assert result.metadata["rag_used"] is False
 
     @pytest.mark.asyncio
-    async def test_process_rag_calls_retriever_when_appropriate(self, mock_anthropic_client, mock_claude_response):
-        """When RAG is warranted and a retriever is available, it should be called."""
-        from app.agents.rag import TextChunk, SearchResult
+    async def test_process_rag_calls_retriever_when_appropriate(self, mock_anthropic_client, mock_claude_response,
+                                                                 tmp_path):
+        """When RAG is warranted, the library is searched and its text reaches the model."""
+        from app.agents.rag import TextRetriever
 
-        mock_retriever = MagicMock()
-        mock_retriever.ensure_loaded = MagicMock()
-        mock_retriever.search = MagicMock(return_value=[
-            SearchResult(
-                chunk=TextChunk(text="Source text here", title="Shulchan Arukh Orach Chayyim",
-                                section="Siman 318", category="Halacha"),
-                score=0.9,
-            )
-        ])
+        (tmp_path / "oc.md").write_text(
+            "---\ntitle: Shulchan Arukh Orach Chayyim\ncategory: Halacha\n---\n## Siman 318\n\n"
+            "One who cooks on Shabbat intentionally may not eat the food; the Shulchan Aruch rules on Shabbat cooking.\n",
+            encoding="utf-8")
+        retriever = TextRetriever()
+        assert retriever.index(str(tmp_path)) == 1
+        mock_retriever = retriever
 
         agent = HalachicReasoningAgent(mock_anthropic_client, retriever=mock_retriever)
         agent.client.chat.completions.create.return_value = mock_claude_response(
@@ -235,9 +233,10 @@ class TestHalachicReasoningAgent:
         context = AgentContext(user_message="What does the Shulchan Aruch say about Shabbat?")
         result = await agent.process(context)
 
-        mock_retriever.ensure_loaded.assert_called_once()
-        mock_retriever.search.assert_called_once()
         assert result.metadata["rag_used"] is True
+        user_msg = agent.client.chat.completions.create.call_args.kwargs["messages"][1]["content"]
+        assert "[Source 1: Shulchan Arukh Orach Chayyim > Siman 318 (Halacha)]" in user_msg
+        assert "One who cooks on Shabbat intentionally" in user_msg
         # Citations are annotated: the retrieved source verifies, the
         # model's own-knowledge citation does not.
         sources = result.metadata["sources"]
@@ -249,9 +248,9 @@ class TestHalachicReasoningAgent:
     @pytest.mark.asyncio
     async def test_process_rag_not_called_when_skipped(self, mock_anthropic_client, mock_claude_response):
         """When RAG is not warranted, retriever should not be called even if available."""
-        mock_retriever = MagicMock()
-        mock_retriever.ensure_loaded = MagicMock()
-        mock_retriever.search_formatted = MagicMock(return_value="Source text here")
+        from app.agents.rag import TextRetriever
+
+        mock_retriever = TextRetriever()  # never loaded unless searched
 
         agent = HalachicReasoningAgent(mock_anthropic_client, retriever=mock_retriever)
         agent.client.chat.completions.create.return_value = mock_claude_response(
@@ -268,9 +267,10 @@ class TestHalachicReasoningAgent:
         context = AgentContext(user_message="Thank you!")
         result = await agent.process(context)
 
-        mock_retriever.ensure_loaded.assert_not_called()
-        mock_retriever.search_formatted.assert_not_called()
+        assert mock_retriever.is_indexed is False
         assert result.metadata["rag_used"] is False
+        user_msg = agent.client.chat.completions.create.call_args.kwargs["messages"][1]["content"]
+        assert "RELEVANT SOURCE TEXTS FROM LIBRARY" not in user_msg
 
 
 class TestShouldUseRag:

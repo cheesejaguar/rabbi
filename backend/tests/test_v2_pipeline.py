@@ -1,35 +1,44 @@
 """Tests for the v2 pipeline (run_turn / finish_audit) and the v2 endpoint."""
 
 import json
-from unittest.mock import AsyncMock, patch
 
 import pytest
 
+from app.agents.rag import TextRetriever
 from app.chat import pipeline as pl
-from app.chat.retrieval import Passage
+from app.chat import retrieval
+from app.config import get_settings
 from app.llm import client as llm_client
 from tests.fakes_anthropic import FakeClient, classifier_json
 
-
-PASSAGES = [
-    Passage(n=1, title="Talmud Shabbat", ref="Daf 2b (part 2)", text="Carrying from domain to domain...",
-            category="Talmud Bavli", url="https://www.sefaria.org/Shabbat.2b"),
-    Passage(n=2, title="Mishnah Eruvin", ref="1:1", text="An alleyway...", category="Mishnah",
-            url="https://www.sefaria.org/search?q=Mishnah%20Eruvin"),
-]
+# A two-text library: the real retriever indexes it, so retrieval, ranking and
+# Sefaria links all run for real. Only the Anthropic client is faked.
+LIBRARY = {
+    "shabbat.md": "---\ntitle: Talmud Shabbat\ncategory: Talmud Bavli\n---\n## Daf 2b\n\n"
+                  "Carrying from domain to domain on Shabbat is forbidden: the laws of carrying begin here.\n",
+    "eruvin.md": "---\ntitle: Mishnah Eruvin\ncategory: Mishnah\n---\n## 1:1\n\n"
+                 "An alleyway whose entrance is higher than twenty cubits must be lowered so an eruv permits carrying.\n",
+}
 
 
 @pytest.fixture(autouse=True)
-def no_alerts():
-    with patch("app.chat.pipeline.send_admin_alert", new=AsyncMock(return_value=False)):
-        yield
+def library(tmp_path, monkeypatch):
+    for name, text in LIBRARY.items():
+        (tmp_path / name).write_text(text, encoding="utf-8")
+    retriever = TextRetriever()
+    assert retriever.index(str(tmp_path)) == 2
+    previous = retrieval.get_retriever()
+    retrieval.set_retriever(retriever)
+    # No webhook configured: crisis alerts are skipped rather than sent.
+    monkeypatch.setattr(get_settings(), "admin_alert_webhook_url", "")
+    yield retriever
+    retrieval.set_retriever(previous)
 
 
-async def collect(inp, fake, passages=PASSAGES):
+async def collect(inp, fake):
     llm_client.set_client(fake)
     outcome = pl.TurnOutcome()
-    with patch("app.chat.pipeline.retrieve", new=AsyncMock(return_value=list(passages))):
-        events = [e async for e in pl.run_turn(inp, outcome)]
+    events = [e async for e in pl.run_turn(inp, outcome)]
     return events, outcome
 
 
@@ -158,10 +167,9 @@ def test_build_history_alternates_and_bounds():
 
 # --- Endpoint ----------------------------------------------------------------
 
-@pytest.fixture
-def v2_client():
+def _harness(user=None):
+    """A minimal app that routes to the real v2 endpoint for ``user``."""
     from fastapi import FastAPI, Request
-    from fastapi.testclient import TestClient
 
     from app.chat import endpoint
     from app.models import ChatRequest
@@ -170,58 +178,69 @@ def v2_client():
 
     @app.post("/api/chat/stream")
     async def stream(request: Request, body: ChatRequest):
-        return await endpoint.stream_chat_v2(request, body, None)
+        return await endpoint.stream_chat_v2(request, body, user)
 
-    with patch.object(endpoint, "get_settings") as gs:
-        s = gs.return_value
-        s.db_url = ""
-        s.guest_ip_chat_limit = 3
-        s.signup_credits = 10
-        s.free_tier_daily_budget_usd = 5.0
-        s.is_production = False
-        s.rate_limit_chat_per_minute = 10
-        with patch("app.ratelimit.get_settings", return_value=s):
-            s.guest_rate_limit_per_minute = 50
-            from app import ratelimit
-            ratelimit._mem.clear()
-            yield TestClient(app), endpoint
+    return app
+
+
+@pytest.fixture
+def v2_client(monkeypatch):
+    """Guest client against the real v2 endpoint, no database configured."""
+    from fastapi.testclient import TestClient
+
+    from app import ratelimit
+    from app.chat import endpoint
+
+    s = get_settings()
+    for field in ("database_url", "postgres_url", "pghost", "postgres_host"):
+        monkeypatch.setattr(s, field, "")
+    monkeypatch.setattr(s, "guest_rate_limit_per_minute", 50)
+    ratelimit._mem.clear()
+    yield TestClient(_harness()), endpoint
+    ratelimit._mem.clear()
 
 
 def parse(body):
     return [json.loads(line[6:]) for line in body.splitlines() if line.startswith("data: ")]
 
 
+def _guest_cookie_after(count):
+    from app.auth import create_guest_chat_cookie
+    return {"guest_chats_used": create_guest_chat_cookie(count)}
+
+
 def test_endpoint_guest_turn_and_cookie(v2_client):
     client, endpoint = v2_client
     llm_client.set_client(FakeClient())
-    with patch("app.chat.pipeline.retrieve", new=AsyncMock(return_value=[])):
-        r = client.post("/api/chat/stream", json={"message": "What is Shabbat?", "request_id": "r1"})
+    r = client.post("/api/chat/stream", json={"message": "What is Shabbat?", "request_id": "r1"})
     events = parse(r.text)
     assert events[0]["type"] == "session" and events[0]["request_id"] == "r1"
-    assert any(e["type"] == "token" for e in events)
+    assert "".join(e["data"] for e in events if e["type"] == "token") == "Hello world."
     assert any(e["type"] == "done" for e in events)
-    assert "guest_chats_used" in r.cookies
+    from app.auth import get_guest_chats_used
+    from starlette.requests import Request
+    cookie_req = Request({"type": "http", "headers": [(b"cookie", f"guest_chats_used={r.cookies['guest_chats_used']}".encode())]})
+    assert get_guest_chats_used(cookie_req) == 1
 
 
 def test_endpoint_guest_limit_but_crisis_still_answered(v2_client):
     client, endpoint = v2_client
+    client.cookies.update(_guest_cookie_after(99))
     llm_client.set_client(FakeClient(classifier=classifier_json(mode="crisis", risk={"self_harm": 3})))
-    with patch.object(endpoint, "get_guest_chats_used", return_value=99), \
-         patch("app.chat.pipeline.retrieve", new=AsyncMock(return_value=[])):
-        walled = parse(client.post("/api/chat/stream", json={"message": "Tell me about Purim"}).text)
-        crisis = parse(client.post("/api/chat/stream", json={"message": "I want to end my life"}).text)
-    # The fake classifier says crisis for both; a lexicon miss with classifier crisis also passes the wall.
-    assert any(e["type"] == "safety_resources" for e in crisis)
-    assert any(e["type"] == "token" for e in crisis)
-    assert walled  # either answered (classifier crisis) or walled; never an exception
+    crisis = parse(client.post("/api/chat/stream", json={"message": "I want to end my life"}).text)
+    t = types(crisis)
+    assert "safety_resources" in t and "token" in t
+    assert t.index("safety_resources") < t.index("token")
 
 
 def test_endpoint_guest_limit_blocks_ordinary_turn(v2_client):
     client, endpoint = v2_client
-    llm_client.set_client(FakeClient())
-    with patch.object(endpoint, "get_guest_chats_used", return_value=99):
-        events = parse(client.post("/api/chat/stream", json={"message": "Tell me about Purim"}).text)
+    client.cookies.update(_guest_cookie_after(99))
+    fake = FakeClient()
+    llm_client.set_client(fake)
+    events = parse(client.post("/api/chat/stream", json={"message": "Tell me about Purim"}).text)
     assert events == [{"type": "error", "code": "guest_limit_reached", "message": events[0]["message"]}]
+    assert fake.stream_calls == []
 
 
 def test_endpoint_rejects_overlong_message(v2_client):
@@ -230,53 +249,42 @@ def test_endpoint_rejects_overlong_message(v2_client):
     assert events[0]["code"] == "invalid_input"
 
 
-def test_reused_request_id_is_still_charged_each_time():
+def test_reused_request_id_is_still_charged_each_time(live_db, monkeypatch):
     """A client-chosen request_id must not act as a billing key (free-turn exploit)."""
-    from fastapi import FastAPI, Request
     from fastapi.testclient import TestClient
-    from app.chat import endpoint
-    from app.models import ChatRequest
 
-    app = FastAPI()
     user = {"id": "u1", "email": "u@example.com"}
-
-    @app.post("/api/chat/stream")
-    async def stream(request: Request, body: ChatRequest):
-        return await endpoint.stream_chat_v2(request, body, user)
-
+    monkeypatch.setattr(get_settings(), "rate_limit_chat_per_minute", 100)
     llm_client.set_client(FakeClient())
-    charge = AsyncMock(return_value=5)
-    with patch.object(endpoint, "get_settings") as gs, \
-         patch("app.ratelimit.get_settings", return_value=gs.return_value), \
-         patch.object(endpoint.db, "try_charge_credits", new=charge), \
-         patch.object(endpoint.db, "get_user_profile", new=AsyncMock(return_value=None)), \
-         patch.object(endpoint.db, "get_user_credits", new=AsyncMock(return_value=4)), \
-         patch.object(endpoint.db, "record_safety_event", new=AsyncMock()), \
-         patch("app.chat.pipeline.retrieve", new=AsyncMock(return_value=[])):
-        s = gs.return_value
-        s.db_url = "postgres://test"
-        s.rate_limit_chat_per_minute = 100
-        s.guest_rate_limit_per_minute = 100
-        with patch("app.ratelimit.hit", new=AsyncMock(return_value=1)), \
-             patch("app.ratelimit.peek", new=AsyncMock(return_value=0)):
-            client = TestClient(app)
-            for _ in range(2):
-                events = parse(client.post("/api/chat/stream", json={"message": "hi", "request_id": "same"}).text)
-                assert any(e["type"] == "done" and e["charged"] for e in events)
-    refs = [c.args[3] for c in charge.await_args_list]
+    with TestClient(_harness(user)) as client:
+        client.portal.call(live_db.upsert_user, user["id"], user["email"])
+        start = client.portal.call(live_db.get_user_credits, user["id"])
+        for _ in range(2):
+            events = parse(client.post("/api/chat/stream", json={"message": "hi", "request_id": "same"}).text)
+            assert any(e["type"] == "done" and e["charged"] for e in events)
+
+        async def ledger():
+            async with live_db.get_connection() as conn:
+                return await conn.fetch("SELECT delta, ref FROM credit_ledger WHERE user_id = $1", user["id"])
+
+        rows = client.portal.call(ledger)
+        assert client.portal.call(live_db.get_user_credits, user["id"]) == start - 2
+    refs = [r["ref"] for r in rows]
     assert len(refs) == 2 and refs[0] != refs[1] and all("same" not in r for r in refs)
 
 
 # --- Regression tests from the independent review ------------------------------
 
-def test_crisis_bypasses_rate_limit_and_block(v2_client):
+def test_crisis_bypasses_rate_limit_and_block(v2_client, monkeypatch):
     client, endpoint = v2_client
+    from app import ratelimit
+    import asyncio
+    # The guest's IP has collected enough penalties to be blocked, and is over its rate limit.
+    asyncio.run(ratelimit.add_penalty("testclient", ratelimit.PENALTY_BLOCK_AT))
+    monkeypatch.setattr(get_settings(), "guest_rate_limit_per_minute", 0)
     llm_client.set_client(FakeClient(classifier=classifier_json(mode="crisis", risk={"self_harm": 3})))
-    with patch("app.ratelimit.check_chat_rate", new=AsyncMock(return_value=False)), \
-         patch("app.ratelimit.is_blocked", new=AsyncMock(return_value=True)), \
-         patch("app.chat.pipeline.retrieve", new=AsyncMock(return_value=[])):
-        ordinary = parse(client.post("/api/chat/stream", json={"message": "What is Sukkot?"}).text)
-        crisis = parse(client.post("/api/chat/stream", json={"message": "I want to kill myself"}).text)
+    ordinary = parse(client.post("/api/chat/stream", json={"message": "What is Sukkot?"}).text)
+    crisis = parse(client.post("/api/chat/stream", json={"message": "I want to kill myself"}).text)
     assert ordinary[0]["code"] == "access_restricted"
     t = [e["type"] for e in crisis]
     assert "safety_resources" in t and "token" in t and t.index("safety_resources") < t.index("token")
@@ -286,16 +294,18 @@ def test_overlong_crisis_message_is_answered_not_rejected(v2_client):
     client, _ = v2_client
     llm_client.set_client(FakeClient(classifier=classifier_json(mode="crisis", risk={"self_harm": 3})))
     msg = "x " * 2400 + "and I'm going to kill myself tonight"
-    with patch("app.chat.pipeline.retrieve", new=AsyncMock(return_value=[])):
-        events = parse(client.post("/api/chat/stream", json={"message": msg}).text)
+    events = parse(client.post("/api/chat/stream", json={"message": msg}).text)
     assert any(e["type"] == "safety_resources" for e in events)
     assert any(e["type"] == "token" for e in events)
 
 
-def test_invalid_input_still_shows_card_on_floor_match(v2_client):
+def test_invalid_input_still_shows_card_on_floor_match(v2_client, monkeypatch):
+    # Defensive branch: a floor-matching message is trimmed to the length limit
+    # before validation, so the validator can only reject it if its rules change.
+    # Force a rejection to check the card is still sent.
     client, endpoint = v2_client
-    with patch.object(endpoint.input_validator, "validate_message", return_value=(False, "bad")):
-        events = parse(client.post("/api/chat/stream", json={"message": "I want to die"}).text)
+    monkeypatch.setattr(endpoint.input_validator, "validate_message", lambda m: (False, "bad"))
+    events = parse(client.post("/api/chat/stream", json={"message": "I want to die"}).text)
     assert [e["type"] for e in events] == ["safety_resources", "error"]
 
 
@@ -383,7 +393,9 @@ async def test_gateway_rejection_falls_back_to_compatible_request_shape():
         assert outcome.text == "Carrying needs an eruv." and outcome.metadata.get("compat_mode")
         retry = calls[-1]
         assert retry["messages"][-1]["role"] == "user"  # overlay moved into top-level system
-        assert "[1] Talmud Shabbat" in retry["messages"][-1]["content"][0]["text"]
+        passages_text = retry["messages"][-1]["content"][0]["text"]
+        assert "[1] " in passages_text and "[2] " in passages_text
+        assert "Talmud Shabbat, Daf 2b\nCarrying from domain to domain" in passages_text
         assert all(s["kind"] == "library" for s in outcome.metadata["sources"])
         # Later turns use the compatible shape directly (no failed round trip).
         n = len(calls)

@@ -2,17 +2,14 @@
 
 import pytest
 import json
-from unittest.mock import Mock, AsyncMock, patch
+from unittest.mock import Mock, patch
 
 from app.agents.orchestrator import RabbiOrchestrator
 from app.agents.base import (
     AgentContext,
     PastoralContext,
     PastoralMode,
-    ToneConstraint,
-    AuthorityLevel,
     HalachicLandscape,
-    MoralAssessment,
 )
 
 
@@ -54,6 +51,7 @@ class TestRabbiOrchestrator:
                 api_key="test-key",
                 base_url="https://custom.api/v1",
             )
+            assert orchestrator.client is mock_openai.return_value
 
     def test_initialization_custom_model(self):
         with patch('app.agents.orchestrator.OpenAI'):
@@ -66,10 +64,21 @@ class TestRabbiOrchestrator:
     def test_agents_initialized(self):
         with patch('app.agents.orchestrator.OpenAI'):
             orchestrator = RabbiOrchestrator(api_key="test-key")
-            assert orchestrator.pastoral_agent is not None
-            assert orchestrator.halachic_agent is not None
-            assert orchestrator.moral_agent is not None
-            assert orchestrator.voice_agent is not None
+            from app.agents.halachic import HalachicReasoningAgent
+            from app.agents.moral import MoralEthicalAgent
+            from app.agents.pastoral import PastoralContextAgent
+            from app.agents.voice import MetaRabbinicVoiceAgent
+            assert isinstance(orchestrator.pastoral_agent, PastoralContextAgent)
+            assert isinstance(orchestrator.halachic_agent, HalachicReasoningAgent)
+            assert isinstance(orchestrator.moral_agent, MoralEthicalAgent)
+            assert isinstance(orchestrator.voice_agent, MetaRabbinicVoiceAgent)
+            # All agents share the one provider client and model.
+            for agent in (orchestrator.pastoral_agent, orchestrator.halachic_agent,
+                          orchestrator.moral_agent, orchestrator.voice_agent):
+                assert agent.client is orchestrator.client
+                assert agent.model == orchestrator.model
+            # The halachic agent searches the orchestrator's retriever.
+            assert orchestrator.halachic_agent.retriever is orchestrator.retriever
 
     @pytest.mark.asyncio
     async def test_process_message_full_pipeline(self):
@@ -115,10 +124,12 @@ class TestRabbiOrchestrator:
             orchestrator = RabbiOrchestrator(api_key="test-key")
             result = await orchestrator.process_message("What is Shabbat?")
 
-            assert "response" in result
             assert result["response"] == "This is the final warm response from the rebbe.dev."
-            assert "requires_human_referral" in result
-            assert "metadata" in result
+            assert result["requires_human_referral"] is False
+            assert result["metadata"]["pastoral_mode"] == "curiosity"
+            assert result["metadata"]["moral_reconsideration"] is False
+            # pastoral, halachic, moral, voice: one provider call each
+            assert mock_client.chat.completions.create.call_count == 4
 
     @pytest.mark.asyncio
     async def test_process_message_with_conversation_history(self):
@@ -151,6 +162,9 @@ class TestRabbiOrchestrator:
             )
 
             assert result["response"] == "Final response"
+            # Prior turns reach the model along with the new question.
+            sent = json.dumps(mock_client.chat.completions.create.call_args_list[0].kwargs["messages"])
+            assert "Previous question" in sent and "Previous answer" in sent and "Follow-up question" in sent
 
     @pytest.mark.asyncio
     async def test_process_message_with_reconsideration(self):
@@ -178,6 +192,12 @@ class TestRabbiOrchestrator:
 
             assert result["metadata"]["moral_reconsideration"] is True
             assert result["response"] == "A gentle, reconsidered response"
+            # The halachic agent ran a second time (5 calls), and the voice
+            # agent was given the reconsidered landscape, not the first one.
+            calls = mock_client.chat.completions.create.call_args_list
+            assert len(calls) == 5
+            voice_prompt = json.dumps(calls[-1].kwargs["messages"])
+            assert "Compassionate view" in voice_prompt
 
     @pytest.mark.asyncio
     async def test_process_message_crisis_detection(self):
@@ -205,7 +225,7 @@ class TestRabbiOrchestrator:
             assert result["requires_human_referral"] is True
             assert result["metadata"]["pastoral_mode"] == "crisis"
             assert result["metadata"]["vulnerability_detected"] is True
-            assert "crisis_indicators" in result["metadata"]
+            assert result["metadata"]["crisis_indicators"] == ["self-harm"]
 
     def test_build_response_minimal_context(self):
         with patch('app.agents.orchestrator.OpenAI'):

@@ -221,9 +221,6 @@ Evaluate this for moral and ethical concerns. Does it increase holiness without 
             if "suggested_modifications" in data:
                 assessment.ethical_concerns.extend(data["suggested_modifications"])
 
-            if "moral_framing" in data:
-                context_metadata = {"moral_framing": data["moral_framing"]}
-
             return assessment
 
         except (json.JSONDecodeError, ValueError, KeyError):

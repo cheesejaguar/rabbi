@@ -1,8 +1,17 @@
-"""Tests for admin.py - admin role enforcement and admin API endpoints."""
+"""Tests for admin.py - admin role enforcement and admin API endpoints.
 
-import sys
+Requests go through the real app with a real signed session cookie, and the
+admin endpoints read and write a real PostgreSQL database (see the
+``live_db`` fixture in conftest.py).
+"""
+
 import pytest
-from unittest.mock import patch, Mock, AsyncMock
+from fastapi.testclient import TestClient
+
+import app.admin as admin_module
+import app.main as main_module
+from app.auth import create_session_token
+from app.main import app
 
 
 ADMIN_USER = {
@@ -19,45 +28,47 @@ REGULAR_USER = {
     "last_name": "User",
 }
 
-
-@pytest.fixture(scope="module")
-def admin_client():
-    """Create the app with a mocked orchestrator; auth is patched per-test."""
-    mock_orchestrator_instance = Mock()
-    mock_orchestrator_instance.get_greeting = AsyncMock(return_value="Shalom!")
-    mock_orchestrator_instance.ensure_rag = Mock()
-
-    # Clear cached modules so main.py picks up the patched orchestrator.
-    # patch.dict snapshots sys.modules and restores the original modules on
-    # teardown so other test modules' module-level imports stay consistent.
-    with patch.dict(sys.modules, {}):
-        mods_to_remove = [k for k in sys.modules if k.startswith('app')]
-        for mod in mods_to_remove:
-            del sys.modules[mod]
-
-        with patch('app.agents.orchestrator.OpenAI'):
-            with patch('app.agents.RabbiOrchestrator', return_value=mock_orchestrator_instance):
-                from app.main import app
-                from fastapi.testclient import TestClient
-                client = TestClient(app)
-                yield client
+OWNER_EMAILS = "cheesejaguar@gmail.com"
 
 
-def logged_in_as(user):
-    """Patch session extraction (middleware + admin router) to return `user`."""
-    return patch.multiple(
-        'app.main', get_current_user=Mock(return_value=user),
-    ), patch.multiple(
-        'app.admin', get_current_user=Mock(return_value=user),
-    )
+def _configure(monkeypatch, database_url, admin_emails=OWNER_EMAILS):
+    """Set the real settings the admin router and app read.
+
+    ``app.admin`` and ``app.main`` hold the settings object they imported, so
+    set the attributes on those objects directly.
+    """
+    for settings in {id(s): s for s in (admin_module.settings, main_module.settings)}.values():
+        monkeypatch.setattr(settings, "database_url", database_url)
+        monkeypatch.setattr(settings, "postgres_url", "")
+        monkeypatch.setattr(settings, "pghost", "")
+        monkeypatch.setattr(settings, "postgres_host", "")
+        monkeypatch.setattr(settings, "admin_emails", admin_emails)
 
 
-def admin_settings(db_url="postgresql://test", admin_emails=None):
-    """Patch the admin router's settings singleton reference."""
-    mock = Mock()
-    mock.db_url = db_url
-    mock.admin_email_list = admin_emails if admin_emails is not None else ["cheesejaguar@gmail.com"]
-    return patch('app.admin.settings', mock)
+def logged_in(client, user):
+    client.cookies.set("session", create_session_token(user))
+    return client
+
+
+@pytest.fixture
+def no_db_client(monkeypatch):
+    """App client with no database configured."""
+    _configure(monkeypatch, "")
+    return TestClient(app)
+
+
+@pytest.fixture
+def db_client(live_db, pg_url, monkeypatch):
+    """App client backed by the real test database, admin user seeded."""
+    _configure(monkeypatch, pg_url)
+    with TestClient(app) as client:
+        client.portal.call(live_db.upsert_user, ADMIN_USER["id"], ADMIN_USER["email"], "Admin", "Owner")
+        client.portal.call(live_db.upsert_user, REGULAR_USER["id"], REGULAR_USER["email"], "Regular", "User")
+        yield client, live_db
+
+
+def _audit_log(client, db):
+    return client.portal.call(db.admin_list_audit_log)
 
 
 class TestConfigAdminEmails:
@@ -77,43 +88,42 @@ class TestConfigAdminEmails:
 class TestRequireAdmin:
     """Test the admin role gate on /api/admin endpoints."""
 
-    def test_unauthenticated_gets_401(self, admin_client):
-        response = admin_client.get("/api/admin/overview")
+    def test_unauthenticated_gets_401(self, no_db_client):
+        response = no_db_client.get("/api/admin/overview")
         assert response.status_code == 401
 
-    def test_non_admin_gets_403(self, admin_client):
-        main_patch, admin_patch = logged_in_as(REGULAR_USER)
-        with main_patch, admin_patch, admin_settings(db_url=""):
-            response = admin_client.get("/api/admin/overview")
+    def test_non_admin_gets_403(self, no_db_client):
+        response = logged_in(no_db_client, REGULAR_USER).get("/api/admin/overview")
         assert response.status_code == 403
 
-    def test_config_email_admin_passes_role_gate(self, admin_client):
+    def test_config_email_admin_passes_role_gate(self, no_db_client):
         # With no database configured the endpoint returns 503 - which
         # proves the 403 role gate was passed for the configured email.
-        main_patch, admin_patch = logged_in_as(ADMIN_USER)
-        with main_patch, admin_patch, admin_settings(db_url=""):
-            response = admin_client.get("/api/admin/overview")
+        response = logged_in(no_db_client, ADMIN_USER).get("/api/admin/overview")
         assert response.status_code == 503
 
-    def test_db_flag_admin_passes_role_gate(self, admin_client):
-        main_patch, admin_patch = logged_in_as(REGULAR_USER)
-        with main_patch, admin_patch, admin_settings(admin_emails=[]):
-            with patch('app.admin.db.is_user_admin', new_callable=AsyncMock, return_value=True):
-                with patch('app.admin.db.admin_get_overview', new_callable=AsyncMock, return_value={"total_users": 1}):
-                    response = admin_client.get("/api/admin/overview")
-        assert response.status_code == 200
-        assert response.json()["overview"]["total_users"] == 1
+    def test_tampered_session_cookie_is_rejected(self, no_db_client):
+        token = create_session_token(REGULAR_USER)
+        no_db_client.cookies.set("session", token[:-2] + ("AA" if not token.endswith("AA") else "BB"))
+        assert no_db_client.get("/api/admin/overview").status_code == 401
 
-    def test_admin_page_forbidden_for_non_admin(self, admin_client):
-        main_patch, admin_patch = logged_in_as(REGULAR_USER)
-        with main_patch, admin_patch, admin_settings(db_url=""):
-            response = admin_client.get("/admin")
+    def test_db_flag_admin_passes_role_gate(self, db_client, monkeypatch):
+        client, db = db_client
+        _configure(monkeypatch, admin_module.settings.database_url, admin_emails="")
+        logged_in(client, REGULAR_USER)
+        assert client.get("/api/admin/overview").status_code == 403
+
+        client.portal.call(db.admin_set_role, REGULAR_USER["id"], True)
+        response = client.get("/api/admin/overview")
+        assert response.status_code == 200
+        assert response.json()["overview"]["total_users"] == 2
+
+    def test_admin_page_forbidden_for_non_admin(self, no_db_client):
+        response = logged_in(no_db_client, REGULAR_USER).get("/admin")
         assert response.status_code == 403
 
-    def test_admin_page_authorized_and_noindex(self, admin_client):
-        main_patch, admin_patch = logged_in_as(ADMIN_USER)
-        with main_patch, admin_patch, admin_settings():
-            response = admin_client.get("/admin")
+    def test_admin_page_authorized_and_noindex(self, no_db_client):
+        response = logged_in(no_db_client, ADMIN_USER).get("/admin")
         assert response.status_code == 200
         assert 'name="robots" content="noindex, nofollow"' in response.text
         assert 'id="tabs"' in response.text
@@ -122,215 +132,183 @@ class TestRequireAdmin:
 class TestAdminEndpoints:
     """Test admin endpoint behavior with an authenticated admin."""
 
-    def _as_admin(self):
-        return logged_in_as(ADMIN_USER)
-
-    def test_overview(self, admin_client):
-        main_patch, admin_patch = self._as_admin()
-        overview = {"total_users": 5, "revenue_cents_total": 300}
-        with main_patch, admin_patch, admin_settings():
-            with patch('app.admin.db.admin_get_overview', new_callable=AsyncMock, return_value=overview):
-                response = admin_client.get("/api/admin/overview")
+    def test_overview(self, db_client):
+        client, db = db_client
+        conv = client.portal.call(db.create_conversation, REGULAR_USER["id"], "Q")
+        client.portal.call(db.add_message, conv["id"], "user", "Hello")
+        response = logged_in(client, ADMIN_USER).get("/api/admin/overview")
         assert response.status_code == 200
-        assert response.json() == {"overview": overview}
+        overview = response.json()["overview"]
+        assert overview["total_users"] == 2
+        assert overview["total_conversations"] == 1
+        assert overview["total_messages"] == 1
+        assert overview["active_users_7d"] == 1
+        assert overview["revenue_cents_total"] == 0
 
-    def test_list_users_with_search(self, admin_client):
-        main_patch, admin_patch = self._as_admin()
-        users = [{"id": "u1", "email": "a@b.com", "credits": 3, "is_admin": False}]
-        with main_patch, admin_patch, admin_settings():
-            with patch('app.admin.db.admin_list_users', new_callable=AsyncMock, return_value=users) as mock_list:
-                with patch('app.admin.db.admin_count_users', new_callable=AsyncMock, return_value=1):
-                    response = admin_client.get("/api/admin/users?search=a@b")
+    def test_list_users_with_search(self, db_client):
+        client, _ = db_client
+        response = logged_in(client, ADMIN_USER).get("/api/admin/users?search=someone@")
         assert response.status_code == 200
-        assert response.json() == {"users": users, "total": 1}
-        mock_list.assert_awaited_once_with(search="a@b", limit=50, offset=0)
+        data = response.json()
+        assert data["total"] == 1
+        assert [u["id"] for u in data["users"]] == [REGULAR_USER["id"]]
+        assert data["users"][0]["is_admin"] is False
 
-    def test_adjust_credits_success_and_audited(self, admin_client):
-        main_patch, admin_patch = self._as_admin()
-        with main_patch, admin_patch, admin_settings():
-            with patch('app.admin.db.admin_adjust_credits', new_callable=AsyncMock, return_value=13) as mock_adjust:
-                with patch('app.admin.db.log_admin_action', new_callable=AsyncMock) as mock_log:
-                    response = admin_client.post(
-                        "/api/admin/users/target-id/credits",
-                        json={"delta": 10, "reason": "welcome gift"},
-                    )
+    def test_adjust_credits_success_and_audited(self, db_client):
+        client, db = db_client
+        before = client.portal.call(db.get_user_credits, REGULAR_USER["id"])
+        response = logged_in(client, ADMIN_USER).post(
+            f"/api/admin/users/{REGULAR_USER['id']}/credits",
+            json={"delta": 10, "reason": "welcome gift"},
+        )
         assert response.status_code == 200
-        assert response.json() == {"success": True, "credits": 13}
-        mock_adjust.assert_awaited_once_with("target-id", 10)
-        mock_log.assert_awaited_once()
-        assert mock_log.await_args.kwargs["action"] == "adjust_credits"
-        assert mock_log.await_args.kwargs["target_user_id"] == "target-id"
-        assert mock_log.await_args.kwargs["details"]["reason"] == "welcome gift"
+        assert response.json() == {"success": True, "credits": before + 10}
+        assert client.portal.call(db.get_user_credits, REGULAR_USER["id"]) == before + 10
 
-    def test_adjust_credits_zero_delta_rejected(self, admin_client):
-        main_patch, admin_patch = self._as_admin()
-        with main_patch, admin_patch, admin_settings():
-            response = admin_client.post(
-                "/api/admin/users/target-id/credits",
-                json={"delta": 0, "reason": "noop"},
-            )
+        [entry] = _audit_log(client, db)
+        assert entry["action"] == "adjust_credits"
+        assert entry["admin_user_id"] == ADMIN_USER["id"]
+        assert entry["target_user_id"] == REGULAR_USER["id"]
+        assert entry["details"]["reason"] == "welcome gift"
+
+    def test_adjust_credits_clamps_at_zero(self, db_client):
+        client, db = db_client
+        response = logged_in(client, ADMIN_USER).post(
+            f"/api/admin/users/{REGULAR_USER['id']}/credits",
+            json={"delta": -10000, "reason": "abuse"},
+        )
+        assert response.status_code == 200
+        assert response.json()["credits"] == 0
+        assert client.portal.call(db.get_user_credits, REGULAR_USER["id"]) == 0
+
+    def test_adjust_credits_zero_delta_rejected(self, db_client):
+        client, db = db_client
+        response = logged_in(client, ADMIN_USER).post(
+            f"/api/admin/users/{REGULAR_USER['id']}/credits",
+            json={"delta": 0, "reason": "noop"},
+        )
         assert response.status_code == 400
+        assert _audit_log(client, db) == []
 
-    def test_adjust_credits_unknown_user_404(self, admin_client):
-        main_patch, admin_patch = self._as_admin()
-        with main_patch, admin_patch, admin_settings():
-            with patch('app.admin.db.admin_adjust_credits', new_callable=AsyncMock, return_value=None):
-                response = admin_client.post(
-                    "/api/admin/users/missing-id/credits",
-                    json={"delta": 5, "reason": "grant"},
-                )
+    def test_adjust_credits_unknown_user_404(self, db_client):
+        client, db = db_client
+        response = logged_in(client, ADMIN_USER).post(
+            "/api/admin/users/missing-id/credits",
+            json={"delta": 5, "reason": "grant"},
+        )
         assert response.status_code == 404
+        assert _audit_log(client, db) == []
 
-    def test_set_role_grants_admin_and_audits(self, admin_client):
-        main_patch, admin_patch = self._as_admin()
-        result = {"id": "target-id", "email": "a@b.com", "is_admin": True}
-        with main_patch, admin_patch, admin_settings():
-            with patch('app.admin.db.admin_set_role', new_callable=AsyncMock, return_value=result) as mock_role:
-                with patch('app.admin.db.log_admin_action', new_callable=AsyncMock) as mock_log:
-                    response = admin_client.post(
-                        "/api/admin/users/target-id/role",
-                        json={"is_admin": True},
-                    )
+    def test_set_role_grants_admin_and_audits(self, db_client):
+        client, db = db_client
+        response = logged_in(client, ADMIN_USER).post(
+            f"/api/admin/users/{REGULAR_USER['id']}/role",
+            json={"is_admin": True},
+        )
         assert response.status_code == 200
         assert response.json()["user"]["is_admin"] is True
-        mock_role.assert_awaited_once_with("target-id", True)
-        assert mock_log.await_args.kwargs["action"] == "set_role"
+        assert client.portal.call(db.is_user_admin, REGULAR_USER["id"]) is True
+        [entry] = _audit_log(client, db)
+        assert entry["action"] == "set_role"
+        assert entry["target_user_id"] == REGULAR_USER["id"]
 
-    def test_cannot_revoke_own_admin(self, admin_client):
-        main_patch, admin_patch = self._as_admin()
-        with main_patch, admin_patch, admin_settings():
-            response = admin_client.post(
-                f"/api/admin/users/{ADMIN_USER['id']}/role",
-                json={"is_admin": False},
-            )
+    def test_cannot_revoke_own_admin(self, db_client):
+        client, db = db_client
+        client.portal.call(db.admin_set_role, ADMIN_USER["id"], True)
+        response = logged_in(client, ADMIN_USER).post(
+            f"/api/admin/users/{ADMIN_USER['id']}/role",
+            json={"is_admin": False},
+        )
         assert response.status_code == 400
+        assert client.portal.call(db.is_user_admin, ADMIN_USER["id"]) is True
 
-    def test_view_conversation_is_audited(self, admin_client):
-        main_patch, admin_patch = self._as_admin()
-        conversation = {
-            "id": "conv-1", "user_id": "target-id", "user_email": "a@b.com",
-            "title": "Question", "messages": [],
-        }
-        with main_patch, admin_patch, admin_settings():
-            with patch('app.admin.db.admin_get_conversation_with_messages', new_callable=AsyncMock, return_value=conversation):
-                with patch('app.admin.db.log_admin_action', new_callable=AsyncMock) as mock_log:
-                    response = admin_client.get("/api/admin/conversations/conv-1")
+    def test_view_conversation_is_audited(self, db_client):
+        client, db = db_client
+        conv = client.portal.call(db.create_conversation, REGULAR_USER["id"], "Question")
+        client.portal.call(db.add_message, conv["id"], "user", "Is this allowed?")
+        response = logged_in(client, ADMIN_USER).get(f"/api/admin/conversations/{conv['id']}")
         assert response.status_code == 200
-        assert mock_log.await_args.kwargs["action"] == "view_conversation"
+        data = response.json()
+        assert data["user_email"] == REGULAR_USER["email"]
+        assert [m["content"] for m in data["messages"]] == ["Is this allowed?"]
+        [entry] = _audit_log(client, db)
+        assert entry["action"] == "view_conversation"
+        assert entry["target_user_id"] == REGULAR_USER["id"]
 
-    def test_flagged_queue(self, admin_client):
-        main_patch, admin_patch = self._as_admin()
-        flagged = [{"id": "m1", "requires_human_referral": True, "user_email": "a@b.com"}]
-        with main_patch, admin_patch, admin_settings():
-            with patch('app.admin.db.admin_list_flagged_messages', new_callable=AsyncMock, return_value=flagged):
-                response = admin_client.get("/api/admin/flagged")
+    def test_view_missing_conversation_404_not_audited(self, db_client):
+        client, db = db_client
+        response = logged_in(client, ADMIN_USER).get("/api/admin/conversations/missing")
+        assert response.status_code == 404
+        assert _audit_log(client, db) == []
+
+    def test_flagged_queue(self, db_client):
+        client, db = db_client
+        conv = client.portal.call(db.create_conversation, REGULAR_USER["id"], "Q")
+        flagged = client.portal.call(
+            db.add_message, conv["id"], "assistant", "Please reach out for help.",
+            {"pastoral_mode": "crisis", "requires_human_referral": True})
+        # A routing hint alone is not enough to land in the review queue.
+        client.portal.call(
+            db.add_message, conv["id"], "assistant", "Here is a teaching.",
+            {"pastoral_mode": "counseling", "requires_human_referral": True})
+        response = logged_in(client, ADMIN_USER).get("/api/admin/flagged")
         assert response.status_code == 200
-        assert response.json() == {"flagged": flagged}
+        rows = response.json()["flagged"]
+        assert [r["id"] for r in rows] == [flagged["id"]]
+        assert rows[0]["user_email"] == REGULAR_USER["email"]
+        assert rows[0]["requires_human_referral"] is True
 
-    def test_analytics_exposes_stats(self, admin_client):
-        main_patch, admin_patch = self._as_admin()
-        with main_patch, admin_patch, admin_settings():
-            with patch('app.admin.db.get_session_stats', new_callable=AsyncMock, return_value={"unique_sessions": 4}):
-                with patch('app.admin.db.get_referrer_stats', new_callable=AsyncMock, return_value=[]):
-                    with patch('app.admin.db.get_device_stats', new_callable=AsyncMock, return_value=[]):
-                        with patch('app.admin.db.get_tts_stats', new_callable=AsyncMock, return_value={}):
-                            response = admin_client.get("/api/admin/analytics")
+    def test_analytics_exposes_stats(self, db_client):
+        client, db = db_client
+        for session in ("s1", "s2", "s1"):
+            client.portal.call(db.log_analytics_event, session, "page_view")
+        response = logged_in(client, ADMIN_USER).get("/api/admin/analytics")
         assert response.status_code == 200
-        assert response.json()["sessions"]["unique_sessions"] == 4
+        sessions = response.json()["sessions"]
+        assert sessions["unique_sessions"] == 2
+        assert sessions["total_page_views"] == 3
 
-    def test_feedback_type_validated(self, admin_client):
-        main_patch, admin_patch = self._as_admin()
-        with main_patch, admin_patch, admin_settings():
-            response = admin_client.get("/api/admin/feedback?feedback_type=bogus")
+    def test_feedback_type_validated(self, db_client):
+        client, _ = db_client
+        response = logged_in(client, ADMIN_USER).get("/api/admin/feedback?feedback_type=bogus")
         assert response.status_code == 422
 
 
 class TestAdminDatabaseHelpers:
-    """Test the admin-related database functions with a mocked connection."""
+    """Test the admin-related database functions against the real database."""
 
-    @pytest.fixture
-    def mock_connection(self):
-        return AsyncMock()
-
-    def _patch_conn(self, mock_connection):
-        ctx = patch('app.database.get_connection')
-        mock_ctx = ctx.start()
-        mock_ctx.return_value.__aenter__ = AsyncMock(return_value=mock_connection)
-        mock_ctx.return_value.__aexit__ = AsyncMock()
-        return ctx
-
-    @pytest.mark.asyncio
-    async def test_upsert_user_promotes_configured_admin_email(self, mock_connection):
-        mock_connection.fetchrow = AsyncMock(return_value={
-            "id": "u1", "email": "cheesejaguar@gmail.com", "is_admin": True,
-        })
-        ctx = self._patch_conn(mock_connection)
-        try:
-            with patch('app.database.get_settings') as mock_settings:
-                mock_settings.return_value.admin_email_list = ["cheesejaguar@gmail.com"]
-                from app.database import upsert_user
-                result = await upsert_user("u1", "CheeseJaguar@Gmail.com", "A", "B")
-        finally:
-            ctx.stop()
-        # The is_admin insert parameter (last positional arg) must be True
-        assert mock_connection.fetchrow.call_args[0][-1] is True
+    async def test_upsert_user_promotes_configured_admin_email(self, real_db, monkeypatch):
+        from app.config import get_settings
+        monkeypatch.setattr(get_settings(), "admin_emails", OWNER_EMAILS)
+        result = await real_db.upsert_user("u1", "CheeseJaguar@Gmail.com", "A", "B")
         assert result["is_admin"] is True
+        assert await real_db.is_user_admin("u1") is True
 
-    @pytest.mark.asyncio
-    async def test_upsert_user_regular_email_not_promoted(self, mock_connection):
-        mock_connection.fetchrow = AsyncMock(return_value={
-            "id": "u2", "email": "someone@example.com", "is_admin": False,
-        })
-        ctx = self._patch_conn(mock_connection)
-        try:
-            with patch('app.database.get_settings') as mock_settings:
-                mock_settings.return_value.admin_email_list = ["cheesejaguar@gmail.com"]
-                from app.database import upsert_user
-                await upsert_user("u2", "someone@example.com", "A", "B")
-        finally:
-            ctx.stop()
-        assert mock_connection.fetchrow.call_args[0][-1] is False
+    async def test_upsert_user_regular_email_not_promoted(self, real_db, monkeypatch):
+        from app.config import get_settings
+        monkeypatch.setattr(get_settings(), "admin_emails", OWNER_EMAILS)
+        await real_db.upsert_user("u2", "someone@example.com", "A", "B")
+        assert await real_db.is_user_admin("u2") is False
 
-    @pytest.mark.asyncio
-    async def test_is_user_admin_true(self, mock_connection):
-        mock_connection.fetchrow = AsyncMock(return_value={"is_admin": True})
-        ctx = self._patch_conn(mock_connection)
-        try:
-            from app.database import is_user_admin
-            assert await is_user_admin("u1") is True
-        finally:
-            ctx.stop()
+    async def test_is_user_admin_missing_user(self, real_db):
+        assert await real_db.is_user_admin("missing") is False
 
-    @pytest.mark.asyncio
-    async def test_is_user_admin_missing_user(self, mock_connection):
-        mock_connection.fetchrow = AsyncMock(return_value=None)
-        ctx = self._patch_conn(mock_connection)
-        try:
-            from app.database import is_user_admin
-            assert await is_user_admin("missing") is False
-        finally:
-            ctx.stop()
+    async def test_admin_adjust_credits_returns_balance(self, real_db):
+        await real_db.upsert_user("u1", "a@example.com")
+        start = await real_db.get_user_credits("u1")
+        assert await real_db.admin_adjust_credits("u1", -3) == start - 3
+        assert await real_db.get_user_credits("u1") == start - 3
 
-    @pytest.mark.asyncio
-    async def test_admin_adjust_credits_returns_balance(self, mock_connection):
-        mock_connection.fetchrow = AsyncMock(return_value={"credits": 7})
-        ctx = self._patch_conn(mock_connection)
-        try:
-            from app.database import admin_adjust_credits
-            assert await admin_adjust_credits("u1", -3) == 7
-        finally:
-            ctx.stop()
+    async def test_admin_adjust_credits_unknown_user(self, real_db):
+        assert await real_db.admin_adjust_credits("missing", 5) is None
 
-    @pytest.mark.asyncio
-    async def test_log_admin_action_inserts_row(self, mock_connection):
-        row = {"id": "a1", "admin_user_id": "u1", "action": "adjust_credits",
-               "target_user_id": "u2", "details": {"delta": 5}, "created_at": "now"}
-        mock_connection.fetchrow = AsyncMock(return_value=row)
-        ctx = self._patch_conn(mock_connection)
-        try:
-            from app.database import log_admin_action
-            result = await log_admin_action("u1", "adjust_credits", "u2", {"delta": 5})
-        finally:
-            ctx.stop()
+    async def test_log_admin_action_inserts_row(self, real_db):
+        await real_db.upsert_user("u1", "a@example.com")
+        await real_db.upsert_user("u2", "b@example.com")
+        result = await real_db.log_admin_action("u1", "adjust_credits", "u2", {"delta": 5})
         assert result["action"] == "adjust_credits"
-        mock_connection.fetchrow.assert_awaited_once()
+        assert result["details"] == {"delta": 5}
+        [entry] = await real_db.admin_list_audit_log()
+        assert entry["id"] == result["id"]
+        assert entry["admin_email"] == "a@example.com"
+        assert entry["target_email"] == "b@example.com"

@@ -98,7 +98,8 @@ class TestInterpretAnswers:
     def test_missing_confidence_is_accepted(self):
         answers = _answers()
         del answers["mode"]["confidence"]
-        assert interpret_answers(answers).pastoral_context is not None
+        pc = interpret_answers(answers).pastoral_context
+        assert pc.mode == PastoralMode.CURIOSITY
 
     def test_vulnerable_person_never_gets_definitive_or_firm(self):
         pc = interpret_answers(_answers(

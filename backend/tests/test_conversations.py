@@ -1,286 +1,231 @@
-"""Tests for conversations.py - Conversations API endpoints."""
+"""Tests for conversations.py - Conversations API endpoints.
+
+Requests go through the real app with a real signed session cookie, and the
+endpoints read and write a real PostgreSQL database (see the ``live_db``
+fixture in conftest.py).
+"""
 
 import pytest
-import sys
-import os
-from unittest.mock import patch, AsyncMock, MagicMock, Mock
+from fastapi.testclient import TestClient
+
+import app.main as main_module
+from app.auth import create_session_token
+from app.main import app
+
+
+USER = {
+    "id": "user-123",
+    "email": "test@example.com",
+    "first_name": "Test",
+    "last_name": "User",
+}
+
+OTHER_USER = {
+    "id": "user-456",
+    "email": "other@example.com",
+    "first_name": "Other",
+    "last_name": "Person",
+}
+
+
+def _set_db_url(monkeypatch, url):
+    from app.config import get_settings
+
+    for settings in {id(s): s for s in (get_settings(), main_module.settings)}.values():
+        monkeypatch.setattr(settings, "database_url", url)
+        monkeypatch.setattr(settings, "postgres_url", "")
+        monkeypatch.setattr(settings, "pghost", "")
+        monkeypatch.setattr(settings, "postgres_host", "")
 
 
 @pytest.fixture
-def mock_user():
-    """Mock authenticated user."""
-    return {
-        "id": "user-123",
-        "email": "test@example.com",
-        "first_name": "Test",
-        "last_name": "User",
-    }
-
-
-@pytest.fixture(scope="module")
-def app_with_mocks():
-    """Create the app with mocked orchestrator."""
-    # Create mock orchestrator before importing app.main
-    mock_orchestrator_instance = Mock()
-    mock_orchestrator_instance.get_greeting = AsyncMock(return_value="Shalom!")
-    mock_orchestrator_instance.process_message = AsyncMock(return_value={
-        "response": "Test response",
-        "requires_human_referral": False,
-        "metadata": {},
-    })
-
-    # Set a dummy API key to prevent OpenAI client initialization errors
-    # and patch the orchestrator class
-    with patch.dict(os.environ, {"OPENROUTER_API_KEY": "test-key-for-testing"}):
-        with patch('app.agents.orchestrator.OpenAI'):
-            with patch('app.agents.RabbiOrchestrator', return_value=mock_orchestrator_instance):
-                # Clear settings cache to pick up the test API key
-                from app.config import get_settings
-                get_settings.cache_clear()
-
-                from app.main import app
-                yield app
-
-                # Clear settings cache again after tests
-                get_settings.cache_clear()
+def client(live_db, pg_url, monkeypatch):
+    """Client authenticated as USER, backed by the real test database."""
+    _set_db_url(monkeypatch, pg_url)
+    with TestClient(app) as c:
+        c.cookies.set("session", create_session_token(USER))
+        c.portal.call(live_db.upsert_user, USER["id"], USER["email"], USER["first_name"], USER["last_name"])
+        c.portal.call(live_db.upsert_user, OTHER_USER["id"], OTHER_USER["email"])
+        c.db = live_db
+        yield c
 
 
 @pytest.fixture
-def test_client(app_with_mocks, mock_user):
-    """Create test client with mocked auth and database."""
-    from fastapi.testclient import TestClient
-    with patch('app.auth.get_current_user', return_value=mock_user):
-        with patch('app.main.get_current_user', return_value=mock_user):
-            with patch('app.conversations.get_current_user', return_value=mock_user):
-                yield TestClient(app_with_mocks)
+def no_db_client(monkeypatch):
+    """Client authenticated as USER with no database configured."""
+    _set_db_url(monkeypatch, "")
+    c = TestClient(app)
+    c.cookies.set("session", create_session_token(USER))
+    return c
+
+
+def _seed_conversation(client, user_id=USER["id"], title=None, messages=()):
+    conv = client.portal.call(client.db.create_conversation, user_id, title)
+    for role, content in messages:
+        client.portal.call(client.db.add_message, conv["id"], role, content)
+    return conv
 
 
 class TestListConversations:
     """Test GET /api/conversations endpoint."""
 
-    def test_list_conversations_success(self, test_client, mock_user):
-        """Test listing conversations returns list."""
-        mock_conversations = [
-            {"id": "conv-1", "title": "First", "created_at": "2024-01-01", "updated_at": "2024-01-01", "first_message": "Hello"},
-            {"id": "conv-2", "title": "Second", "created_at": "2024-01-02", "updated_at": "2024-01-02", "first_message": "Hi"},
-        ]
+    def test_list_conversations_success(self, client):
+        """Lists only the user's conversations, with a first-message preview."""
+        _seed_conversation(client, title="First", messages=[("user", "Hello")])
+        _seed_conversation(client, title="Second", messages=[("user", "Hi"), ("assistant", "Shalom")])
+        _seed_conversation(client, user_id=OTHER_USER["id"], title="Not mine")
 
-        with patch('app.conversations.db.list_conversations', new_callable=AsyncMock) as mock_list:
-            mock_list.return_value = mock_conversations
+        response = client.get("/api/conversations")
 
-            response = test_client.get("/api/conversations")
+        assert response.status_code == 200
+        conversations = response.json()["conversations"]
+        assert sorted(c["title"] for c in conversations) == ["First", "Second"]
+        previews = {c["title"]: c["first_message"] for c in conversations}
+        assert previews == {"First": "Hello", "Second": "Hi"}
 
-            assert response.status_code == 200
-            data = response.json()
-            assert "conversations" in data
-            assert len(data["conversations"]) == 2
-
-    def test_list_conversations_empty(self, test_client, mock_user):
+    def test_list_conversations_empty(self, client):
         """Test listing when no conversations exist."""
-        with patch('app.conversations.db.list_conversations', new_callable=AsyncMock) as mock_list:
-            mock_list.return_value = []
+        response = client.get("/api/conversations")
 
-            response = test_client.get("/api/conversations")
+        assert response.status_code == 200
+        assert response.json()["conversations"] == []
 
-            assert response.status_code == 200
-            data = response.json()
-            assert data["conversations"] == []
+    def test_list_conversations_with_pagination(self, client):
+        """limit and offset page through the user's conversations."""
+        for i in range(4):
+            _seed_conversation(client, title=f"c{i}")
 
-    def test_list_conversations_with_pagination(self, test_client, mock_user):
-        """Test listing with limit and offset parameters."""
-        with patch('app.conversations.db.list_conversations', new_callable=AsyncMock) as mock_list:
-            mock_list.return_value = []
+        first = client.get("/api/conversations?limit=2&offset=0").json()["conversations"]
+        rest = client.get("/api/conversations?limit=2&offset=2").json()["conversations"]
 
-            response = test_client.get("/api/conversations?limit=10&offset=5")
+        assert len(first) == 2 and len(rest) == 2
+        assert {c["id"] for c in first}.isdisjoint({c["id"] for c in rest})
 
-            assert response.status_code == 200
-            mock_list.assert_called_once_with(mock_user["id"], 10, 5)
-
-    def test_list_conversations_db_not_configured(self, test_client, mock_user):
+    def test_list_conversations_db_not_configured(self, no_db_client):
         """Test graceful handling when database not configured."""
-        with patch('app.conversations.db.list_conversations', new_callable=AsyncMock) as mock_list:
-            mock_list.side_effect = RuntimeError("Database URL not configured")
+        response = no_db_client.get("/api/conversations")
 
-            response = test_client.get("/api/conversations")
+        assert response.status_code == 200
+        data = response.json()
+        assert data["conversations"] == []
+        assert data["warning"] == "Database not configured"
 
-            assert response.status_code == 200
-            data = response.json()
-            assert data["conversations"] == []
-            assert "warning" in data
-
-    def test_list_conversations_unauthenticated(self, app_with_mocks):
+    def test_list_conversations_unauthenticated(self, monkeypatch):
         """Test that unauthenticated requests are rejected."""
-        from fastapi.testclient import TestClient
-        with patch('app.auth.get_current_user', return_value=None):
-            with patch('app.main.get_current_user', return_value=None):
-                with patch('app.conversations.get_current_user', return_value=None):
-                    client = TestClient(app_with_mocks)
-                    response = client.get("/api/conversations")
-                    # Should redirect or return 401
-                    assert response.status_code in [401, 302]
+        _set_db_url(monkeypatch, "")
+        response = TestClient(app).get("/api/conversations")
+        assert response.status_code == 401
 
 
 class TestCreateConversation:
     """Test POST /api/conversations endpoint."""
 
-    def test_create_conversation_success(self, test_client, mock_user):
+    def test_create_conversation_success(self, client):
         """Test creating a new conversation."""
-        mock_conv = {
-            "id": "conv-new",
-            "user_id": mock_user["id"],
-            "title": None,
-            "created_at": "2024-01-01T00:00:00Z",
-            "updated_at": "2024-01-01T00:00:00Z",
-        }
+        response = client.post("/api/conversations", json={})
 
-        with patch('app.conversations.db.upsert_user', new_callable=AsyncMock):
-            with patch('app.conversations.db.create_conversation', new_callable=AsyncMock) as mock_create:
-                mock_create.return_value = mock_conv
+        assert response.status_code == 200
+        data = response.json()
+        assert data["user_id"] == USER["id"]
+        assert data["title"] is None
+        assert client.portal.call(client.db.get_conversation, data["id"], USER["id"]) is not None
 
-                response = test_client.post("/api/conversations", json={})
-
-                assert response.status_code == 200
-                data = response.json()
-                assert data["id"] == "conv-new"
-
-    def test_create_conversation_with_title(self, test_client, mock_user):
+    def test_create_conversation_with_title(self, client):
         """Test creating a conversation with a title."""
-        mock_conv = {
-            "id": "conv-new",
-            "user_id": mock_user["id"],
-            "title": "My Conversation",
-            "created_at": "2024-01-01T00:00:00Z",
-            "updated_at": "2024-01-01T00:00:00Z",
-        }
+        response = client.post("/api/conversations", json={"title": "My Conversation"})
 
-        with patch('app.conversations.db.upsert_user', new_callable=AsyncMock):
-            with patch('app.conversations.db.create_conversation', new_callable=AsyncMock) as mock_create:
-                mock_create.return_value = mock_conv
+        assert response.status_code == 200
+        data = response.json()
+        assert data["title"] == "My Conversation"
+        stored = client.portal.call(client.db.get_conversation, data["id"], USER["id"])
+        assert stored["title"] == "My Conversation"
 
-                response = test_client.post(
-                    "/api/conversations",
-                    json={"title": "My Conversation"}
-                )
+    def test_create_conversation_upserts_user(self, client):
+        """A signed-in user with no user row yet gets one before the conversation."""
+        new_user = {"id": "brand-new", "email": "new@example.com", "first_name": "New", "last_name": "Comer"}
+        client.cookies.set("session", create_session_token(new_user))
 
-                assert response.status_code == 200
-                data = response.json()
-                assert data["title"] == "My Conversation"
+        response = client.post("/api/conversations", json={})
 
-    def test_create_conversation_upserts_user(self, test_client, mock_user):
-        """Test that creating a conversation upserts the user first."""
-        mock_conv = {"id": "conv-new", "user_id": mock_user["id"], "title": None, "created_at": "2024-01-01", "updated_at": "2024-01-01"}
+        assert response.status_code == 200
+        stored = client.portal.call(client.db.get_user, "brand-new")
+        assert stored["email"] == "new@example.com"
+        assert stored["first_name"] == "New"
 
-        with patch('app.conversations.db.upsert_user', new_callable=AsyncMock) as mock_upsert:
-            with patch('app.conversations.db.create_conversation', new_callable=AsyncMock) as mock_create:
-                mock_create.return_value = mock_conv
-
-                response = test_client.post("/api/conversations", json={})
-
-                assert response.status_code == 200
-                mock_upsert.assert_called_once()
-
-    def test_create_conversation_db_not_configured(self, test_client, mock_user):
+    def test_create_conversation_db_not_configured(self, no_db_client):
         """Test error when database not configured."""
-        with patch('app.conversations.db.upsert_user', new_callable=AsyncMock) as mock_upsert:
-            mock_upsert.side_effect = RuntimeError("Database URL not configured")
+        response = no_db_client.post("/api/conversations", json={})
 
-            response = test_client.post("/api/conversations", json={})
-
-            assert response.status_code == 503
+        assert response.status_code == 503
 
 
 class TestGetConversation:
     """Test GET /api/conversations/{id} endpoint."""
 
-    def test_get_conversation_success(self, test_client, mock_user):
+    def test_get_conversation_success(self, client):
         """Test getting a conversation with messages."""
-        mock_conv = {
-            "id": "conv-123",
-            "user_id": mock_user["id"],
-            "title": "Test Conversation",
-            "created_at": "2024-01-01T00:00:00Z",
-            "updated_at": "2024-01-01T00:00:00Z",
-        }
-        mock_messages = [
-            {"id": "msg-1", "role": "user", "content": "Hello", "created_at": "2024-01-01T00:00:00Z"},
-            {"id": "msg-2", "role": "assistant", "content": "Shalom!", "created_at": "2024-01-01T00:00:01Z"},
-        ]
+        conv = _seed_conversation(
+            client, title="Test Conversation", messages=[("user", "Hello"), ("assistant", "Shalom!")])
 
-        with patch('app.conversations.db.get_conversation', new_callable=AsyncMock) as mock_get:
-            with patch('app.conversations.db.get_messages', new_callable=AsyncMock) as mock_msgs:
-                mock_get.return_value = mock_conv
-                mock_msgs.return_value = mock_messages
+        response = client.get(f"/api/conversations/{conv['id']}")
 
-                response = test_client.get("/api/conversations/conv-123")
+        assert response.status_code == 200
+        data = response.json()
+        assert data["id"] == conv["id"]
+        assert data["title"] == "Test Conversation"
+        assert [(m["role"], m["content"]) for m in data["messages"]] == [
+            ("user", "Hello"), ("assistant", "Shalom!")]
 
-                assert response.status_code == 200
-                data = response.json()
-                assert data["id"] == "conv-123"
-                assert len(data["messages"]) == 2
-
-    def test_get_conversation_not_found(self, test_client, mock_user):
+    def test_get_conversation_not_found(self, client):
         """Test getting a non-existent conversation."""
-        with patch('app.conversations.db.get_conversation', new_callable=AsyncMock) as mock_get:
-            mock_get.return_value = None
+        response = client.get("/api/conversations/nonexistent")
 
-            response = test_client.get("/api/conversations/nonexistent")
+        assert response.status_code == 404
 
-            assert response.status_code == 404
-
-    def test_get_conversation_wrong_user(self, test_client, mock_user):
+    def test_get_conversation_wrong_user(self, client):
         """Test that users can only get their own conversations."""
-        with patch('app.conversations.db.get_conversation', new_callable=AsyncMock) as mock_get:
-            # Returns None because conversation belongs to different user
-            mock_get.return_value = None
+        theirs = _seed_conversation(client, user_id=OTHER_USER["id"], messages=[("user", "private")])
 
-            response = test_client.get("/api/conversations/other-user-conv")
+        response = client.get(f"/api/conversations/{theirs['id']}")
 
-            assert response.status_code == 404
+        assert response.status_code == 404
+        assert "private" not in response.text
 
 
 class TestUpdateConversation:
     """Test PATCH /api/conversations/{id} endpoint."""
 
-    def test_update_conversation_success(self, test_client, mock_user):
+    def test_update_conversation_success(self, client):
         """Test updating a conversation title."""
-        mock_conv = {
-            "id": "conv-123",
-            "user_id": mock_user["id"],
-            "title": "Updated Title",
-            "created_at": "2024-01-01T00:00:00Z",
-            "updated_at": "2024-01-02T00:00:00Z",
-        }
+        conv = _seed_conversation(client, title="Old")
 
-        with patch('app.conversations.db.update_conversation', new_callable=AsyncMock) as mock_update:
-            mock_update.return_value = mock_conv
+        response = client.patch(f"/api/conversations/{conv['id']}", json={"title": "Updated Title"})
 
-            response = test_client.patch(
-                "/api/conversations/conv-123",
-                json={"title": "Updated Title"}
-            )
+        assert response.status_code == 200
+        assert response.json()["title"] == "Updated Title"
+        stored = client.portal.call(client.db.get_conversation, conv["id"], USER["id"])
+        assert stored["title"] == "Updated Title"
 
-            assert response.status_code == 200
-            data = response.json()
-            assert data["title"] == "Updated Title"
-
-    def test_update_conversation_not_found(self, test_client, mock_user):
+    def test_update_conversation_not_found(self, client):
         """Test updating a non-existent conversation."""
-        with patch('app.conversations.db.update_conversation', new_callable=AsyncMock) as mock_update:
-            mock_update.return_value = None
+        response = client.patch("/api/conversations/nonexistent", json={"title": "New Title"})
 
-            response = test_client.patch(
-                "/api/conversations/nonexistent",
-                json={"title": "New Title"}
-            )
+        assert response.status_code == 404
 
-            assert response.status_code == 404
+    def test_update_other_users_conversation_is_404_and_unchanged(self, client):
+        theirs = _seed_conversation(client, user_id=OTHER_USER["id"], title="Theirs")
 
-    def test_update_conversation_missing_title(self, test_client, mock_user):
+        response = client.patch(f"/api/conversations/{theirs['id']}", json={"title": "Hijacked"})
+
+        assert response.status_code == 404
+        stored = client.portal.call(client.db.get_conversation, theirs["id"], OTHER_USER["id"])
+        assert stored["title"] == "Theirs"
+
+    def test_update_conversation_missing_title(self, client):
         """Test that title is required for update."""
-        response = test_client.patch(
-            "/api/conversations/conv-123",
-            json={}
-        )
+        conv = _seed_conversation(client, title="Keep")
+
+        response = client.patch(f"/api/conversations/{conv['id']}", json={})
 
         assert response.status_code == 422
 
@@ -288,135 +233,117 @@ class TestUpdateConversation:
 class TestDeleteConversation:
     """Test DELETE /api/conversations/{id} endpoint."""
 
-    def test_delete_conversation_success(self, test_client, mock_user):
-        """Test deleting a conversation."""
-        with patch('app.conversations.db.delete_conversation', new_callable=AsyncMock) as mock_delete:
-            mock_delete.return_value = True
+    def test_delete_conversation_success(self, client):
+        """Deleting removes the conversation and its messages."""
+        conv = _seed_conversation(client, messages=[("user", "Hello")])
 
-            response = test_client.delete("/api/conversations/conv-123")
+        response = client.delete(f"/api/conversations/{conv['id']}")
 
-            assert response.status_code == 200
-            data = response.json()
-            assert data["deleted"] is True
+        assert response.status_code == 200
+        assert response.json()["deleted"] is True
+        assert client.portal.call(client.db.get_conversation, conv["id"], USER["id"]) is None
+        assert client.portal.call(client.db.get_messages, conv["id"]) == []
 
-    def test_delete_conversation_not_found(self, test_client, mock_user):
+    def test_delete_conversation_not_found(self, client):
         """Test deleting a non-existent conversation."""
-        with patch('app.conversations.db.delete_conversation', new_callable=AsyncMock) as mock_delete:
-            mock_delete.return_value = False
+        response = client.delete("/api/conversations/nonexistent")
 
-            response = test_client.delete("/api/conversations/nonexistent")
+        assert response.status_code == 404
 
-            assert response.status_code == 404
+    def test_delete_other_users_conversation_is_404_and_kept(self, client):
+        theirs = _seed_conversation(client, user_id=OTHER_USER["id"])
+
+        response = client.delete(f"/api/conversations/{theirs['id']}")
+
+        assert response.status_code == 404
+        assert client.portal.call(client.db.get_conversation, theirs["id"], OTHER_USER["id"]) is not None
 
 
 class TestAddMessage:
     """Test POST /api/conversations/{id}/messages endpoint."""
 
-    def test_add_message_success(self, test_client, mock_user):
+    def test_add_message_success(self, client):
         """Test adding a message to a conversation."""
-        mock_conv = {"id": "conv-123", "user_id": mock_user["id"], "title": "Test", "created_at": "2024-01-01", "updated_at": "2024-01-01"}
-        mock_msg = {
-            "id": "msg-new",
-            "conversation_id": "conv-123",
-            "role": "user",
-            "content": "Hello!",
-            "metadata": {},
-            "created_at": "2024-01-01T00:00:00Z",
-        }
+        conv = _seed_conversation(client, title="Test")
 
-        with patch('app.conversations.db.get_conversation', new_callable=AsyncMock) as mock_get:
-            with patch('app.conversations.db.add_message', new_callable=AsyncMock) as mock_add:
-                with patch('app.conversations.db.generate_conversation_title', new_callable=AsyncMock) as mock_title:
-                    with patch('app.conversations.db.update_conversation', new_callable=AsyncMock):
-                        mock_get.return_value = mock_conv
-                        mock_add.return_value = mock_msg
-                        mock_title.return_value = "Hello!"
+        response = client.post(
+            f"/api/conversations/{conv['id']}/messages",
+            json={"role": "user", "content": "Hello!", "metadata": {"source": "test"}},
+        )
 
-                        response = test_client.post(
-                            "/api/conversations/conv-123/messages",
-                            json={"role": "user", "content": "Hello!"}
-                        )
+        assert response.status_code == 200
+        data = response.json()
+        assert data["content"] == "Hello!"
+        assert data["conversation_id"] == conv["id"]
+        [stored] = client.portal.call(client.db.get_messages, conv["id"])
+        assert stored["content"] == "Hello!"
+        assert stored["metadata"] == {"source": "test"}
 
-                        assert response.status_code == 200
-                        data = response.json()
-                        assert data["content"] == "Hello!"
-
-    def test_add_message_conversation_not_found(self, test_client, mock_user):
+    def test_add_message_conversation_not_found(self, client):
         """Test adding a message to non-existent conversation."""
-        with patch('app.conversations.db.get_conversation', new_callable=AsyncMock) as mock_get:
-            mock_get.return_value = None
+        response = client.post(
+            "/api/conversations/nonexistent/messages",
+            json={"role": "user", "content": "Hello!"},
+        )
 
-            response = test_client.post(
-                "/api/conversations/nonexistent/messages",
-                json={"role": "user", "content": "Hello!"}
-            )
+        assert response.status_code == 404
 
-            assert response.status_code == 404
+    def test_add_message_to_other_users_conversation_is_rejected(self, client):
+        theirs = _seed_conversation(client, user_id=OTHER_USER["id"])
 
-    def test_add_message_generates_title(self, test_client, mock_user):
-        """Test that first user message generates title."""
-        mock_conv = {"id": "conv-123", "user_id": mock_user["id"], "title": None, "created_at": "2024-01-01", "updated_at": "2024-01-01"}
-        mock_msg = {"id": "msg-new", "conversation_id": "conv-123", "role": "user", "content": "What is Shabbat?", "metadata": {}, "created_at": "2024-01-01"}
+        response = client.post(
+            f"/api/conversations/{theirs['id']}/messages",
+            json={"role": "user", "content": "sneaky"},
+        )
 
-        with patch('app.conversations.db.get_conversation', new_callable=AsyncMock) as mock_get:
-            with patch('app.conversations.db.add_message', new_callable=AsyncMock) as mock_add:
-                with patch('app.conversations.db.generate_conversation_title', new_callable=AsyncMock) as mock_title:
-                    with patch('app.conversations.db.update_conversation', new_callable=AsyncMock) as mock_update:
-                        mock_get.return_value = mock_conv
-                        mock_add.return_value = mock_msg
-                        mock_title.return_value = "What is Shabbat?"
+        assert response.status_code == 404
+        assert client.portal.call(client.db.get_messages, theirs["id"]) == []
 
-                        response = test_client.post(
-                            "/api/conversations/conv-123/messages",
-                            json={"role": "user", "content": "What is Shabbat?"}
-                        )
+    def test_add_message_generates_title(self, client):
+        """The first user message titles an untitled conversation."""
+        conv = _seed_conversation(client)
 
-                        assert response.status_code == 200
-                        mock_title.assert_called_once()
-                        mock_update.assert_called_once()
+        response = client.post(
+            f"/api/conversations/{conv['id']}/messages",
+            json={"role": "user", "content": "What is Shabbat?\nI am new to this."},
+        )
+
+        assert response.status_code == 200
+        stored = client.portal.call(client.db.get_conversation, conv["id"], USER["id"])
+        assert stored["title"] == "What is Shabbat?..."
+
+    def test_add_message_keeps_existing_title(self, client):
+        conv = _seed_conversation(client, title="Chosen title")
+
+        client.post(f"/api/conversations/{conv['id']}/messages", json={"role": "user", "content": "Hi"})
+
+        stored = client.portal.call(client.db.get_conversation, conv["id"], USER["id"])
+        assert stored["title"] == "Chosen title"
 
 
 class TestGetMessages:
     """Test GET /api/conversations/{id}/messages endpoint."""
 
-    def test_get_messages_success(self, test_client, mock_user):
+    def test_get_messages_success(self, client):
         """Test getting messages for a conversation."""
-        mock_conv = {"id": "conv-123", "user_id": mock_user["id"], "title": "Test", "created_at": "2024-01-01", "updated_at": "2024-01-01"}
-        mock_messages = [
-            {"id": "msg-1", "role": "user", "content": "Hello", "created_at": "2024-01-01"},
-            {"id": "msg-2", "role": "assistant", "content": "Shalom!", "created_at": "2024-01-01"},
-        ]
+        conv = _seed_conversation(client, messages=[("user", "Hello"), ("assistant", "Shalom!")])
 
-        with patch('app.conversations.db.get_conversation', new_callable=AsyncMock) as mock_get:
-            with patch('app.conversations.db.get_messages', new_callable=AsyncMock) as mock_msgs:
-                mock_get.return_value = mock_conv
-                mock_msgs.return_value = mock_messages
+        response = client.get(f"/api/conversations/{conv['id']}/messages")
 
-                response = test_client.get("/api/conversations/conv-123/messages")
+        assert response.status_code == 200
+        assert [m["content"] for m in response.json()["messages"]] == ["Hello", "Shalom!"]
 
-                assert response.status_code == 200
-                data = response.json()
-                assert len(data["messages"]) == 2
-
-    def test_get_messages_conversation_not_found(self, test_client, mock_user):
+    def test_get_messages_conversation_not_found(self, client):
         """Test getting messages for non-existent conversation."""
-        with patch('app.conversations.db.get_conversation', new_callable=AsyncMock) as mock_get:
-            mock_get.return_value = None
+        response = client.get("/api/conversations/nonexistent/messages")
 
-            response = test_client.get("/api/conversations/nonexistent/messages")
+        assert response.status_code == 404
 
-            assert response.status_code == 404
+    def test_get_messages_with_limit(self, client):
+        """limit caps the number of messages returned, oldest first."""
+        conv = _seed_conversation(client, messages=[("user", f"m{i}") for i in range(5)])
 
-    def test_get_messages_with_limit(self, test_client, mock_user):
-        """Test getting messages with limit parameter."""
-        mock_conv = {"id": "conv-123", "user_id": mock_user["id"], "title": "Test", "created_at": "2024-01-01", "updated_at": "2024-01-01"}
+        response = client.get(f"/api/conversations/{conv['id']}/messages?limit=3")
 
-        with patch('app.conversations.db.get_conversation', new_callable=AsyncMock) as mock_get:
-            with patch('app.conversations.db.get_messages', new_callable=AsyncMock) as mock_msgs:
-                mock_get.return_value = mock_conv
-                mock_msgs.return_value = []
-
-                response = test_client.get("/api/conversations/conv-123/messages?limit=50")
-
-                assert response.status_code == 200
-                mock_msgs.assert_called_once_with("conv-123", 50)
+        assert response.status_code == 200
+        assert [m["content"] for m in response.json()["messages"]] == ["m0", "m1", "m2"]

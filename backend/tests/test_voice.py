@@ -1,7 +1,6 @@
 """Tests for voice.py - MetaRabbinicVoiceAgent."""
 
 import pytest
-from unittest.mock import Mock
 
 from app.agents.voice import MetaRabbinicVoiceAgent
 from app.agents.base import (
@@ -14,6 +13,12 @@ from app.agents.base import (
     MoralAssessment,
 )
 
+
+
+def _sent(agent):
+    """Everything the agent sent to the provider on its last call."""
+    import json
+    return json.dumps(agent.client.chat.completions.create.call_args.kwargs["messages"], ensure_ascii=False)
 
 class TestMetaRabbinicVoiceAgent:
     """Test MetaRabbinicVoiceAgent class."""
@@ -43,8 +48,8 @@ class TestMetaRabbinicVoiceAgent:
         context = AgentContext(user_message="What is Shabbat?")
         result = await agent.process(context)
 
-        assert result.final_response is not None
-        assert len(result.final_response) > 0
+        assert result.final_response == "Shalom! This is a warm, pastoral response about your question."
+        assert "What is Shabbat?" in _sent(agent)
 
     @pytest.mark.asyncio
     async def test_process_with_pastoral_context(self, agent, mock_claude_response):
@@ -67,7 +72,9 @@ class TestMetaRabbinicVoiceAgent:
         )
         result = await agent.process(context)
 
-        assert result.final_response is not None
+        assert result.final_response == "I hear the difficulty in your question. Let me share some thoughts..."
+        sent = _sent(agent)
+        assert "counseling" in sent.lower() and "gentle" in sent.lower() and "struggling" in sent
 
     @pytest.mark.asyncio
     async def test_process_with_halachic_landscape(self, agent, mock_claude_response):
@@ -89,7 +96,10 @@ class TestMetaRabbinicVoiceAgent:
         )
         result = await agent.process(context)
 
-        assert result.final_response is not None
+        assert result.final_response == "The tradition offers various perspectives on this..."
+        sent = _sent(agent)
+        for part in ("The main view is...", "Alternative view", "kavod habriyot", "In difficult cases"):
+            assert part in sent
 
     @pytest.mark.asyncio
     async def test_process_with_moral_assessment(self, agent, mock_claude_response):
@@ -110,7 +120,9 @@ class TestMetaRabbinicVoiceAgent:
         )
         result = await agent.process(context)
 
-        assert result.final_response is not None
+        assert result.final_response == "This is a sensitive topic, and I want to approach it with care..."
+        sent = _sent(agent)
+        assert "Possible sensitivity" in sent and "Be gentle" in sent
 
     @pytest.mark.asyncio
     async def test_process_with_crisis_referral(self, agent, mock_claude_response):
@@ -131,7 +143,8 @@ class TestMetaRabbinicVoiceAgent:
         )
         result = await agent.process(context)
 
-        assert result.final_response is not None
+        assert result.final_response.startswith("I'm concerned about what you've shared.")
+        assert "crisis" in _sent(agent).lower()
 
     @pytest.mark.asyncio
     async def test_process_full_pipeline_context(self, agent, mock_claude_response):
@@ -161,8 +174,9 @@ class TestMetaRabbinicVoiceAgent:
         )
         result = await agent.process(context)
 
-        assert result.final_response is not None
-        assert len(result.final_response) > 0
+        assert result.final_response == "A comprehensive, warm response synthesizing all the context..."
+        sent = _sent(agent)
+        assert "Main view" in sent and "Source1" in sent and "Complex question" in sent
 
     @pytest.mark.asyncio
     async def test_final_response_is_set(self, agent, mock_claude_response):

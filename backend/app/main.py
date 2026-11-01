@@ -35,8 +35,6 @@ from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
 import os
 
-logger = logging.getLogger(__name__)
-
 from .config import get_settings
 from .models import (
     ChatRequest,
@@ -53,7 +51,6 @@ from .agents.jev import JevPastoralClassifier
 from .auth import (
     router as auth_router,
     get_current_user,
-    require_auth,
     get_guest_chats_used,
     create_guest_chat_cookie,
     GUEST_FREE_CHAT_LIMIT,
@@ -62,7 +59,6 @@ from .auth import (
 from .security import (
     guest_security,
     input_validator,
-    GUEST_RATE_LIMIT_PER_MINUTE,
 )
 from .conversations import router as conversations_router
 from .payments import router as payments_router
@@ -74,6 +70,8 @@ from .jewish_calendar import get_calendar_status
 from .chat.endpoint import stream_chat_v2, use_v2_for
 from .chat.retrieval import set_retriever as set_v2_retriever
 from .account import router as account_router
+
+logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
 # App Configuration & Middleware

@@ -19,7 +19,7 @@ import time
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Any, Optional, AsyncGenerator
+from typing import Optional
 from openai import OpenAI
 from ..config import DEFAULT_LLM_MODEL
 
